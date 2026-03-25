@@ -1,0 +1,105 @@
+
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>PharmaFlow - نظام إدارة الصيدلية</title>
+    
+    <!-- PWA & Mobile Meta -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#1E4D4D">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="PharmaFlow">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <style>
+        :root {
+          --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
+          --safe-area-inset-top: env(safe-area-inset-top, 0px);
+        }
+        body { 
+            font-family: 'Cairo', sans-serif; 
+            background-color: #F8FAFA; 
+            -webkit-tap-highlight-color: transparent;
+            overscroll-behavior-y: contain;
+            padding-top: var(--safe-area-inset-top);
+        }
+        
+        .safe-area-pb {
+            padding-bottom: calc(1.5rem + var(--safe-area-inset-bottom));
+        }
+
+        .no-select {
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        input:focus, select:focus, textarea:focus {
+            outline: none !important;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar { width: 0px; height: 0px; }
+        
+        button:active {
+            transform: scale(0.94);
+            opacity: 0.8;
+            transition: all 0.1s ease;
+        }
+
+        @keyframes slideUp {
+            from { transform: translateY(100%); }
+            to { transform: translateY(0); }
+        }
+        .bottom-sheet {
+            animation: slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        /* الطباعة الذكية للموبايل والبلوتوث */
+        @media print {
+            body { background: white !important; padding: 0 !important; }
+            header, aside, footer, .no-print, button, nav { display: none !important; }
+            main { padding: 0 !important; margin: 0 !important; width: 100% !important; }
+            .print-area { display: block !important; width: 100% !important; }
+            #root > div > div:not(.print-container) { display: none !important; }
+        }
+    </style>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.3.1",
+    "react/": "https://esm.sh/react@18.3.1/",
+    "react-dom": "https://esm.sh/react-dom@18.3.1",
+    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client",
+    "react-window": "https://esm.sh/react-window@1.8.10?external=react,react-dom",
+    "chart.js": "https://esm.sh/chart.js@4.4.1",
+    "react-chartjs-2": "https://esm.sh/react-chartjs-2@5.2.0?external=react,react-dom,chart.js",
+    "dexie": "https://esm.sh/dexie@3.2.4",
+    "zustand": "https://esm.sh/zustand@5.0.1?bundle&external=react",
+    "zustand/middleware": "https://esm.sh/zustand@5.0.1/middleware?bundle&external=react",
+    "lucide-react": "https://esm.sh/lucide-react@0.460.0?external=react",
+    "zustand/": "https://esm.sh/zustand@^5.0.11/",
+    "react-dom/": "https://esm.sh/react-dom@18.3.1/"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+<body class="bg-[#F8FAFA] text-slate-900 min-h-screen overflow-hidden select-none">
+    <div id="root"></div>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('./sw.js')
+            .then(reg => console.log('[PWA] Registered'))
+            .catch(err => console.log('[PWA] Registration failed', err));
+        });
+      }
+    </script>
+<script type="module" src="/index.tsx"></script>
+</body>
+</html>

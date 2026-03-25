@@ -1,0 +1,52 @@
+
+/**
+ * القواعد الافتراضية للتوجيه المحاسبي (Default Journal Routing Rules)
+ * يتم تحميل هذه القواعد إلى قاعدة البيانات عند التشغيل الأول للنظام.
+ */
+export const DEFAULT_JOURNAL_RULES = {
+  "SALE_CASH": {
+    "debit": "ACC-101",
+    "credit": "ACC-401",
+    "description": "إيراد مبيعات نقدية"
+  },
+  "SALE_CREDIT": {
+    "debit": "ACC-103",
+    "credit": "ACC-401",
+    "description": "إيراد مبيعات آجلة"
+  },
+  "PURCHASE_CASH": {
+    "debit": "ACC-102",
+    "credit": "ACC-101",
+    "description": "مشتريات نقدية"
+  },
+  "PURCHASE_CREDIT": {
+    "debit": "ACC-102",
+    "credit": "ACC-201",
+    "description": "مشتريات آجلة"
+  },
+  "COGS": {
+    "debit": "ACC-501",
+    "credit": "ACC-102",
+    "description": "إثبات تكلفة البضاعة المباعة"
+  },
+  "TAX_VAT": {
+    "debit": "ACC-103",
+    "credit": "ACC-210",
+    "description": "ضريبة القيمة المضافة المحصلة"
+  },
+  "DISCOUNT_ALLOWED": {
+    "debit": "ACC-502",
+    "credit": "ACC-103",
+    "description": "خصم مسموح به للعميل"
+  },
+  "SALE_RETURN": {
+    "debit": "ACC-401",
+    "credit": "ACC-103",
+    "description": "مرتجع مبيعات"
+  },
+  "PURCHASE_RETURN": {
+    "debit": "ACC-201",
+    "credit": "ACC-102",
+    "description": "مرتجع مشتريات"
+  }
+};

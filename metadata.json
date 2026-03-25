@@ -1,0 +1,8 @@
+{
+  "name": "PharmaFlow",
+  "description": "نظام ERP سيادي متكامل لإدارة مبيعات ومخازن الصيدليات، يعتمد على محرك مالي ورياضي محلي 100%.",
+  "requestFramePermissions": [
+    "camera",
+    "geolocation"
+  ]
+}
