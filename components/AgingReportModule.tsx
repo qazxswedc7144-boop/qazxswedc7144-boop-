@@ -73,7 +73,7 @@ const AgingReportModule: React.FC<{ onNavigate?: (v: any) => void }> = ({ onNavi
         </div>
         <div className="flex gap-2">
           <Button variant="secondary" onClick={handleExport} icon={<Download size={16}/>}>تصدير CSV</Button>
-          <button onClick={() => onNavigate?.('dashboard')} className="w-10 h-10 bg-white border border-slate-200 text-[#1E4D4D] rounded-xl flex items-center justify-center shadow-sm active:scale-90 transition-all"><ArrowRight size={20} /></button>
+          <button onClick={() => onNavigate?.('reports')} className="w-10 h-10 bg-white border border-slate-200 text-[#1E4D4D] rounded-xl flex items-center justify-center shadow-sm active:scale-90 transition-all"><ArrowRight size={20} /></button>
         </div>
       </div>
 

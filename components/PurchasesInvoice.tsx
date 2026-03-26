@@ -432,17 +432,6 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
 
         {/* Bottom Row */}
         <div className="flex gap-3">
-          <div className="w-12 h-[48px] bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-center text-slate-300">
-            <Camera size={20} />
-          </div>
-          <div className="flex-1">
-            <input 
-              className="w-full h-[48px] bg-slate-50 border border-slate-100 rounded-xl px-4 text-sm font-black text-right outline-none focus:border-[#1E4D4D]"
-              placeholder="ملاحظات الفاتورة..."
-              value={header.notes}
-              onChange={e => setHeader({...header, notes: e.target.value})}
-            />
-          </div>
           <div className="w-[120px] relative">
             <input 
               ref={invNumInputRef}
@@ -453,6 +442,17 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
               placeholder="رقم الفاتورة..."
             />
             <Edit3 size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" />
+          </div>
+          <div className="flex-1">
+            <input 
+              className="w-full h-[48px] bg-slate-50 border border-slate-100 rounded-xl px-4 text-sm font-black text-right outline-none focus:border-[#1E4D4D]"
+              placeholder="ملاحظات الفاتورة..."
+              value={header.notes}
+              onChange={e => setHeader({...header, notes: e.target.value})}
+            />
+          </div>
+          <div className="w-12 h-[48px] bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-center text-slate-300">
+            <Camera size={20} />
           </div>
         </div>
       </header>
@@ -591,6 +591,7 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
         title="بيانات الصنف"
         maxWidth="w-full sm:w-[380px]"
         noPadding={true}
+        showCloseButton={false}
       >
         <div className="p-3 space-y-3 bg-white" dir="rtl">
           {/* Row 1: اسم الصنف */}
@@ -642,7 +643,7 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
               />
             </div>
             <div className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-500">تاريخ الإنتهاء</label>
+              <label className="text-[10px] font-bold text-slate-500">تاريخ الصلاحية</label>
               <input 
                 type="date"
                 className="w-full h-[40px] bg-slate-50 border border-slate-100 rounded-lg px-4 text-xs font-bold text-[#1E4D4D] outline-none focus:border-[#1E4D4D]"
@@ -702,15 +703,15 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
           </div>
 
           {/* Bottom Actions: إضافة (Right) | إلغاء (Left) */}
-          <div className="flex gap-3 pt-2">
+          <div className="flex gap-3 pt-2 border-t border-slate-50 mt-2">
             <button 
-              className="flex-1 h-[44px] bg-[#1E4D4D] text-white rounded-xl text-xs font-black shadow-md active:scale-95 transition-all"
+              className="flex-1 h-[40px] bg-[#1E4D4D] text-white rounded-xl text-xs font-black shadow-md active:scale-95 transition-all"
               onClick={finalizeItemAdd}
             >
               إضافة
             </button>
             <button 
-              className="flex-1 h-[44px] bg-slate-100 text-slate-500 rounded-xl text-xs font-black active:scale-95 transition-all"
+              className="flex-1 h-[40px] bg-slate-100 text-slate-500 rounded-xl text-xs font-black active:scale-95 transition-all"
               onClick={() => { setSearchOpen(false); setShowSearchDropdown(false); }}
             >
               إلغاء

@@ -2,8 +2,9 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Inventory2, ShowChart, PersonOutline, LocalShipping, 
   SwapHoriz, ShoppingCart, EventBusy, AutoAwesome,
-  ArrowBack, Download, FilterList, Refresh
+  Download, FilterList, Refresh
 } from '@mui/icons-material';
+import { ArrowRight } from 'lucide-react';
 import { db } from '../services/database';
 import { useUI } from '../store/AppContext';
 import { Card, Button, Badge, Modal, Input } from './SharedUI';
@@ -223,8 +224,8 @@ const AdvancedReportsModule: React.FC<{ onBack: () => void }> = ({ onBack }) => 
               <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">Advanced Accounting Intelligence</p>
             </div>
           </div>
-          <Button variant="secondary" icon={<ArrowBack />} onClick={activeSection ? () => setActiveSection(null) : onBack}>
-            {activeSection ? 'العودة للقائمة' : 'الرئيسية'}
+          <Button variant="secondary" icon={<ArrowRight />} onClick={activeSection ? () => setActiveSection(null) : onBack} title="العودة للرئيسية">
+            {activeSection ? 'العودة للقائمة' : ''}
           </Button>
         </div>
       </div>
@@ -236,15 +237,17 @@ const AdvancedReportsModule: React.FC<{ onBack: () => void }> = ({ onBack }) => 
               <button
                 key={section.id}
                 onClick={() => setActiveSection(section.id)}
-                className="group relative bg-white p-8 rounded-[40px] border-2 border-transparent hover:border-[#1E4D4D]/20 hover:shadow-2xl transition-all duration-500 text-right active:scale-95"
+                className="group relative bg-white p-6 rounded-[32px] border border-slate-100 hover:border-[#1E4D4D]/20 hover:shadow-2xl transition-all duration-500 text-right active:scale-95 flex items-center gap-5"
               >
-                <div className={`w-20 h-20 ${section.bg} ${section.color} rounded-3xl flex items-center justify-center mb-6 shadow-inner group-hover:scale-110 transition-transform duration-500`}>
-                  {React.cloneElement(section.icon as React.ReactElement<any>, { sx: { fontSize: 40 } })}
+                <div className={`w-16 h-16 ${section.bg} ${section.color} rounded-2xl flex items-center justify-center shrink-0 shadow-inner group-hover:scale-110 transition-transform duration-500`}>
+                  {React.cloneElement(section.icon as React.ReactElement<any>, { sx: { fontSize: 32 } })}
                 </div>
-                <h3 className="text-xl font-black text-[#1E4D4D] mb-2">{section.title}</h3>
-                <p className="text-xs text-slate-400 font-bold leading-relaxed">عرض التقارير التفصيلية والتحليلات الذكية لهذا القسم.</p>
-                <div className="absolute bottom-6 left-8 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <AutoAwesome sx={{ fontSize: 24 }} className="text-indigo-400 animate-pulse" />
+                <div className="flex-1">
+                  <h3 className="text-lg font-black text-[#1E4D4D] mb-1">{section.title}</h3>
+                  <p className="text-[10px] text-slate-400 font-bold leading-relaxed">عرض التقارير التفصيلية والتحليلات الذكية.</p>
+                </div>
+                <div className="absolute bottom-4 left-6 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <AutoAwesome sx={{ fontSize: 18 }} className="text-indigo-400 animate-pulse" />
                 </div>
               </button>
             ))}

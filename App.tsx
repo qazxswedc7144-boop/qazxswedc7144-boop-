@@ -64,10 +64,6 @@ const ExpiryItemsReport = lazy(() => import('./components/reports/ExpiryItemsRep
 
 const MODULES: {id: any, label: string, icon: any, group: string, permission?: Permission}[] = [
   { id: 'dashboard', label: 'الرئيسية', icon: <Home size={20} />, group: 'core' },
-  { id: 'sales', label: 'المبيعات (كاشير)', icon: <CreditCard size={20} />, group: 'operations' },
-  { id: 'purchases', label: 'المشتريات (توريد)', icon: <ShoppingBag size={20} />, group: 'operations' },
-  { id: 'inventory', label: 'المخازن والأصناف', icon: <Package size={20} />, group: 'operations' },
-  { id: 'partners', label: 'العملاء والموردين', icon: <Users size={20} />, group: 'operations', permission: 'FINANCIAL_ACCESS' },
   { id: 'accounting', label: 'الأستاذ العام', icon: <TableProperties size={20} />, group: 'operations', permission: 'FINANCIAL_ACCESS' },
   { id: 'adjustments-registry', label: 'الرسوم والخصومات', icon: <Tag size={20} />, group: 'admin', permission: 'FINANCIAL_ACCESS' },
   { id: 'audit-history', label: 'سجل التدقيق النهائي', icon: <Fingerprint size={20} />, group: 'admin', permission: 'MANAGE_SYSTEM' },
@@ -113,6 +109,7 @@ function MainLayout() {
     let stopCurrencyObserver: (() => void) | null = null;
 
     const init = async () => { 
+      await db.init();
       heartbeatService.start(); 
       backupService.startAutoTimer();
       SyncService.startWorker();
@@ -214,7 +211,7 @@ function MainLayout() {
         )}
       </AnimatePresence>
 
-      <aside className={`fixed inset-y-0 right-0 w-72 bg-white border-l border-slate-100 z-[210] transition-all duration-500 lg:translate-x-0 lg:static ${isSidebarOpen ? 'translate-x-0 shadow-2xl' : 'translate-x-full'}`}>
+      <aside className={`fixed inset-y-0 right-0 w-64 bg-white border-l border-slate-100 z-[210] transition-all duration-500 lg:translate-x-0 lg:static ${isSidebarOpen ? 'translate-x-0 shadow-2xl' : 'translate-x-full'}`}>
         <div className="flex flex-col h-full">
           <div className="px-8 py-8 flex justify-between items-center">
             <div className="flex items-center gap-3">
@@ -295,20 +292,34 @@ function MainLayout() {
         )}
 
         {!isOperationalView && (
-          <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-100 flex items-center px-6 sm:px-8 shrink-0 z-[150] sticky top-0 shadow-sm">
+          <header className="h-14 bg-white/80 backdrop-blur-md border-b border-slate-100 flex items-center px-6 sm:px-8 shrink-0 z-[150] sticky top-0 shadow-sm">
             <div className="flex-1 flex items-center gap-4">
-              <button onClick={() => setIsSidebarOpen(true)} className="lg:hidden w-10 h-10 bg-white border border-slate-200 rounded-xl flex items-center justify-center text-[#1E4D4D] shadow-sm hover:bg-slate-50 transition-all"><Menu size={22} /></button>
+              {currentView === 'dashboard' && (
+                <button onClick={() => setIsSidebarOpen(true)} className="lg:hidden w-10 h-10 bg-white border border-slate-200 rounded-xl flex items-center justify-center text-[#1E4D4D] shadow-sm hover:bg-slate-50 transition-all"><Menu size={22} /></button>
+              )}
               {currentView !== 'dashboard' && (
-                <button onClick={() => handleNav('dashboard')} className="flex items-center gap-2 px-4 py-2 bg-slate-50 text-[#1E4D4D] rounded-xl text-xs font-bold border border-slate-100 hover:bg-slate-100 transition-all">
-                  <ChevronLeft size={16} /> الرئيسية
+                <button 
+                  onClick={() => {
+                    if (currentView.startsWith('reports/') || currentView === 'aging-report') {
+                      handleNav('reports');
+                    } else {
+                      handleNav('dashboard');
+                    }
+                  }} 
+                  className="w-10 h-10 bg-slate-50 text-[#1E4D4D] rounded-xl flex items-center justify-center border border-slate-100 hover:bg-slate-100 transition-all"
+                  title="العودة"
+                >
+                  <ArrowRight size={20} />
                 </button>
               )}
             </div>
             
             <div className="flex-1 flex justify-center items-center">
-              <h1 className="text-sm font-bold text-[#1E4D4D] bg-slate-50 px-6 py-2 rounded-full border border-slate-100 whitespace-nowrap">
-                {getLabel()}
-              </h1>
+              {currentView !== 'reports' && (
+                <h1 className="text-sm font-bold text-[#1E4D4D] bg-slate-50 px-6 py-2 rounded-full border border-slate-100 whitespace-nowrap">
+                  {getLabel()}
+                </h1>
+              )}
             </div>
 
             <div className="flex-1 flex items-center justify-end gap-4">
@@ -318,13 +329,13 @@ function MainLayout() {
                   {syncStatus === 'SYNCED' ? 'متصل' : syncStatus === 'PENDING' ? 'جاري المزامنة' : 'خطأ مزامنة'}
                 </span>
               </div>
-              <NotificationCenter />
+              {currentView === 'dashboard' && <NotificationCenter />}
             </div>
           </header>
         )}
 
-        <main className={`flex-1 overflow-y-auto bg-[#F8FAFA] custom-scrollbar ${isOperationalView ? 'p-1 sm:p-2 pt-0' : 'p-3 sm:p-8'}`}>
-          <div className="max-w-7xl mx-auto min-h-full">
+        <main className={`flex-1 overflow-y-auto bg-[#F8FAFA] custom-scrollbar ${isOperationalView ? 'p-1 sm:p-2 pt-0' : 'p-2 sm:p-4'}`}>
+          <div className="max-w-full px-4 mx-auto min-h-full">
             <Suspense fallback={<div className="flex items-center justify-center h-full min-h-[400px]"><div className="w-10 h-10 border-4 border-[#10B981] border-t-transparent rounded-full animate-spin"></div></div>}>
               {(() => {
                 switch (currentView) {

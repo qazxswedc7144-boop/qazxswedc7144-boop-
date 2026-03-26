@@ -160,8 +160,14 @@ const SalesModule: React.FC<{ onNavigate?: (view: any, params?: any) => void }> 
 
           {/* Bottom Row */}
           <div className="flex gap-3">
-            <div className="w-12 h-[48px] bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-center text-slate-300">
-              <Camera size={20} />
+            <div className="w-[120px] relative">
+              <input 
+                disabled 
+                className="w-full h-[48px] bg-slate-50 border border-slate-100 rounded-xl px-4 text-sm font-black text-center outline-none" 
+                value={header.invoice_number} 
+                placeholder="رقم الفاتورة..."
+              />
+              <Edit3 size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" />
             </div>
             <div className="flex-1">
               <input 
@@ -171,14 +177,8 @@ const SalesModule: React.FC<{ onNavigate?: (view: any, params?: any) => void }> 
                 onChange={e => setHeader({...header, notes: e.target.value})}
               />
             </div>
-            <div className="w-[120px] relative">
-              <input 
-                disabled 
-                className="w-full h-[48px] bg-slate-50 border border-slate-100 rounded-xl px-4 text-sm font-black text-center outline-none" 
-                value={header.invoice_number} 
-                placeholder="رقم الفاتورة..."
-              />
-              <Edit3 size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" />
+            <div className="w-12 h-[48px] bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-center text-slate-300">
+              <Camera size={20} />
             </div>
           </div>
         </div>
@@ -326,6 +326,7 @@ const SalesModule: React.FC<{ onNavigate?: (view: any, params?: any) => void }> 
         maxWidth="w-full sm:w-[380px]"
         noPadding={true}
         noOuterPadding={true}
+        showCloseButton={false}
       >
         <div className="p-0 space-y-0 bg-white" dir="rtl">
           {/* Row 1: اسم الصنف */}
@@ -378,7 +379,7 @@ const SalesModule: React.FC<{ onNavigate?: (view: any, params?: any) => void }> 
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500">تاريخ الإنتهاء</label>
+                <label className="text-[10px] font-bold text-slate-500">تاريخ الصلاحية</label>
                 <input 
                   type="date"
                   className="w-full h-[40px] bg-slate-50 border border-slate-100 rounded-xl px-4 text-xs font-bold text-[#1E4D4D] outline-none focus:border-[#1E4D4D]"
@@ -438,9 +439,9 @@ const SalesModule: React.FC<{ onNavigate?: (view: any, params?: any) => void }> 
           </div>
 
           {/* Bottom Actions: إضافة (Right) | إلغاء (Left) */}
-          <div className="flex border-t border-slate-100">
+          <div className="flex gap-3 p-3 border-t border-slate-100">
             <Button 
-              className="flex-1 !h-[56px] !rounded-none"
+              className="flex-1 !h-[44px] !rounded-xl"
               variant="primary"
               onClick={() => finalizeItemAdd()}
               isLoading={isAdding}
@@ -448,7 +449,7 @@ const SalesModule: React.FC<{ onNavigate?: (view: any, params?: any) => void }> 
               إضافة الصنف
             </Button>
             <Button 
-              className="flex-1 !h-[56px] !rounded-none"
+              className="flex-1 !h-[44px] !rounded-xl"
               variant="neutral"
               onClick={() => setIsDetailModalOpen(false)}
             >

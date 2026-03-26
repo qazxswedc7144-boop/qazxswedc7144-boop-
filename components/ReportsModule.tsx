@@ -20,20 +20,21 @@ const ReportCard: React.FC<ReportCardProps> = ({ title, icon, onClick, descripti
       whileHover={{ y: -5, scale: 1.02 }}
       whileTap={{ scale: 0.98 }}
       onClick={onClick}
-      className="flex flex-col p-8 bg-white rounded-[40px] shadow-sm border border-slate-100 hover:shadow-2xl hover:border-[#1E4D4D]/20 transition-all group text-right relative overflow-hidden h-full"
+      className="flex items-center gap-6 p-6 bg-white rounded-[32px] shadow-sm border border-slate-100 hover:shadow-2xl hover:border-[#1E4D4D]/20 transition-all group text-right relative overflow-hidden h-full"
     >
       <div className="absolute -right-4 -top-4 w-24 h-24 bg-slate-50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
-      <div className="w-16 h-16 bg-slate-50 text-[#1E4D4D] rounded-[24px] flex items-center justify-center mb-6 group-hover:bg-[#1E4D4D] group-hover:text-white transition-all shadow-inner">
+      <div className="w-16 h-16 bg-slate-50 text-[#1E4D4D] rounded-[24px] flex items-center justify-center shrink-0 group-hover:bg-[#1E4D4D] group-hover:text-white transition-all shadow-inner relative z-10">
         {icon}
       </div>
-      <h3 className="text-lg font-black text-[#1E4D4D] mb-2 group-hover:translate-x-[-4px] transition-transform">
-        {title}
-      </h3>
-      <p className="text-[11px] font-bold text-slate-400 leading-relaxed">
-        {description}
-      </p>
-      <div className="mt-auto pt-6 flex items-center justify-end text-[#1E4D4D] opacity-0 group-hover:opacity-100 transition-all">
-        <span className="text-[10px] font-black uppercase tracking-widest ml-2">فتح التقرير</span>
+      <div className="flex-1 relative z-10">
+        <h3 className="text-lg font-black text-[#1E4D4D] mb-1 group-hover:translate-x-[-4px] transition-transform">
+          {title}
+        </h3>
+        <p className="text-[11px] font-bold text-slate-400 leading-relaxed">
+          {description}
+        </p>
+      </div>
+      <div className="shrink-0 text-[#1E4D4D] opacity-0 group-hover:opacity-100 transition-all relative z-10">
         <ChevronRight size={16} />
       </div>
     </motion.button>
@@ -121,44 +122,24 @@ const ReportsModule: React.FC<ReportsModuleProps> = ({ onNavigate }) => {
   return (
     <div className="flex flex-col h-full bg-[#F8FAFA] font-['Cairo'] overflow-hidden" dir="rtl">
       {/* Modern Header */}
-      <header className="p-10 pb-6 shrink-0 bg-white border-b border-slate-100 z-20">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-8 mb-10">
-          <div className="flex items-center gap-8">
-            <div className="w-20 h-20 bg-[#1E4D4D] text-white rounded-[32px] flex items-center justify-center shadow-2xl shadow-emerald-900/40">
-              <PieChart size={36} />
-            </div>
-            <div>
-              <h2 className="text-4xl font-black text-[#1E4D4D] tracking-tighter leading-none">مركز التقارير</h2>
-              <p className="text-xs text-slate-400 font-bold uppercase tracking-[4px] mt-3 opacity-60">Advanced Analytics & Reporting</p>
-            </div>
+      <header className="p-10 pb-10 shrink-0 bg-white border-b border-slate-100 z-20 flex flex-col items-center justify-center text-center">
+        <div className="flex flex-col items-center gap-6 mb-8">
+          <div className="w-24 h-24 bg-[#1E4D4D] text-white rounded-[36px] flex items-center justify-center shadow-2xl shadow-emerald-900/40">
+            <PieChart size={42} />
           </div>
-          <div className="flex items-center gap-4">
-            <button className="h-14 px-8 bg-white border border-slate-100 text-[#1E4D4D] rounded-[20px] flex items-center gap-3 text-sm font-black shadow-sm hover:bg-slate-50 transition-all">
-              <Printer size={20} />
-              <span>طباعة الكل</span>
-            </button>
-            <button 
-              onClick={() => onNavigate('dashboard')}
-              className="w-14 h-14 bg-slate-50 text-slate-400 rounded-[20px] flex items-center justify-center hover:bg-slate-100 transition-all"
-            >
-              <Home size={24} />
-            </button>
+          <div>
+            <h2 className="text-5xl font-black text-[#1E4D4D] tracking-tighter leading-none mb-4">مركز التقارير</h2>
+            <p className="text-xs text-slate-400 font-bold uppercase tracking-[4px] opacity-60">Advanced Analytics & Reporting</p>
           </div>
         </div>
 
-        <div className="flex flex-col md:flex-row gap-6">
-          <div className="relative flex-1">
+        <div className="w-full max-w-2xl">
+          <div className="relative">
             <Search className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-300" size={24} />
             <input 
               className="w-full h-16 bg-slate-50 border border-slate-100 rounded-[24px] pr-16 pl-6 text-sm font-black focus:bg-white focus:border-[#1E4D4D] outline-none shadow-inner transition-all" 
               placeholder="ابحث عن تقرير محدد..." 
             />
-          </div>
-          
-          <div className="flex items-center gap-3 bg-slate-50 p-2 rounded-[24px] border border-slate-100">
-            <button className="px-8 h-12 rounded-[18px] text-[11px] font-black transition-all bg-[#1E4D4D] text-white shadow-lg">جميع التقارير</button>
-            <button className="px-8 h-12 rounded-[18px] text-[11px] font-black transition-all text-slate-400 hover:text-slate-600">تقارير مالية</button>
-            <button className="px-8 h-12 rounded-[18px] text-[11px] font-black transition-all text-slate-400 hover:text-slate-600">تقارير مخزنية</button>
           </div>
         </div>
       </header>
@@ -175,22 +156,6 @@ const ReportsModule: React.FC<ReportsModuleProps> = ({ onNavigate }) => {
               onClick={() => onNavigate(report.route)}
             />
           ))}
-        </div>
-
-        {/* Footer Info */}
-        <div className="mt-16 p-10 bg-white border border-slate-100 rounded-[48px] flex flex-col md:flex-row items-center justify-between gap-8 opacity-60">
-          <div className="flex items-center gap-6">
-            <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400">
-              <FileText size={24} />
-            </div>
-            <div>
-              <p className="text-sm font-black text-[#1E4D4D]">تحتاج لتقرير مخصص؟</p>
-              <p className="text-[10px] font-bold text-slate-400 mt-1">يمكنك طلب تقارير مخصصة من فريق الدعم الفني.</p>
-            </div>
-          </div>
-          <button className="px-8 py-4 bg-slate-50 text-slate-400 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-100 transition-all">
-            طلب تقرير مخصص
-          </button>
         </div>
       </div>
     </div>

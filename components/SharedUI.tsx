@@ -58,7 +58,7 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 export const Button: React.FC<ButtonProps> = ({ 
   children, variant = 'primary', isLoading, icon, size = 'md', className = "", ...props 
 }) => {
-  const baseStyles = "relative flex items-center justify-center gap-3 font-bold transition-all active:scale-[0.96] disabled:opacity-50 disabled:pointer-events-none select-none touch-manipulation min-h-[48px]";
+  const baseStyles = "relative flex items-center justify-center gap-3 font-bold transition-all active:scale-[0.96] disabled:opacity-50 disabled:pointer-events-none select-none touch-manipulation min-h-[36px]";
   
   const variants = {
     primary: "bg-[#1E4D4D] text-white shadow-lg shadow-emerald-950/10 hover:bg-[#2a6363] hover:shadow-xl",
@@ -123,7 +123,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(({ label, er
       {icon && <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-[#1E4D4D] transition-colors">{icon}</div>}
       <input
         ref={ref}
-        className={`w-full bg-[#F8FAFA] border-2 border-transparent rounded-[18px] ${icon ? 'pr-12' : 'px-5'} py-3.5 text-[14px] font-black text-[#1E4D4D] focus:bg-white focus:border-[#1E4D4D] transition-all outline-none shadow-sm ${error ? 'border-red-200' : ''} ${className}`}
+        className={`w-full bg-[#F8FAFA] border-2 border-transparent rounded-[12px] ${icon ? 'pr-10' : 'px-4'} py-1.5 h-[32px] text-[13px] font-black text-[#1E4D4D] focus:bg-white focus:border-[#1E4D4D] transition-all outline-none shadow-sm ${error ? 'border-red-200' : ''} ${className}`}
         {...props}
       />
     </div>
@@ -131,13 +131,13 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(({ label, er
   </div>
 ));
 
-export const Modal: React.FC<{ isOpen: boolean; onClose: () => void; title: string; children: React.ReactNode; noPadding?: boolean; noOuterPadding?: boolean; maxWidth?: string }> = ({
-  isOpen, onClose, title, children, noPadding = false, noOuterPadding = false, maxWidth = "sm:w-[480px]"
+export const Modal: React.FC<{ isOpen: boolean; onClose: () => void; title: string; children: React.ReactNode; noPadding?: boolean; noOuterPadding?: boolean; maxWidth?: string; showCloseButton?: boolean }> = ({
+  isOpen, onClose, title, children, noPadding = false, noOuterPadding = false, maxWidth = "sm:w-[450px]", showCloseButton = true
 }) => {
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className={`fixed inset-0 z-[1000] flex items-center justify-center ${noOuterPadding ? '' : 'p-4'}`}>
+        <div className={`fixed inset-0 z-[1000] flex items-center justify-center ${noOuterPadding ? '' : 'p-2'}`}>
           <motion.div 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -149,17 +149,19 @@ export const Modal: React.FC<{ isOpen: boolean; onClose: () => void; title: stri
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            className={`bg-white w-full ${maxWidth} max-h-[90vh] rounded-[32px] flex flex-col shadow-2xl relative overflow-hidden border border-white/20`}
+            className={`bg-white w-full ${maxWidth} max-h-[90vh] rounded-[16px] flex flex-col shadow-2xl relative overflow-hidden border border-white/20`}
           >
-            {title && (
-              <div className="px-6 py-5 flex items-center justify-between border-b border-slate-50 shrink-0">
-                 <h3 className="text-sm font-bold text-[#1E4D4D] uppercase tracking-widest">{title}</h3>
-                 <button onClick={onClose} className="w-10 h-10 bg-slate-50 text-slate-400 rounded-xl flex items-center justify-center hover:bg-slate-100 hover:text-slate-600 transition-all">
-                   <X size={20} />
-                 </button>
+            {(title || showCloseButton) && (
+              <div className="px-4 py-3 flex items-center justify-between border-b border-slate-50 shrink-0">
+                 <h3 className="text-[11px] font-bold text-[#1E4D4D] uppercase tracking-widest">{title}</h3>
+                 {showCloseButton && (
+                   <button onClick={onClose} className="w-8 h-8 bg-slate-50 text-slate-400 rounded-lg flex items-center justify-center hover:bg-slate-100 hover:text-slate-600 transition-all">
+                     <X size={16} />
+                   </button>
+                 )}
               </div>
             )}
-            <div className={`${noPadding ? '' : 'p-6'} overflow-y-auto custom-scrollbar flex-1`}>
+            <div className={`${noPadding ? '' : 'p-4'} overflow-y-auto custom-scrollbar flex-1`}>
               {children}
             </div>
           </motion.div>

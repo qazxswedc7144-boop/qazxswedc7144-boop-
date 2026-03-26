@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { ChevronLeft, Home, Search, Download, Printer, Filter, ArrowUpDown, ArrowUp, ArrowDown, Calendar, User } from 'lucide-react';
+import { ChevronLeft, ArrowRight, Search, Download, Printer, Filter, ArrowUpDown, ArrowUp, ArrowDown, Calendar, User } from 'lucide-react';
 import { Input, Button } from '../SharedUI';
 
 interface Column {
@@ -127,18 +127,11 @@ const BaseReportPage: React.FC<BaseReportPageProps> = ({
       {/* Breadcrumb */}
       <nav className="flex items-center gap-2 text-[11px] font-bold text-slate-400">
         <button 
-          onClick={() => onNavigate('dashboard')}
-          className="flex items-center gap-1 hover:text-[#1E4D4D] transition-colors"
-        >
-          <Home size={12} />
-          الرئيسية
-        </button>
-        <ChevronLeft size={12} />
-        <button 
           onClick={() => onNavigate('reports')}
-          className="hover:text-[#1E4D4D] transition-colors"
+          className="flex items-center gap-1 hover:text-[#1E4D4D] transition-colors"
+          title="العودة للتقارير"
         >
-          التقارير
+          <ArrowRight size={14} />
         </button>
         <ChevronLeft size={12} />
         <span className="text-[#1E4D4D]">{title}</span>

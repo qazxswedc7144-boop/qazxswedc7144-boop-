@@ -19,8 +19,6 @@ import {
 } from '../types';
 import { authService } from './auth.service';
 import { ErrorManager } from './errorManager';
-import { SyncService } from './SyncService';
-import { LoadTestService } from './LoadTestService';
 
 import { IS_PREVIEW } from '../constants';
 
@@ -158,11 +156,10 @@ class PharmaFlowDB extends Dexie {
     });
 
     this.setupOptimizedAuditHooks();
-    this.setupSyncHooks();
     this.enforceAuditImmutability();
   }
 
-  private setupSyncHooks() {
+  public setupSyncHooks() {
     const syncableTables = [
       { name: 'PRODUCT', table: this.products, pk: 'id' },
       { name: 'SALE', table: this.sales, pk: 'id' },
@@ -177,14 +174,20 @@ class PharmaFlowDB extends Dexie {
 
     syncableTables.forEach(({ name, table, pk }) => {
       table.hook('creating', (primaryKey, obj) => {
-        SyncService.queueSync(name, String(primaryKey || (obj as any)[pk]), 'CREATE', obj);
+        import('./SyncService').then(({ SyncService }) => {
+          SyncService.queueSync(name, String(primaryKey || (obj as any)[pk]), 'CREATE', obj);
+        });
       });
       table.hook('updating', (mods, obj) => {
         const updatedObj = { ...(obj as any), ...(mods as any) };
-        SyncService.queueSync(name, String((obj as any)[pk]), 'UPDATE', updatedObj);
+        import('./SyncService').then(({ SyncService }) => {
+          SyncService.queueSync(name, String((obj as any)[pk]), 'UPDATE', updatedObj);
+        });
       });
       table.hook('deleting', (primaryKey, obj) => {
-        SyncService.queueSync(name, String(primaryKey || (obj as any)[pk]), 'DELETE', { id: primaryKey });
+        import('./SyncService').then(({ SyncService }) => {
+          SyncService.queueSync(name, String(primaryKey || (obj as any)[pk]), 'DELETE', { id: primaryKey });
+        });
       });
     });
   }
@@ -458,12 +461,14 @@ class LocalDatabase {
   async getInventory() { await this.ensureOpen(); return await this.db.inventory.toArray(); }
   async getSales() { 
     await this.ensureOpen();
+    const { LoadTestService } = await import('./LoadTestService');
     return await LoadTestService.measure("GET_SALES", async () => {
       return await this.db.sales.orderBy('date').reverse().toArray();
     });
   }
   async getPurchases() { 
     await this.ensureOpen();
+    const { LoadTestService } = await import('./LoadTestService');
     return await LoadTestService.measure("GET_PURCHASES", async () => {
       return await this.db.purchases.orderBy('date').reverse().toArray();
     });
@@ -711,3 +716,6 @@ class LocalDatabase {
 
 const dbInstance = new LocalDatabase();
 export { dbInstance as db };
+
+// Initialize hooks after export to ensure db is available to imported services
+dbInstance.db.setupSyncHooks();

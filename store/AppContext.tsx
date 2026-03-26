@@ -5,7 +5,14 @@ import { eventBus, EVENTS } from '../services/eventBus';
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const refreshData = useAppStore(s => s.refreshData);
-  useEffect(() => { refreshData(); }, [refreshData]);
+  useEffect(() => { 
+    const init = async () => {
+      const { db } = await import('../services/database');
+      await db.init();
+      await refreshData();
+    };
+    init();
+  }, [refreshData]);
   return <>{children}</>;
 };
 

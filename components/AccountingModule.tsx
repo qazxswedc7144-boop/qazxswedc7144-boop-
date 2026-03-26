@@ -148,7 +148,7 @@ const AccountingModule: React.FC<AccountingModuleProps> = ({ onNavigate }) => {
               onClick={() => onNavigate?.('dashboard')}
               className="w-14 h-14 bg-slate-50 text-slate-400 rounded-[20px] flex items-center justify-center hover:bg-slate-100 transition-all"
             >
-              <Home size={24} />
+              <ArrowRight size={24} />
             </button>
           </div>
         </div>
