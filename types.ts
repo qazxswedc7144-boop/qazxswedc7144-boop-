@@ -194,7 +194,13 @@ export type Permission =
   | 'VIEW_REPORTS'
   | 'FINANCIAL_ACCESS'
   | 'MANAGE_SYSTEM'
-  | 'FULL_ACCESS';
+  | 'FULL_ACCESS'
+  | 'POS_ACCESS'
+  | 'PURCHASE_ACCESS'
+  | 'INVENTORY_VIEW'
+  | 'MANAGE_PARTNERS'
+  | 'AUDIT_VIEW'
+  | 'ARCHIVE_VIEW';
 
 export interface SyncableEntity {
   id?: string;

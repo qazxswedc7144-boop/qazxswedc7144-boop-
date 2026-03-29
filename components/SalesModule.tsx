@@ -27,47 +27,30 @@ const SalesModule: React.FC<{ onNavigate?: (view: any, params?: any) => void }> 
     isConfirmSaveOpen, setIsConfirmSaveOpen,
     itemNameInputRef,
     qtyInputRef,
+    priceInputRef,
+    expiryInputRef,
+    noteInputRef,
+    categoryInputRef,
     header, setHeader,
-    isPeriodLockedStatus,
     isLocked,
     isSaving,
     isAdding,
     vTotalSum,
-    persistToDB,
     filteredProducts,
     selectProduct,
     finalizeItemAdd,
     handleSearchKeyDown,
-    updateItem,
-    removeItem,
+    setIsConfirmSaveOpen: setConfirmSaveOpen,
     handlePost,
     currency,
-    isAdmin,
     isDuplicate,
-    adjData,
     categoryName,
-    setCategoryName
+    setCategoryName,
+    isRecovery,
+    getStatusLabel,
+    handleExport,
+    printData
   } = useSales(onNavigate);
-
-  const priceInputRef = React.useRef<HTMLInputElement>(null);
-  const expiryInputRef = React.useRef<HTMLInputElement>(null);
-  const noteInputRef = React.useRef<HTMLInputElement>(null);
-  const categoryInputRef = React.useRef<HTMLSelectElement>(null);
-
-  const systemStatus = useAppStore(state => state.systemStatus);
-  const isRecovery = systemStatus === 'RECOVERY_MODE';
-
-  const getStatusLabel = (status: string) => {
-    switch(status) {
-      case 'Draft': return 'مسودة 📝';
-      case 'Saved': return 'مرحلة (مفتوحة) ✅';
-      case 'PartiallyPaid': return 'سداد جزئي 💸';
-      case 'Paid': return 'تم السداد 💰';
-      case 'Cancelled': return 'ملغاة 🚫';
-      case 'Returned': return 'مرتجع 🔄';
-      default: return status;
-    }
-  };
 
   return (
     <div className="flex flex-col min-h-screen bg-[#f7f8fa] font-['Cairo'] w-full max-w-7xl mx-auto relative overflow-x-hidden" dir="rtl">
@@ -120,7 +103,7 @@ const SalesModule: React.FC<{ onNavigate?: (view: any, params?: any) => void }> 
 
             <div className="flex items-center gap-2">
               <button 
-                onClick={() => ExportService.exportToExcel(items, `SALE_${Date.now()}`, ['name', 'qty', 'price', 'sum'])}
+                onClick={handleExport}
                 disabled={items.length === 0}
                 className="w-10 h-10 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-center text-[#1E4D4D] hover:bg-slate-100 transition-all disabled:opacity-50"
                 title="تصدير CSV"
@@ -128,7 +111,7 @@ const SalesModule: React.FC<{ onNavigate?: (view: any, params?: any) => void }> 
                 <FileSpreadsheet size={20} />
               </button>
 
-              <PrintMenu data={{ items, finalTotal: vTotalSum }} type="SALE" items={items} />
+              <PrintMenu data={printData} type="SALE" items={items} />
               
               <button 
                 onClick={() => onNavigate?.('invoices-archive', { filter: 'SALE' })} 

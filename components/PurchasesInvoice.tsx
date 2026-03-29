@@ -1,16 +1,7 @@
 
-import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { db } from '../services/database';
-import { Product, InvoiceStatus, InvoiceItem, Purchase, PaymentStatus } from '../types';
-import { useUI, useInventory, useAccounting } from '../store/AppContext';
-import { useAppStore } from '../store/useAppStore';
-import { authService } from '../services/auth.service';
+import React from 'react';
 import { Card, Button, Badge, Modal, Input } from './SharedUI';
 import { InvoiceLockedBanner } from './SharedInvoiceUI';
-import { PurchaseRepository } from '../repositories/PurchaseRepository';
-import { InvoiceRepository } from '../repositories/invoice.repository';
-import { priceIntelligenceService } from '../services/priceIntelligence.service';
-import { syncService } from '../services/sync.service';
 import PrintMenu from './PrintMenu';
 import { 
   Search, Trash2, Plus, Minus, ArrowLeft, Tag, Camera, Calendar,
@@ -18,742 +9,495 @@ import {
   ShoppingBag, Package, CalendarDays, Wallet, Percent, Scale,
   X, Edit3, AlertCircle, History, ShieldAlert, Lock, Clock,
   User, CreditCard, Save, ChevronRight, FileText, ArrowRight, Home, Printer,
-  ChevronLeft, MoreVertical, Trash, Info
+  ChevronLeft, MoreVertical, Trash, Info, FileSpreadsheet, LayoutList
 } from 'lucide-react';
-import { InvoiceWorkflowEngine } from '../services/logic/InvoiceWorkflowEngine';
 import { motion, AnimatePresence } from 'motion/react';
-
-const DRAFT_KEY = 'pharmaflow_purchase_draft';
+import { usePurchases } from '../hooks/usePurchases';
 
 const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => void }> = ({ onNavigate }) => {
-  const { addToast, currency, refreshGlobal } = useUI();
-  const { addInvoice, suppliers } = useAccounting();
-  const { products, categories, addCategory } = useInventory();
-  const setEditingInvoiceId = useAppStore(state => state.setEditingInvoiceId);
-  const editingInvoiceId = useAppStore(state => state.editingInvoiceId);
-  const systemStatus = useAppStore(state => state.systemStatus);
-  const isRecovery = systemStatus === 'RECOVERY_MODE';
-  
-  const [items, setItems] = useState<InvoiceItem[]>([]);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [isSearchOpen, setSearchOpen] = useState(false);
-  const [isAutoSaving, setIsAutoSaving] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [isDuplicate, setIsDuplicate] = useState(false);
-  const [hasDependencies, setHasDependencies] = useState(false);
-  
-  const [isAdjustmentsOpen, setIsAdjustmentsOpen] = useState(false);
-  const [adjData, setAdjData] = useState({
-    discountPercent: 0,
-    otherFees: 0,
-    tax: 0
-  });
-
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [manualItemName, setManualItemName] = useState<string>('');
-  const [tempQty, setTempQty] = useState<number | string>('');
-  const [tempPrice, setTempPrice] = useState<number | string>('');
-  const [tempExpiry, setTempExpiry] = useState<string>('');
-  const [tempNote, setTempNote] = useState<string>('');
-  const [showSearchDropdown, setShowSearchDropdown] = useState(false);
-  const [manualCategoryName, setManualCategoryName] = useState<string>('');
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
-  const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
-
-  const invNumInputRef = useRef<HTMLInputElement>(null);
-  const itemNameInputRef = useRef<HTMLInputElement>(null);
-  const qtyInputRef = useRef<HTMLInputElement>(null);
-  const priceInputRef = useRef<HTMLInputElement>(null);
-
-  const expiryInputRef = useRef<HTMLInputElement>(null);
-  const noteInputRef = useRef<HTMLInputElement>(null);
-  const categoryInputRef = useRef<HTMLSelectElement>(null);
-
-  const [header, setHeader] = useState({ 
-    invoice_number: '', 
-    supplier_id: '',
-    payment_method: 'Cash',
-    status: 'DRAFT' as InvoiceStatus,
-    payment_status: 'Unpaid' as PaymentStatus,
-    date: new Date().toISOString().split('T')[0],
-    notes: '',
-    isReturn: false
-  });
-
-  const [isDateLockedStatus, setIsDateLockedStatus] = useState(false);
-
-  useEffect(() => {
-    const checkLock = async () => {
-      const locked = await db.isDateLocked(header.date);
-      setIsDateLockedStatus(locked);
-    };
-    checkLock();
-  }, [header.date]);
-
-  const isLocked = useMemo(() => {
-    const isWorkflowLocked = InvoiceWorkflowEngine.isLocked(header.status);
-    const isPeriodLocked = isDateLockedStatus && authService.getCurrentUser()?.Role !== 'Admin';
-    return isWorkflowLocked || isPeriodLocked || hasDependencies;
-  }, [header.status, isDateLockedStatus, hasDependencies]);
-
-  useEffect(() => {
-    const fetchEditingInvoice = async () => {
-      if (editingInvoiceId) {
-        const purchase = await db.getPurchases().then(all => all.find(p => p.invoiceId === editingInvoiceId || p.purchase_id === editingInvoiceId || p.id === editingInvoiceId));
-        const deps = await InvoiceRepository.checkHasDependencies(editingInvoiceId, 'PURCHASE');
-        setHasDependencies(deps);
-
-        if (purchase) {
-          setHeader({
-            invoice_number: purchase.invoiceId || purchase.purchase_id,
-            supplier_id: purchase.partnerId,
-            payment_method: purchase.status === 'PAID' ? 'Cash' : 'Credit',
-            status: purchase.invoiceStatus || 'PENDING',
-            payment_status: purchase.payment_status || 'Unpaid',
-            date: (purchase.date || "").split('T')[0],
-            notes: (purchase as any).notes || '',
-            isReturn: purchase.invoiceType === 'مرتجع'
-          });
-          setItems(purchase.items || []);
-        }
-      } else {
-        const savedDraft = localStorage.getItem(DRAFT_KEY);
-        if (savedDraft) {
-          try {
-            const parsed = JSON.parse(savedDraft);
-            setHeader({ ...parsed.header, payment_status: 'Unpaid' });
-            setItems(parsed.items);
-            setAdjData(parsed.adjData);
-          } catch (e) {}
-        }
-      }
-    };
-    fetchEditingInvoice();
-  }, [editingInvoiceId]);
-
-  useEffect(() => {
-    if (header.invoice_number && header.supplier_id) {
-      PurchaseRepository.isDuplicate(header.invoice_number, header.supplier_id, editingInvoiceId)
-        .then(res => setIsDuplicate(res));
-    } else {
-      setIsDuplicate(false);
-    }
-  }, [header.invoice_number, header.supplier_id, editingInvoiceId]);
-
-  const vTotalSum = useMemo(() => {
-    const itemsSum = items.reduce((acc, item) => acc + (item.sum || 0), 0);
-    const discountAmount = itemsSum * (Number(adjData.discountPercent) / 100);
-    return itemsSum - discountAmount + Number(adjData.otherFees) + Number(adjData.tax);
-  }, [items, adjData]);
-
-  const persistToDB = useCallback(async () => {
-    const isAdmin = authService.getCurrentUser()?.Role === 'Admin';
-    const isPeriodLocked = (await db.isDateLocked(header.date)) && !isAdmin;
-    if (isPeriodLocked || isDuplicate) return;
-
-    setIsAutoSaving(true);
-    try {
-      if (isLocked) {
-        if (editingInvoiceId) {
-          await db.updatePurchaseNotes(editingInvoiceId, header.notes);
-        }
-      } else if ((header.status === 'DRAFT' || header.status === 'DRAFT_EDIT') && items.length > 0 && header.invoice_number) {
-        await addInvoice({
-          type: 'PURCHASE',
-          payload: { 
-            supplierId: header.supplier_id, 
-            items, 
-            total: vTotalSum, 
-            invoiceId: header.invoice_number,
-            id: editingInvoiceId,
-            notes: header.notes
-          },
-          options: { 
-            isCash: header.payment_method === 'Cash', 
-            isReturn: header.isReturn, 
-            currency,
-            invoiceStatus: header.status,
-            date: header.date
-          }
-        });
-      }
-    } catch (err) {} finally { setIsAutoSaving(false); }
-  }, [items, header, vTotalSum, isDuplicate, isLocked, editingInvoiceId]);
-
-  useEffect(() => {
-    const timer = setInterval(() => persistToDB(), 10000);
-    return () => clearInterval(timer);
-  }, [persistToDB]);
-
-  const updateItem = (id: string, field: keyof InvoiceItem, val: any) => {
-    if (isLocked) return;
-    setItems(prev => prev.map(item => {
-      if (item.id === id) {
-        const next = { ...item, [field]: val };
-        next.sum = (parseFloat(next.qty as any) || 0) * (parseFloat(next.price as any) || 0);
-        return next;
-      }
-      return item;
-    }));
-  };
-
-  const finalizeItemAdd = async () => {
-    if (isLocked) return;
-    const name = manualItemName.trim();
-    if (!name || !tempQty) return;
-
-    let catId = selectedCategoryId;
-    let catName = manualCategoryName.trim();
-
-    if (catName && !catId) {
-      const existingCat = categories.find(c => c.categoryName.toLowerCase() === catName.toLowerCase());
-      if (existingCat) {
-        catId = existingCat.id;
-        catName = existingCat.categoryName;
-      } else {
-        const newCatId = db.generateId('CAT');
-        const newCat = {
-          id: newCatId,
-          categoryId: db.generateId('CAT-ID'),
-          categoryName: catName,
-          createdAt: new Date().toISOString(),
-          isSystem: false
-        };
-        await addCategory(newCat);
-        catId = newCatId;
-      }
-    }
-
-    let prod = selectedProduct;
-    if (!prod || prod.Name.toLowerCase() !== name.toLowerCase()) {
-      prod = products.find(p => p.Name.toLowerCase() === name.toLowerCase()) || null;
-    }
-
-    if (prod) {
-      if (prod.categoryId !== catId || prod.categoryName !== catName) {
-        await db.saveProduct({
-          ...prod,
-          categoryId: catId || prod.categoryId,
-          categoryName: catName || prod.categoryName
-        });
-      }
-    } else {
-      const newProdId = db.generateId('PROD');
-      await db.saveProduct({
-        id: newProdId,
-        ProductID: newProdId,
-        Name: name,
-        DefaultUnit: 'Unit',
-        LastPurchasePrice: parseFloat(tempPrice as any) || 0,
-        TaxDefault: 0,
-        UnitPrice: (parseFloat(tempPrice as any) || 0) * 1.2,
-        CostPrice: parseFloat(tempPrice as any) || 0,
-        StockQuantity: 0,
-        MinLevel: 5,
-        ExpiryDate: tempExpiry,
-        categoryId: catId,
-        categoryName: catName,
-        Is_Active: true
-      });
-      prod = await db.db.products.get(newProdId) || null;
-    }
-
-    const newItem: InvoiceItem = {
-      id: Math.random().toString(36).substr(2, 9),
-      parent_id: editingInvoiceId || '',
-      row_order: items.length + 1,
-      product_id: prod?.ProductID || db.generateId('ITM'),
-      name: name,
-      qty: parseFloat(tempQty as any) || 0,
-      price: parseFloat(tempPrice as any) || 0,
-      sum: (parseFloat(tempQty as any) || 0) * (parseFloat(tempPrice as any) || 0),
-      expiryDate: tempExpiry,
-      notes: tempNote
-    };
-
-    setItems([...items, newItem]);
-    setManualItemName('');
-    setTempQty('');
-    setTempPrice('');
-    setTempExpiry('');
-    setTempNote('');
-    setManualCategoryName('');
-    setSelectedCategoryId('');
-    setSelectedProduct(null);
-    setSearchOpen(false);
-    addToast("تمت إضافة الصنف بنجاح", "success");
-  };
-
-  const filteredProducts = useMemo(() => {
-    if (!manualItemName.trim()) return [];
-    const term = manualItemName.toLowerCase();
-    return products.filter(p => 
-      p.Is_Active !== false && (
-        p.Name.toLowerCase().includes(term) || 
-        p.ProductID.toLowerCase().includes(term) ||
-        (p.barcode && p.barcode.includes(term))
-      )
-    ).slice(0, 5);
-  }, [products, manualItemName]);
-
-  const selectProduct = async (p: Product) => {
-    setSelectedProduct(p);
-    setManualItemName(p.Name);
-    setManualCategoryName(p.categoryName || '');
-    setSelectedCategoryId(p.categoryId || '');
-    const suggestion = await priceIntelligenceService.getSuggestedPrice(p.ProductID, 'PURCHASE', header.supplier_id);
-    setTempPrice(suggestion.suggestedPrice || p.CostPrice || p.UnitPrice);
-    setShowSearchDropdown(false);
-    qtyInputRef.current?.focus();
-  };
-
-  const handlePostInvoice = async () => {
-    if (isDuplicate || isLocked || isSaving) return;
-    if (!header.invoice_number || !header.supplier_id) {
-      addToast("يرجى إكمال بيانات الفاتورة والمورد", "warning");
-      return;
-    }
-    
-    setIsSaving(true);
-    try {
-      const nextStatus = InvoiceWorkflowEngine.determineNextStatus(vTotalSum, header.payment_method === 'Cash' ? vTotalSum : 0, 'PENDING');
-      const res = await addInvoice({
-        type: 'PURCHASE',
-        payload: { 
-          supplierId: header.supplier_id, 
-          items, 
-          total: vTotalSum, 
-          invoiceId: header.invoice_number,
-          id: editingInvoiceId 
-        },
-        options: { 
-          isCash: header.payment_method === 'Cash', 
-          invoiceStatus: nextStatus, 
-          isReturn: header.isReturn, 
-          currency,
-          date: header.date
-        }
-      });
-
-      if (res.success) { 
-        localStorage.removeItem(DRAFT_KEY); 
-        setEditingInvoiceId(null); 
-        refreshGlobal(); 
-        onNavigate?.('dashboard'); 
-      }
-    } catch (err: any) {
-      addToast(err.message || "فشل الحفظ", "error");
-    } finally {
-      setIsSaving(false);
-    }
-  };
+  const {
+    items, setItems,
+    searchTerm, setSearchTerm,
+    isSearchOpen, setSearchOpen,
+    isAutoSaving,
+    isSaving,
+    isDuplicate,
+    hasDependencies,
+    isAdjustmentsOpen, setIsAdjustmentsOpen,
+    adjData, setAdjData,
+    selectedProduct, setSelectedProduct,
+    manualItemName, setManualItemName,
+    tempQty, setTempQty,
+    tempPrice, setTempPrice,
+    tempExpiry, setTempExpiry,
+    tempNote, setTempNote,
+    showSearchDropdown, setShowSearchDropdown,
+    manualCategoryName, setManualCategoryName,
+    selectedCategoryId, setSelectedCategoryId,
+    showCategoryDropdown, setShowCategoryDropdown,
+    invNumInputRef,
+    itemNameInputRef,
+    qtyInputRef,
+    priceInputRef,
+    expiryInputRef,
+    noteInputRef,
+    categoryInputRef,
+    header, setHeader,
+    isLocked,
+    vTotalSum,
+    filteredProducts,
+    selectProduct,
+    finalizeItemAdd,
+    handlePost,
+    currency,
+    isRecovery,
+    suppliers,
+    categories,
+    addCategory,
+    handleExport,
+    printData,
+    editingInvoiceId
+  } = usePurchases(onNavigate);
 
   return (
     <div className="flex flex-col min-h-screen bg-[#f7f8fa] font-['Cairo'] w-full max-w-7xl mx-auto relative overflow-x-hidden" dir="rtl">
       {/* HEADER SECTION */}
-      <header className="bg-white border-b border-slate-100 p-4 shrink-0 z-50 shadow-sm space-y-4">
-        {/* Top Row */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <button 
-              onClick={() => onNavigate?.('dashboard')} 
-              className="w-10 h-10 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-center text-[#1E4D4D] hover:bg-slate-100 transition-all"
-              title="الرجوع للرئيسية"
-            >
-              <ArrowRight size={20} />
-            </button>
-            <div className="w-10 h-10 bg-[#1E4D4D]/5 rounded-xl flex items-center justify-center text-[#1E4D4D]">
-              <ShoppingBag size={20} />
-            </div>
-            <div className="text-right">
-              <h2 className="text-lg font-black text-[#1E4D4D]">مشتريات</h2>
-              <p className="text-[10px] font-bold text-slate-400"># ---</p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-             <button 
-              onClick={() => setHeader({...header, isReturn: !header.isReturn})}
-              className={`h-10 px-4 rounded-xl text-xs font-black flex items-center gap-2 transition-all ${header.isReturn ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-slate-50 text-slate-400 border border-slate-100'}`}
-            >
-              <RotateCcw size={14} />
-              <span>مرتجع؟</span>
-            </button>
-
-            <div className="flex bg-slate-50 p-1 rounded-xl border border-slate-100">
+      <div className="p-4 space-y-4 shrink-0 z-50">
+        <div className="bg-white rounded-[24px] p-4 shadow-sm border border-slate-100 space-y-4">
+          {/* Top Row */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
               <button 
-                onClick={() => setHeader({...header, payment_method: 'Cash'})}
-                className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${header.payment_method === 'Cash' ? 'bg-[#064e3b] text-white shadow-sm' : 'text-slate-400'}`}
+                onClick={() => onNavigate?.('dashboard')} 
+                className="w-10 h-10 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-center text-[#1E4D4D] hover:bg-slate-100 transition-all"
+                title="الرجوع للرئيسية"
               >
-                نقداً
+                <ArrowRight size={20} />
               </button>
-              <button 
-                onClick={() => setHeader({...header, payment_method: 'Credit'})}
-                className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${header.payment_method === 'Credit' ? 'bg-[#7f1d1d] text-white shadow-sm' : 'text-slate-400'}`}
-              >
-                آجل
-              </button>
+              <div className="w-10 h-10 bg-[#1E4D4D]/5 rounded-xl flex items-center justify-center text-[#1E4D4D]">
+                <ShoppingBag size={20} />
+              </div>
+              <div className="text-right">
+                <h2 className="text-lg font-black text-[#1E4D4D]">توريد مشتريات</h2>
+                <p className="text-[10px] font-bold text-slate-400"># {header.invoice_number || '---'}</p>
+              </div>
             </div>
-          </div>
 
-          <div className="flex items-center gap-2">
-            <PrintMenu data={{ items, totalAmount: vTotalSum }} type="PURCHASE" items={items} />
-            
-            <button 
-              onClick={() => onNavigate?.('invoices-archive', { filter: 'PURCHASE' })} 
-              className="w-10 h-10 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-center text-[#1E4D4D] hover:bg-slate-100 transition-all"
-              title="سجل المشتريات"
-            >
-              <History size={20} />
-            </button>
-          </div>
-        </div>
-
-        {/* Middle Row */}
-        <div className="flex gap-3">
-          <div className="flex-1 relative">
-             <select 
-                disabled={isLocked || isRecovery}
-                className="w-full h-[48px] bg-slate-50 border border-slate-100 rounded-xl pr-4 pl-10 text-sm font-black text-[#1E4D4D] outline-none focus:border-[#1E4D4D] appearance-none text-right"
-                value={header.supplier_id}
-                onChange={e => setHeader({...header, supplier_id: e.target.value})}
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={() => setHeader({...header, isReturn: !header.isReturn})}
+                className={`h-10 px-4 rounded-xl text-xs font-black flex items-center gap-2 transition-all ${header.isReturn ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-slate-50 text-slate-400 border border-slate-100'}`}
               >
-                <option value="">اسم المورد...</option>
-                {suppliers.map(s => <option key={s.Supplier_ID} value={s.Supplier_ID}>{s.Supplier_Name}</option>)}
-              </select>
-              <ChevronDown size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" />
-          </div>
-          <div className="w-[120px] relative">
-            <input 
-              type="date" 
-              disabled={isLocked || isRecovery}
-              className="w-full h-[48px] bg-slate-50 border border-slate-100 rounded-xl px-2 text-[11px] font-black text-center outline-none focus:border-[#1E4D4D]"
-              value={header.date}
-              onChange={e => setHeader({...header, date: e.target.value})}
-            />
-          </div>
-        </div>
+                <RotateCcw size={14} />
+                <span>مرتجع؟</span>
+              </button>
 
-        {/* Bottom Row */}
-        <div className="flex gap-3">
-          <div className="w-[120px] relative">
-            <input 
-              ref={invNumInputRef}
-              disabled={isLocked || !!editingInvoiceId || isRecovery}
-              className={`w-full h-[48px] bg-slate-50 border rounded-xl px-4 text-sm font-black text-center outline-none transition-all ${isDuplicate ? 'border-red-500 text-red-600' : 'border-slate-100 text-[#1E4D4D] focus:border-[#1E4D4D]'}`}
-              value={header.invoice_number}
-              onChange={e => setHeader({...header, invoice_number: e.target.value})}
-              placeholder="رقم الفاتورة..."
-            />
-            <Edit3 size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" />
-          </div>
-          <div className="flex-1">
-            <input 
-              className="w-full h-[48px] bg-slate-50 border border-slate-100 rounded-xl px-4 text-sm font-black text-right outline-none focus:border-[#1E4D4D]"
-              placeholder="ملاحظات الفاتورة..."
-              value={header.notes}
-              onChange={e => setHeader({...header, notes: e.target.value})}
-            />
-          </div>
-          <div className="w-12 h-[48px] bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-center text-slate-300">
-            <Camera size={20} />
-          </div>
-        </div>
-      </header>
-
-      <div className="flex-1 overflow-y-auto pb-[100px] custom-scrollbar">
-        {/* ITEM ENTRY AREA */}
-        <div className="flex justify-between items-center px-4 mb-2 gap-3 mt-4">
-          <div className="relative flex-1">
-            <Search size={18} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300" />
-            <input 
-              className="w-full h-[48px] bg-white border border-slate-100 rounded-xl pr-10 pl-4 text-sm font-black text-[#1E4D4D] focus:border-[#1E4D4D] transition-all outline-none shadow-sm text-right" 
-              placeholder="تصفية البنود المضافة..." 
-              value={manualItemName} 
-              onChange={e => { setManualItemName(e.target.value); setShowSearchDropdown(true); }} 
-              onFocus={() => setShowSearchDropdown(true)}
-            />
-            
-            <AnimatePresence>
-              {showSearchDropdown && filteredProducts.length > 0 && (
-                <motion.div 
-                  initial={{ opacity: 0, y: 5 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 5 }}
-                  className="absolute top-full left-0 right-0 bg-white border border-slate-100 rounded-xl shadow-xl z-[100] mt-1 overflow-hidden"
+              <div className="flex bg-slate-50 p-1 rounded-xl border border-slate-100">
+                <button 
+                  onClick={() => setHeader({...header, payment_method: 'Cash'})}
+                  className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${header.payment_method === 'Cash' ? 'bg-[#1E4D4D] text-white shadow-sm' : 'text-slate-400'}`}
                 >
-                  {filteredProducts.map(p => (
-                    <button 
-                      key={p.ProductID} 
-                      onClick={() => selectProduct(p)}
-                      className="w-full px-4 py-3 text-right flex justify-between items-center border-b border-slate-50 last:border-0 transition-colors hover:bg-slate-50"
-                    >
-                      <div>
-                        <p className="text-xs font-black text-[#1E4D4D]">{p.Name}</p>
-                        <p className="text-[9px] font-bold text-slate-400">{p.categoryName || 'عام'}</p>
-                      </div>
-                      <div className="text-left">
-                        <p className="text-xs font-black text-emerald-600">{p.CostPrice || p.UnitPrice} {currency}</p>
-                      </div>
-                    </button>
-                  ))}
-                </motion.div>
-              )}
-            </AnimatePresence>
+                  نقداً
+                </button>
+                <button 
+                  onClick={() => setHeader({...header, payment_method: 'Credit'})}
+                  className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${header.payment_method === 'Credit' ? 'bg-[#7f1d1d] text-white shadow-sm' : 'text-slate-400'}`}
+                >
+                  آجل
+                </button>
+              </div>
+            </div>
           </div>
-          <button 
-            disabled={isLocked || isRecovery} 
-            onClick={() => { setManualItemName(''); setSearchOpen(true); }}
-            className="h-[48px] px-6 border-2 border-[#10B981] text-[#10B981] rounded-xl flex items-center gap-2 text-sm font-black hover:bg-emerald-50 transition-all shrink-0"
-          >
-            <Plus size={18} />
-            <span>إضافة</span>
-          </button>
-        </div>
 
-        {/* ITEM TABLE */}
-        <div className="bg-white mx-4 rounded-xl shadow-sm border border-slate-100 overflow-hidden">
-          <table className="w-full text-right border-collapse">
-            <thead className="sticky top-0 bg-slate-50 z-10 border-b border-slate-100">
-              <tr className="h-[44px]">
-                <th className="px-3 text-[10px] font-black text-slate-400 uppercase tracking-widest w-[45%]">الصنف</th>
-                <th className="px-2 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center w-[15%]">الكمية</th>
-                <th className="px-2 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center w-[20%]">السعر</th>
-                <th className="px-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-left w-[20%]">المجموع</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-              {items.length === 0 ? (
-                <tr>
-                  <td colSpan={4} className="py-20 text-center">
-                    <div className="flex flex-col items-center opacity-20">
-                      <Package size={48} className="mb-2" />
-                      <p className="text-xs font-black">قائمة الأصناف فارغة</p>
-                    </div>
-                  </td>
+          {/* Form Row */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="space-y-1">
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-2">رقم الفاتورة</label>
+              <div className="relative">
+                <FileText className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
+                <input 
+                  ref={invNumInputRef}
+                  value={header.invoice_number}
+                  onChange={(e) => setHeader({...header, invoice_number: e.target.value})}
+                  placeholder="رقم فاتورة المورد"
+                  className="w-full h-11 bg-slate-50 border border-slate-100 rounded-xl pr-10 pl-4 text-sm font-bold focus:bg-white focus:ring-2 focus:ring-[#1E4D4D]/10 transition-all"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-2">المورد</label>
+              <div className="relative">
+                <User className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
+                <select 
+                  value={header.supplier_id}
+                  onChange={(e) => setHeader({...header, supplier_id: e.target.value})}
+                  className="w-full h-11 bg-slate-50 border border-slate-100 rounded-xl pr-10 pl-4 text-sm font-bold focus:bg-white focus:ring-2 focus:ring-[#1E4D4D]/10 transition-all appearance-none"
+                >
+                  <option value="">اختر المورد...</option>
+                  {suppliers.map(s => <option key={s.id} value={s.id}>{s.Supplier_Name}</option>)}
+                </select>
+                <ChevronDown className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" size={16} />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-2">تاريخ الفاتورة</label>
+              <div className="relative">
+                <CalendarDays className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
+                <input 
+                  type="date"
+                  value={header.date}
+                  onChange={(e) => setHeader({...header, date: e.target.value})}
+                  className="w-full h-11 bg-slate-50 border border-slate-100 rounded-xl pr-10 pl-4 text-sm font-bold focus:bg-white focus:ring-2 focus:ring-[#1E4D4D]/10 transition-all"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-2">ملاحظات</label>
+              <div className="relative">
+                <Edit3 className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
+                <input 
+                  value={header.notes}
+                  onChange={(e) => setHeader({...header, notes: e.target.value})}
+                  placeholder="أي ملاحظات إضافية..."
+                  className="w-full h-11 bg-slate-50 border border-slate-100 rounded-xl pr-10 pl-4 text-sm font-bold focus:bg-white focus:ring-2 focus:ring-[#1E4D4D]/10 transition-all"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* MAIN CONTENT AREA */}
+      <div className="flex-1 flex flex-col min-h-0 px-4 pb-4 gap-4 overflow-hidden">
+        {isLocked && (
+          <InvoiceLockedBanner 
+            isPeriodLocked={false} 
+            isAdmin={true} 
+            financialStatus={header.payment_status} 
+          />
+        )}
+        
+        {/* Items Table Card */}
+        <Card className="flex-1 flex flex-col !p-0 overflow-hidden !rounded-[32px] border border-slate-100 shadow-sm bg-white">
+          <div className="p-4 border-b border-slate-50 bg-slate-50/30 flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 bg-[#1E4D4D] rounded-lg flex items-center justify-center text-white shadow-lg shadow-emerald-900/20">
+                <LayoutList size={16} />
+              </div>
+              <h3 className="text-sm font-black text-[#1E4D4D]">أصناف الفاتورة</h3>
+              <Badge variant="neutral" className="mr-2 bg-white">{items.length} صنف</Badge>
+            </div>
+            
+            <div className="flex items-center gap-2">
+               <button 
+                 onClick={() => setIsAdjustmentsOpen(true)}
+                 className="h-9 px-4 bg-white border border-slate-200 rounded-xl text-[11px] font-black text-slate-600 hover:bg-slate-50 transition-all flex items-center gap-2"
+               >
+                 <Tag size={14} />
+                 التسويات والخصم
+               </button>
+               <button 
+                 onClick={() => setItems([])}
+                 className="h-9 w-9 bg-white border border-slate-200 rounded-xl text-slate-400 hover:text-red-500 hover:border-red-100 transition-all flex items-center justify-center"
+                 title="مسح الكل"
+               >
+                 <Trash2 size={16} />
+               </button>
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto custom-scrollbar">
+            <table className="w-full text-right border-collapse">
+              <thead className="sticky top-0 bg-white/80 backdrop-blur-md z-10">
+                <tr className="border-b border-slate-50">
+                  <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">الصنف</th>
+                  <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">الكمية</th>
+                  <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">السعر</th>
+                  <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">الإجمالي</th>
+                  <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">الإجراء</th>
                 </tr>
-              ) : (
-                items.map((item) => (
-                  <tr 
-                    key={item.id} 
-                    className="h-[44px] hover:bg-slate-50/50 transition-colors cursor-pointer"
-                    onClick={() => {
-                      if (!isLocked && !isRecovery) {
-                        setManualItemName(item.name);
-                        setTempQty(item.qty);
-                        setTempPrice(item.price);
-                        setTempExpiry(item.expiryDate || '');
-                        setSearchOpen(true);
-                      }
-                    }}
-                  >
-                    <td className="px-3">
-                      <p className="text-[11px] font-black text-[#1E4D4D] truncate max-w-[120px]">{item.name}</p>
-                    </td>
-                    <td className="px-2 text-center">
-                      <span className="text-[11px] font-black text-[#1E4D4D]">{item.qty}</span>
-                    </td>
-                    <td className="px-2 text-center">
-                      <span className="text-[11px] font-black text-slate-500">{item.price}</span>
-                    </td>
-                    <td className="px-3 text-left">
-                      <p className="text-[11px] font-black text-[#1E4D4D]">{item.sum.toLocaleString()}</p>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                <AnimatePresence initial={false}>
+                  {items.map((item, idx) => (
+                    <motion.tr 
+                      key={idx}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, x: -20 }}
+                      className="group hover:bg-slate-50/50 transition-colors"
+                    >
+                      <td className="p-4">
+                        <div className="flex flex-col">
+                          <span className="text-sm font-bold text-[#1E4D4D]">{item.name}</span>
+                          {item.expiryDate && <span className="text-[10px] font-bold text-red-400 flex items-center gap-1 mt-1"><Clock size={10}/> تنتهي في: {item.expiryDate}</span>}
+                        </div>
+                      </td>
+                      <td className="p-4 text-center">
+                        <div className="inline-flex items-center gap-3 bg-slate-100/50 p-1 rounded-xl border border-slate-200/50">
+                          <button 
+                            disabled={isLocked}
+                            onClick={() => {
+                              const newItems = [...items];
+                              if (newItems[idx].qty > 1) {
+                                newItems[idx].qty--;
+                                newItems[idx].sum = newItems[idx].qty * newItems[idx].price;
+                                setItems(newItems);
+                              }
+                            }}
+                            className="w-7 h-7 flex items-center justify-center bg-white rounded-lg text-slate-400 hover:text-[#1E4D4D] shadow-sm disabled:opacity-50"
+                          >
+                            <Minus size={14} />
+                          </button>
+                          <span className="text-sm font-black text-[#1E4D4D] min-w-[20px]">{item.qty}</span>
+                          <button 
+                            disabled={isLocked}
+                            onClick={() => {
+                              const newItems = [...items];
+                              newItems[idx].qty++;
+                              newItems[idx].sum = newItems[idx].qty * newItems[idx].price;
+                              setItems(newItems);
+                            }}
+                            className="w-7 h-7 flex items-center justify-center bg-white rounded-lg text-slate-400 hover:text-[#1E4D4D] shadow-sm disabled:opacity-50"
+                          >
+                            <Plus size={14} />
+                          </button>
+                        </div>
+                      </td>
+                      <td className="p-4 text-center">
+                        <span className="text-sm font-bold text-slate-600">{item.price.toLocaleString()}</span>
+                      </td>
+                      <td className="p-4 text-center">
+                        <span className="text-sm font-black text-[#1E4D4D]">{item.sum.toLocaleString()}</span>
+                      </td>
+                      <td className="p-4 text-center">
+                        <button 
+                          disabled={isLocked}
+                          onClick={() => setItems(items.filter((_, i) => i !== idx))}
+                          className="w-9 h-9 flex items-center justify-center text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all disabled:opacity-50"
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      </td>
+                    </motion.tr>
+                  ))}
+                </AnimatePresence>
+                
+                {items.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="p-20 text-center">
+                      <div className="flex flex-col items-center gap-4 opacity-20 grayscale">
+                        <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center">
+                          <ShoppingBag size={40} />
+                        </div>
+                        <p className="text-sm font-black">لا توجد أصناف في الفاتورة حالياً</p>
+                      </div>
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* BOTTOM SUMMARY BAR */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-100 p-4 z-[100] max-w-7xl mx-auto shadow-[0_-4px_10px_rgba(0,0,0,0.03)] flex items-center gap-3">
-        <div className="w-20 bg-slate-50 h-[56px] rounded-2xl border border-slate-100 flex flex-col items-center justify-center">
-          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">البنود</p>
-          <p className="text-sm font-black text-[#1E4D4D]">{items.length}</p>
-        </div>
-
-        <div className="flex-1 bg-emerald-50 h-[56px] rounded-2xl border border-emerald-100 flex flex-col items-center justify-center">
-          <p className="text-[9px] font-black text-emerald-600 uppercase tracking-widest">صافي المشتريات</p>
-          <p className="text-sm font-black text-emerald-700">{vTotalSum.toLocaleString()} <span className="text-[10px]">AED</span></p>
-        </div>
-
-        <button 
-          onClick={handlePostInvoice} 
-          disabled={items.length === 0 || isDuplicate || isLocked || isSaving || isRecovery} 
-          className={`h-[56px] px-8 rounded-2xl font-black text-sm text-white shadow-lg active:scale-95 transition-all flex items-center justify-center gap-3 ${isDuplicate || isLocked || isRecovery ? 'bg-red-500' : 'bg-[#1E4D4D]'}`}
-        >
-          ترحيل السجل
-        </button>
-      </div>
-
-      {/* POPUP ITEM ENTRY */}
-      <Modal 
-        isOpen={isSearchOpen} 
-        onClose={() => { setSearchOpen(false); setShowSearchDropdown(false); }} 
-        title="بيانات الصنف"
-        maxWidth="w-full sm:w-[380px]"
-        noPadding={true}
-        showCloseButton={false}
-      >
-        <div className="p-3 space-y-3 bg-white" dir="rtl">
-          {/* Row 1: اسم الصنف */}
-          <div className="space-y-1">
-            <label className="text-[10px] font-bold text-slate-500">اسم الصنف</label>
-            <div className="relative">
-              <input 
-                ref={itemNameInputRef}
-                className="w-full h-[40px] bg-slate-50 border border-slate-100 rounded-lg px-4 text-xs font-bold text-[#1E4D4D] outline-none focus:border-[#1E4D4D]"
-                placeholder="ابحث عن صنف أو اكتب اسماً جديداً..." 
-                value={manualItemName} 
-                onChange={e => { setManualItemName(e.target.value); setShowSearchDropdown(true); }} 
-                onFocus={() => setShowSearchDropdown(true)}
-              />
-              <AnimatePresence>
-                {showSearchDropdown && filteredProducts.length > 0 && (
-                  <motion.div 
-                    initial={{ opacity: 0, y: 5 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: 5 }}
-                    className="absolute top-full left-0 right-0 bg-white border border-slate-100 rounded-lg shadow-xl z-[100] mt-1 overflow-hidden"
-                  >
-                    {filteredProducts.map(p => (
-                      <button 
-                        key={p.ProductID} 
-                        onClick={() => selectProduct(p)}
-                        className="w-full px-4 py-3 text-right hover:bg-slate-50 border-b border-slate-50 last:border-0 transition-colors"
-                      >
-                        <p className="text-xs font-bold text-[#1E4D4D]">{p.Name}</p>
-                      </button>
-                    ))}
-                  </motion.div>
                 )}
-              </AnimatePresence>
+              </tbody>
+            </table>
+          </div>
+
+          {/* ADD ITEM BAR */}
+          <div className="p-4 bg-slate-50/50 border-t border-slate-100 shrink-0">
+             <div className="flex flex-col md:flex-row gap-3">
+                <div className="flex-1 relative">
+                   <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+                   <input 
+                     ref={itemNameInputRef}
+                     disabled={isLocked}
+                     value={searchTerm || manualItemName}
+                     onChange={(e) => {
+                       setSearchTerm(e.target.value);
+                       setManualItemName(e.target.value);
+                       setShowSearchDropdown(true);
+                     }}
+                     placeholder="ابحث عن صنف أو أدخل اسم جديد..."
+                     className="w-full h-12 bg-white border border-slate-200 rounded-2xl pr-10 pl-4 text-sm font-bold focus:ring-4 focus:ring-[#1E4D4D]/5 transition-all disabled:opacity-50"
+                   />
+                   
+                   {/* Search Results Dropdown */}
+                   <AnimatePresence>
+                     {showSearchDropdown && filteredProducts.length > 0 && (
+                       <motion.div 
+                         initial={{ opacity: 0, y: 10 }}
+                         animate={{ opacity: 1, y: 0 }}
+                         exit={{ opacity: 0, y: 10 }}
+                         className="absolute bottom-full mb-2 right-0 left-0 bg-white border border-slate-100 rounded-2xl shadow-2xl z-[100] overflow-hidden"
+                       >
+                         {filteredProducts.map(p => (
+                           <button 
+                             key={p.id}
+                             onClick={() => selectProduct(p)}
+                             className="w-full p-4 flex items-center justify-between hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0"
+                           >
+                             <div className="flex items-center gap-3">
+                               <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center text-slate-400">
+                                 <Package size={20} />
+                               </div>
+                               <div className="text-right">
+                                 <p className="text-sm font-black text-[#1E4D4D]">{p.Name}</p>
+                                 <p className="text-[10px] font-bold text-slate-400">الباركود: {p.barcode || '---'}</p>
+                               </div>
+                             </div>
+                             <div className="text-left">
+                               <p className="text-xs font-black text-emerald-600">{p.CostPrice?.toLocaleString()} {currency}</p>
+                               <p className="text-[9px] font-bold text-slate-400">المخزون: {p.StockQuantity}</p>
+                             </div>
+                           </button>
+                         ))}
+                       </motion.div>
+                     )}
+                   </AnimatePresence>
+                </div>
+
+                <div className="flex gap-2">
+                  <div className="w-24 relative">
+                    <input 
+                      ref={qtyInputRef}
+                      disabled={isLocked}
+                      type="number"
+                      value={tempQty}
+                      onChange={(e) => setTempQty(e.target.value)}
+                      placeholder="الكمية"
+                      className="w-full h-12 bg-white border border-slate-200 rounded-2xl px-4 text-center text-sm font-black focus:ring-4 focus:ring-[#1E4D4D]/5 transition-all disabled:opacity-50"
+                    />
+                  </div>
+                  <div className="w-32 relative">
+                    <input 
+                      ref={priceInputRef}
+                      disabled={isLocked}
+                      type="number"
+                      value={tempPrice}
+                      onChange={(e) => setTempPrice(e.target.value)}
+                      placeholder="السعر"
+                      className="w-full h-12 bg-white border border-slate-200 rounded-2xl px-4 text-center text-sm font-black focus:ring-4 focus:ring-[#1E4D4D]/5 transition-all disabled:opacity-50"
+                    />
+                  </div>
+                  <button 
+                    disabled={isLocked || !manualItemName || !tempQty || !tempPrice}
+                    onClick={finalizeItemAdd}
+                    className="h-12 px-6 bg-[#1E4D4D] text-white rounded-2xl font-black text-sm shadow-lg shadow-emerald-900/20 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:scale-100"
+                  >
+                    إضافة
+                  </button>
+                </div>
+             </div>
+          </div>
+        </Card>
+      </div>
+
+      {/* FOOTER ACTION BAR */}
+      <div className="p-4 bg-white border-t border-slate-100 shrink-0 z-50">
+        <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+          <div className="flex items-center gap-8">
+            <div className="text-right">
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">إجمالي الفاتورة</p>
+              <div className="flex items-baseline gap-2">
+                <span className="text-3xl font-black text-[#1E4D4D]">{vTotalSum.toLocaleString()}</span>
+                <span className="text-xs font-bold text-slate-400">{currency}</span>
+              </div>
+            </div>
+            
+            <div className="h-10 w-px bg-slate-100 hidden md:block" />
+            
+            <div className="flex items-center gap-4">
+               <div className="text-right">
+                 <p className="text-[9px] font-black text-slate-400 uppercase mb-0.5">الخصم</p>
+                 <p className="text-xs font-bold text-[#1E4D4D]">{adjData.discountPercent}%</p>
+               </div>
+               <div className="text-right">
+                 <p className="text-[9px] font-black text-slate-400 uppercase mb-0.5">الرسوم</p>
+                 <p className="text-xs font-bold text-[#1E4D4D]">{adjData.otherFees.toLocaleString()}</p>
+               </div>
+               <div className="text-right">
+                 <p className="text-[9px] font-black text-slate-400 uppercase mb-0.5">الضريبة</p>
+                 <p className="text-xs font-bold text-[#1E4D4D]">{adjData.tax.toLocaleString()}</p>
+               </div>
             </div>
           </div>
 
-          {/* Row 2: الكمية (Right) | تاريخ الإنتهاء (Left) */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-500">الكمية</label>
-              <input 
-                ref={qtyInputRef} 
-                type="number" 
-                className="w-full h-[40px] bg-slate-50 border border-slate-100 rounded-lg px-4 text-center text-xs font-bold text-[#1E4D4D] outline-none focus:border-[#1E4D4D]" 
-                placeholder="0" 
-                value={tempQty} 
-                onChange={e => setTempQty(e.target.value)} 
-                onKeyDown={e => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    expiryInputRef.current?.focus();
-                  }
-                }}
-              />
+          <div className="flex items-center gap-3 w-full md:w-auto">
+            <div className="flex items-center gap-2 ml-4">
+               <button 
+                 onClick={handleExport}
+                 className="w-11 h-11 bg-slate-50 text-slate-400 rounded-2xl flex items-center justify-center hover:bg-emerald-50 hover:text-emerald-600 transition-all border border-slate-100"
+                 title="تصدير Excel"
+               >
+                 <FileSpreadsheet size={20} />
+               </button>
+               <PrintMenu type="PURCHASE" data={printData} />
             </div>
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-500">تاريخ الصلاحية</label>
-              <input 
-                ref={expiryInputRef}
-                type="date"
-                className="w-full h-[40px] bg-slate-50 border border-slate-100 rounded-lg px-4 text-xs font-bold text-[#1E4D4D] outline-none focus:border-[#1E4D4D]"
-                value={tempExpiry} 
-                onChange={e => setTempExpiry(e.target.value)} 
-                onKeyDown={e => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    priceInputRef.current?.focus();
-                  }
-                }}
-              />
-            </div>
-          </div>
 
-          {/* Row 3: السعر (Right) | التصنيف (Left) */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-500">السعر</label>
-              <input 
-                ref={priceInputRef} 
-                type="number" 
-                className="w-full h-[40px] bg-slate-50 border border-slate-100 rounded-lg px-4 text-center text-xs font-bold text-[#1E4D4D] outline-none focus:border-[#1E4D4D]" 
-                placeholder="0.00" 
-                value={tempPrice} 
-                onChange={e => setTempPrice(e.target.value)} 
-                onKeyDown={e => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    categoryInputRef.current?.focus();
-                  }
-                }}
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-500">التصنيف</label>
-              <select 
-                ref={categoryInputRef}
-                className="w-full h-[40px] bg-slate-50 border border-slate-100 rounded-lg px-4 text-xs font-bold text-[#1E4D4D] outline-none focus:border-[#1E4D4D] appearance-none"
-                value={manualCategoryName} 
-                onChange={e => setManualCategoryName(e.target.value)} 
-                onKeyDown={e => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    noteInputRef.current?.focus();
-                  }
-                }}
-              >
-                <option value="">اختر تصنيفاً...</option>
-                {['أدوية', 'مستلزمات طبية', 'مستحضرات تجميل', 'مكملات غذائية', 'أجهزة طبية', 'مواد استهلاكية', 'أصناف أخرى'].map(cat => (
-                  <option key={cat} value={cat}>{cat}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {/* Row 4: الإجمالي */}
-          <div className="space-y-1">
-            <label className="text-[10px] font-bold text-slate-500">الإجمالي</label>
-            <div className="w-full h-[40px] bg-emerald-50 border border-emerald-100 rounded-lg flex items-center justify-center">
-              <span className="text-xs font-black text-emerald-700">
-                {((parseFloat(tempQty as string) || 0) * (parseFloat(tempPrice as string) || 0)).toLocaleString()} {currency}
-              </span>
-            </div>
-          </div>
-
-          {/* Row 5: ملاحظة الصنف */}
-          <div className="space-y-1">
-            <label className="text-[10px] font-bold text-slate-500">ملاحظة الصنف</label>
-            <input 
-              ref={noteInputRef}
-              className="w-full h-[40px] bg-slate-50 border border-slate-100 rounded-lg px-4 text-xs font-bold text-[#1E4D4D] outline-none focus:border-[#1E4D4D]"
-              placeholder="أضف ملاحظة هنا..." 
-              value={tempNote} 
-              onChange={e => setTempNote(e.target.value)} 
-              onKeyDown={e => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  finalizeItemAdd();
-                }
-              }}
-            />
-          </div>
-
-          {/* Bottom Actions: إضافة (Right) | إلغاء (Left) */}
-          <div className="flex gap-3 pt-2 border-t border-slate-50 mt-2">
             <button 
-              className="flex-1 h-[40px] bg-[#1E4D4D] text-white rounded-xl text-xs font-black shadow-md active:scale-95 transition-all"
-              onClick={finalizeItemAdd}
+              disabled={isLocked || isSaving || items.length === 0}
+              onClick={handlePost}
+              className="flex-1 md:flex-none h-14 px-10 bg-gradient-to-br from-[#1E4D4D] to-[#0f2a2a] text-white rounded-[20px] font-black text-lg shadow-xl shadow-emerald-900/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3 disabled:opacity-50 disabled:scale-100"
             >
-              إضافة
-            </button>
-            <button 
-              className="flex-1 h-[40px] bg-slate-100 text-slate-500 rounded-xl text-xs font-black active:scale-95 transition-all"
-              onClick={() => { setSearchOpen(false); setShowSearchDropdown(false); }}
-            >
-              إلغاء
+              {isSaving ? (
+                <div className="w-6 h-6 border-4 border-white/30 border-t-white rounded-full animate-spin" />
+              ) : (
+                <>
+                  <CheckCircle2 size={24} />
+                  <span>حفظ وترحيل الفاتورة</span>
+                </>
+              )}
             </button>
           </div>
+        </div>
+      </div>
+
+      {/* MODALS */}
+      <Modal 
+        isOpen={isAdjustmentsOpen} 
+        onClose={() => setIsAdjustmentsOpen(false)}
+        title="التسويات والرسوم الإضافية"
+      >
+        <div className="space-y-6 p-2">
+          <div className="space-y-2">
+            <label className="text-xs font-black text-slate-500 uppercase tracking-widest">نسبة الخصم (%)</label>
+            <div className="relative">
+              <Percent className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+              <input 
+                type="number"
+                value={adjData.discountPercent}
+                onChange={(e) => setAdjData({...adjData, discountPercent: Number(e.target.value)})}
+                className="w-full h-14 bg-slate-50 border border-slate-100 rounded-2xl pr-12 pl-4 text-lg font-black focus:bg-white transition-all"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label className="text-xs font-black text-slate-500 uppercase tracking-widest">رسوم أخرى</label>
+              <input 
+                type="number"
+                value={adjData.otherFees}
+                onChange={(e) => setAdjData({...adjData, otherFees: Number(e.target.value)})}
+                className="w-full h-14 bg-slate-50 border border-slate-100 rounded-2xl px-4 text-lg font-black focus:bg-white transition-all"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-black text-slate-500 uppercase tracking-widest">الضريبة</label>
+              <input 
+                type="number"
+                value={adjData.tax}
+                onChange={(e) => setAdjData({...adjData, tax: Number(e.target.value)})}
+                className="w-full h-14 bg-slate-50 border border-slate-100 rounded-2xl px-4 text-lg font-black focus:bg-white transition-all"
+              />
+            </div>
+          </div>
+
+          <Button 
+            onClick={() => setIsAdjustmentsOpen(false)}
+            className="w-full h-14 bg-[#1E4D4D] text-white rounded-2xl font-black text-lg shadow-lg shadow-emerald-900/10 mt-4"
+          >
+            تطبيق التعديلات
+          </Button>
         </div>
       </Modal>
     </div>

@@ -8,15 +8,19 @@ import { authService } from '../services/auth.service';
 import { InvoiceRepository } from '../repositories/invoice.repository';
 import { priceIntelligenceService } from '../services/priceIntelligence.service';
 import { InvoiceWorkflowEngine } from '../services/logic/InvoiceWorkflowEngine';
+import { ExportService } from '../services/exportService';
 
 const DRAFT_KEY = 'pharmaflow_sales_draft';
 
-export const useSales = (onNavigate?: (view: any) => void) => {
+export const useSales = (onNavigate?: (view: any, params?: any) => void) => {
   const { addToast, currency, refreshGlobal } = useUI();
   const { addInvoice } = useAccounting();
   const { products } = useInventory();
   const setEditingInvoiceId = useAppStore(state => state.setEditingInvoiceId);
   const editingInvoiceId = useAppStore(state => state.editingInvoiceId);
+  const systemStatus = useAppStore(state => state.systemStatus);
+  const isRecovery = systemStatus === 'RECOVERY_MODE';
+  
   const user = authService.getCurrentUser();
   const isAdmin = user?.Role === 'Admin';
   
@@ -44,6 +48,10 @@ export const useSales = (onNavigate?: (view: any) => void) => {
 
   const itemNameInputRef = useRef<HTMLInputElement>(null);
   const qtyInputRef = useRef<HTMLInputElement>(null);
+  const priceInputRef = useRef<HTMLInputElement>(null);
+  const expiryInputRef = useRef<HTMLInputElement>(null);
+  const noteInputRef = useRef<HTMLInputElement>(null);
+  const categoryInputRef = useRef<HTMLSelectElement>(null);
 
   const [header, setHeader] = useState({ 
     invoice_number: '', customer_id: '', payment_method: 'Cash',
@@ -287,6 +295,28 @@ export const useSales = (onNavigate?: (view: any) => void) => {
     }
   };
 
+  const getStatusLabel = (status: string) => {
+    switch(status) {
+      case 'Draft': return 'مسودة 📝';
+      case 'Saved': return 'مرحلة (مفتوحة) ✅';
+      case 'PartiallyPaid': return 'سداد جزئي 💸';
+      case 'Paid': return 'تم السداد 💰';
+      case 'Cancelled': return 'ملغاة 🚫';
+      case 'Returned': return 'مرتجع 🔄';
+      default: return status;
+    }
+  };
+
+  const handleExport = () => {
+    ExportService.exportToExcel(items, `SALE_${Date.now()}`, ['name', 'qty', 'price', 'sum']);
+  };
+
+  const printData = useMemo(() => ({
+    invoiceId: header.invoice_number,
+    items,
+    finalTotal: vTotalSum
+  }), [header.invoice_number, items, vTotalSum]);
+
   return {
     items, setItems,
     searchTerm, setSearchTerm,
@@ -308,6 +338,10 @@ export const useSales = (onNavigate?: (view: any) => void) => {
     isConfirmSaveOpen, setIsConfirmSaveOpen,
     itemNameInputRef,
     qtyInputRef,
+    priceInputRef,
+    expiryInputRef,
+    noteInputRef,
+    categoryInputRef,
     header, setHeader,
     isPeriodLockedStatus,
     isLocked,
@@ -323,6 +357,10 @@ export const useSales = (onNavigate?: (view: any) => void) => {
     currency,
     isAdmin,
     categoryName,
-    setCategoryName
+    setCategoryName,
+    isRecovery,
+    getStatusLabel,
+    handleExport,
+    printData
   };
 };

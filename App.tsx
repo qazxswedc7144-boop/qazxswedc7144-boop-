@@ -24,9 +24,9 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   Home, Settings, Menu, X, Database, TableProperties, ArrowRight, 
   ShieldCheck, FolderArchive, History, Tag, BarChart3, Fingerprint,
-  ShoppingBag, CreditCard, Package, Users, FileText,
+  ShoppingBag, CreditCard, Package as PackageIcon, Users, FileText,
   Cloud, CloudOff, CloudAlert, Sparkles as AutoAwesome,
-  ChevronLeft, LogOut
+  ChevronLeft, LogOut, Clock
 } from 'lucide-react';
 
 // Lazy loading views
@@ -64,9 +64,15 @@ const ExpiryItemsReport = lazy(() => import('./components/reports/ExpiryItemsRep
 
 const MODULES: {id: any, label: string, icon: any, group: string, permission?: Permission}[] = [
   { id: 'dashboard', label: 'الرئيسية', icon: <Home size={20} />, group: 'core' },
-  { id: 'accounting', label: 'الأستاذ العام', icon: <TableProperties size={20} />, group: 'operations', permission: 'FINANCIAL_ACCESS' },
+  { id: 'sales', label: 'المبيعات', icon: <ShoppingBag size={20} />, group: 'sales_purchases', permission: 'POS_ACCESS' },
+  { id: 'purchases', label: 'المشتريات', icon: <PackageIcon size={20} />, group: 'sales_purchases', permission: 'PURCHASE_ACCESS' },
+  { id: 'inventory', label: 'المخزون', icon: <PackageIcon size={20} />, group: 'sales_purchases', permission: 'INVENTORY_VIEW' },
+  { id: 'partners', label: 'العملاء والموردين', icon: <Users size={20} />, group: 'sales_purchases', permission: 'MANAGE_PARTNERS' },
+  { id: 'accounting', label: 'المحاسبة', icon: <TableProperties size={20} />, group: 'sales_purchases', permission: 'FINANCIAL_ACCESS' },
+  { id: 'aging-report', label: 'تعمير الذمم', icon: <Clock size={20} />, group: 'sales_purchases', permission: 'VIEW_REPORTS' },
+  { id: 'audit-history', label: 'التدقيق', icon: <ShieldCheck size={20} />, group: 'sales_purchases', permission: 'MANAGE_SYSTEM' },
+  { id: 'invoices-archive', label: 'الأرشيف', icon: <FolderArchive size={20} />, group: 'sales_purchases', permission: 'VIEW_REPORTS' },
   { id: 'adjustments-registry', label: 'الرسوم والخصومات', icon: <Tag size={20} />, group: 'admin', permission: 'FINANCIAL_ACCESS' },
-  { id: 'audit-history', label: 'سجل التدقيق النهائي', icon: <Fingerprint size={20} />, group: 'admin', permission: 'MANAGE_SYSTEM' },
   { id: 'system-health', label: 'صحة النظام', icon: <ShieldCheck size={20} />, group: 'admin', permission: 'MANAGE_SYSTEM' },
   { id: 'logs', label: 'سجل الرقابة', icon: <Database size={20} />, group: 'admin', permission: 'MANAGE_SYSTEM' },
   { id: 'settings', label: 'الإعدادات', icon: <Settings size={20} />, group: 'settings', permission: 'MANAGE_SYSTEM' },
@@ -218,7 +224,7 @@ function MainLayout() {
           <div className="px-8 py-8 flex justify-between items-center">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-[#1E4D4D] rounded-xl flex items-center justify-center shadow-lg shadow-emerald-900/20">
-                <Package className="text-white" size={20} />
+                <PackageIcon className="text-white" size={20} />
               </div>
               <span className="text-xl font-black text-[#1E4D4D] tracking-tighter">PharmaFlow</span>
             </div>
@@ -229,7 +235,26 @@ function MainLayout() {
             <div>
               <p className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-[2px] mb-3">القائمة الرئيسية</p>
               <div className="space-y-1">
-                {visibleModules.filter(m => m.group === 'core' || m.group === 'operations').map(module => (
+                {visibleModules.filter(m => m.group === 'core').map(module => (
+                  <button 
+                    key={module.id}
+                    onClick={() => handleNav(module.id)}
+                    className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-2xl text-[13px] font-bold transition-all group ${currentView === module.id ? 'bg-[#1E4D4D] text-white shadow-lg shadow-emerald-900/10' : 'text-slate-500 hover:bg-slate-50 hover:text-[#1E4D4D]'}`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className={`${currentView === module.id ? 'text-emerald-400' : 'text-slate-400 group-hover:text-[#1E4D4D]'}`}>{module.icon}</span>
+                      <span>{module.label}</span>
+                    </div>
+                    {currentView === module.id && <motion.div layoutId="active-nav" className="w-1.5 h-1.5 bg-emerald-400 rounded-full" />}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <p className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-[2px] mb-3">المبيعات والمشتريات</p>
+              <div className="space-y-1">
+                {visibleModules.filter(m => m.group === 'sales_purchases').map(module => (
                   <button 
                     key={module.id}
                     onClick={() => handleNav(module.id)}
