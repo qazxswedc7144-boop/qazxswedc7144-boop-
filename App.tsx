@@ -110,6 +110,8 @@ function MainLayout() {
 
     const init = async () => { 
       await db.init();
+      const { AccountingEngine } = await import('./services/AccountingEngine');
+      await AccountingEngine.seedAccounts();
       heartbeatService.start(); 
       backupService.startAutoTimer();
       SyncService.startWorker();
@@ -260,14 +262,30 @@ function MainLayout() {
                 ))}
               </div>
             </div>
+
+            <div>
+              <p className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-[2px] mb-3">النظام</p>
+              <div className="space-y-1">
+                {visibleModules.filter(m => m.group === 'settings').map(module => (
+                  <button 
+                    key={module.id}
+                    onClick={() => handleNav(module.id)}
+                    className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-2xl text-[13px] font-bold transition-all group ${currentView === module.id ? 'bg-[#1E4D4D] text-white shadow-lg shadow-emerald-900/10' : 'text-slate-500 hover:bg-slate-50 hover:text-[#1E4D4D]'}`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className={`${currentView === module.id ? 'text-emerald-400' : 'text-slate-400 group-hover:text-[#1E4D4D]'}`}>{module.icon}</span>
+                      <span>{module.label}</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
           </nav>
 
           <div className="p-4 border-t border-slate-50">
             <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-100">
-              <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center font-bold text-[#1E4D4D] shadow-sm border border-slate-100">{user?.User_Name?.charAt(0) || 'U'}</div>
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-bold text-[#1E4D4D] truncate">{user.User_Name}</p>
-                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{user.Role}</p>
               </div>
               <button onClick={() => authService.logout()} className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-red-500 transition-colors">
                 <LogOut size={18} />
@@ -323,13 +341,6 @@ function MainLayout() {
             </div>
 
             <div className="flex-1 flex items-center justify-end gap-4">
-              <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-slate-50 rounded-full border border-slate-100">
-                <div className={`w-2 h-2 rounded-full ${syncStatus === 'SYNCED' ? 'bg-emerald-500' : syncStatus === 'PENDING' ? 'bg-amber-500 animate-pulse' : 'bg-red-500'}`} />
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                  {syncStatus === 'SYNCED' ? 'متصل' : syncStatus === 'PENDING' ? 'جاري المزامنة' : 'خطأ مزامنة'}
-                </span>
-              </div>
-              {currentView === 'dashboard' && <NotificationCenter />}
             </div>
           </header>
         )}

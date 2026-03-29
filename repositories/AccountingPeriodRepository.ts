@@ -14,31 +14,31 @@ export const AccountingPeriodRepository = {
   },
 
   /**
-   * جلب الفترة النشطة حالياً (غير المغلقة)
+   * جلب الفترة النشطة حالياً (غير المقفلة)
    */
   getActivePeriod: async (): Promise<AccountingPeriod | undefined> => {
     const all = await db.getAccountingPeriods();
-    return all.find(p => !p.Is_Closed);
+    return all.find(p => !p.Is_Locked);
   },
 
   /**
-   * الفحص الأساسي: هل يقع التاريخ ضمن نطاق فترة مغلقة؟
+   * الفحص الأساسي: هل يقع التاريخ ضمن نطاق فترة مقفلة؟
    */
   isDateClosed: async (dateStr: string): Promise<boolean> => {
     return await db.isDateLocked(dateStr);
   },
 
   /**
-   * إغلاق فترة محددة وتوثيق المسؤول عن الإغلاق
+   * قفل فترة محددة وتوثيق المسؤول عن القفل
    */
   closePeriod: async (periodId: string, userId: string) => {
     const periods = await db.getAccountingPeriods();
-    const idx = periods.findIndex(p => p.id === periodId);
-    if (idx > -1) {
-      const period = { ...periods[idx] };
-      period.Is_Closed = true;
-      period.closedBy = userId;
-      period.closedAt = new Date().toISOString();
+    const period = periods.find(p => p.id === periodId);
+    if (period) {
+      period.Is_Locked = true;
+      period.Locked_By = userId;
+      period.Locked_At = new Date().toISOString();
+      period.lastModified = new Date().toISOString();
       await db.saveAccountingPeriod(period);
     }
   },
@@ -48,10 +48,10 @@ export const AccountingPeriodRepository = {
    */
   openPeriod: async (periodId: string) => {
     const periods = await db.getAccountingPeriods();
-    const idx = periods.findIndex(p => p.id === periodId);
-    if (idx > -1) {
-      const period = { ...periods[idx] };
-      period.Is_Closed = false;
+    const period = periods.find(p => p.id === periodId);
+    if (period) {
+      period.Is_Locked = false;
+      period.lastModified = new Date().toISOString();
       await db.saveAccountingPeriod(period);
     }
   },
@@ -64,7 +64,8 @@ export const AccountingPeriodRepository = {
       id: `PER-${Date.now()}`,
       Start_Date: startDate,
       End_Date: endDate,
-      Is_Closed: false
+      Is_Locked: false,
+      lastModified: new Date().toISOString()
     };
     await db.saveAccountingPeriod(period);
     return period.id;

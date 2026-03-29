@@ -1,4 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
+import { ReportEngine } from "./ReportEngine";
 
 export class GeminiAnalyticsService {
   private static ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
@@ -37,5 +38,24 @@ export class GeminiAnalyticsService {
 
   static async detectAnomalies(transactions: any) {
     return this.analyzeData("ابحث عن أي تناقضات أو عمليات مشبوهة في حركة الحسابات أو المخزون.", transactions);
+  }
+
+  static async getTopSellingInsights(data: any) {
+    return this.analyzeData("حلل الأصناف الأكثر مبيعاً واقترح استراتيجيات لزيادة الربح منها.", data);
+  }
+
+  static async getBestCustomerInsights(data: any) {
+    return this.analyzeData("حلل أفضل العملاء واقترح برامج ولاء أو عروض مخصصة لهم.", data);
+  }
+
+  static async getHighestProfitInsights(data: any) {
+    return this.analyzeData("حلل الأصناف ذات أعلى هامش ربح واقترح كيفية تحسين مبيعاتها.", data);
+  }
+
+  static async getEnterpriseInsights() {
+    const summary = await ReportEngine.getAnalyticsSummary();
+    const incomeStatement = await ReportEngine.getIncomeStatement();
+    const data = { summary, incomeStatement };
+    return this.analyzeData("قم بتقديم تحليل شامل لأداء المؤسسة المالي والتشغيلي، موضحاً نقاط القوة والضعف وفرص النمو.", data);
   }
 }

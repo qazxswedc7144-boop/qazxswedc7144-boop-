@@ -35,7 +35,37 @@ export class SecurityError extends AppError {
   }
 }
 
-export type UserRole = 'Admin' | 'Accountant' | 'DataEntry';
+export type UserRole = 'Admin' | 'Accountant' | 'Employee' | 'DataEntry';
+export type SubscriptionPlan = 'Free' | 'Basic' | 'Pro';
+export type TenantStatus = 'Active' | 'Suspended' | 'Expired';
+
+export interface Tenant {
+  tenant_id: string;
+  name: string;
+  owner_user_id: string;
+  created_at: string;
+  subscription_plan: SubscriptionPlan;
+  status: TenantStatus;
+  activation_date?: string;
+  activation_code?: string;
+  expiry_date?: string;
+  entry_count?: number; // عداد العمليات (فواتير/سندات)
+  is_trial?: boolean;   // هل الحساب في فترة تجريبية
+  settings?: {
+    max_users: number;
+    max_invoices: number;
+    storage_limit_gb: number;
+  };
+}
+
+export interface LicenseKey {
+  key: string;
+  plan: SubscriptionPlan;
+  duration_days: number;
+  is_used: boolean;
+  used_by_tenant_id?: string;
+  used_at?: string;
+}
 export type SyncStatus = 'NEW' | 'UPDATED' | 'SYNCED' | 'CONFLICT';
 export type PaymentStatus = 'Unpaid' | 'Partially Paid' | 'Paid';
 export type SystemStatus = 'ACTIVE' | 'RECOVERY_MODE' | 'MAINTENANCE';
@@ -99,7 +129,7 @@ export interface SystemAlert {
   metadata?: any;
 }
 
-export interface UserBehavior {
+export interface UserBehavior extends SyncableEntity {
   userId: string;
   date: string; // YYYY-MM-DD
   numberOfEdits: number;
@@ -138,15 +168,18 @@ export interface PerformanceMetric {
   metadata?: any;
 }
 
-export interface User {
+export interface User extends SyncableEntity {
+  user_id: string;
   User_Email: string; 
   User_Name: string;
   Role: UserRole;
   Is_Active: boolean;
+  tenant_id: string;
   lastLogin?: string;
+  password?: string;
 }
 
-export interface UserRoleEntry {
+export interface UserRoleEntry extends SyncableEntity {
   User_Email: string;
   Role_Type: UserRole;
 }
@@ -171,6 +204,7 @@ export interface SyncableEntity {
   isDeleted?: boolean;
   Created_By?: string;
   Created_At?: string;
+  tenant_id?: string;
 }
 
 // --- محرك حركات المخزون المركزي (Central Inventory Engine) ---
@@ -180,7 +214,7 @@ export type InventoryTransactionType = 'SALE' | 'PURCHASE' | 'RETURN' | 'ADJUSTM
 export interface SystemBackup extends SyncableEntity {
   id: string;
   backupName: string;
-  backupType: 'MANUAL' | 'AUTO' | 'PRE_UNPOST' | 'PRE_DELETE' | 'PRE_VOUCHER_DELETE' | 'PRE_PERIOD_CLOSE' | 'SCHEDULED_DAILY' | 'SCHEDULED_WEEKLY';
+  backupType: 'MANUAL' | 'AUTO' | 'PRE_UNPOST' | 'PRE_EDIT' | 'PRE_DELETE' | 'PRE_VOUCHER_DELETE' | 'PRE_PERIOD_CLOSE' | 'SCHEDULED_DAILY' | 'SCHEDULED_WEEKLY';
   createdAt: string;
   createdBy: string;
   systemVersion: string;
@@ -199,9 +233,12 @@ export interface InventoryTransaction extends SyncableEntity {
   SourceDocumentType: 'SALE' | 'PURCHASE' | 'ADJUSTMENT';
   SourceDocumentID: string;
   QuantityChange: number; // + للمدخلات، - للمخرجات
+  before_qty: number;
+  after_qty: number;
   TransactionType: InventoryTransactionType;
   TransactionDate: string;
   UserID: string;
+  branchId?: string;
   notes?: string;
 }
 
@@ -217,12 +254,11 @@ export interface StockReservation extends SyncableEntity {
 export interface FIFOCostLayer extends SyncableEntity {
   id: string;
   productId: string;
-  warehouseId: string;
-  purchaseDocId: string;
-  initialQuantity: number;
-  remainingQuantity: number;
+  quantityRemaining: number;
   unitCost: number;
-  date: string;
+  purchaseDate: string;
+  referenceId: string;
+  isClosed: boolean;
 }
 
 // --- محرك قوالب الطباعة (Smart Template Engine Interfaces) ---
@@ -269,7 +305,7 @@ export interface UnifiedInvoice extends SyncableEntity {
   notes?: string;
 }
 
-export interface FinancialAuditEntry {
+export interface FinancialAuditEntry extends SyncableEntity {
   Log_ID: string;         
   Table_Name: string;     
   Record_ID: string;      
@@ -336,7 +372,10 @@ export interface SupplierProfitEntry extends SyncableEntity {
   period: { start: string; end: string };
   totalPurchases: number;
   totalSales: number;
+  totalSalesFromSupplier?: number;
   grossProfit: number;
+  margin?: number;
+  transactionsCount: number;
 }
 
 export interface AccountMovement extends SyncableEntity {
@@ -393,6 +432,7 @@ export interface Product extends SyncableEntity {
   usageCount?: number; 
   ProfitMargin?: number;
   Is_Active?: boolean;
+  branchId?: string;
 }
 
 export interface InvoiceItem {
@@ -505,7 +545,9 @@ export interface VoucherInvoiceLink extends SyncableEntity {
 
 export interface AccountingEntry extends SyncableEntity {
   id: string;
+  entry_id?: string; // For enterprise alignment
   date: string;
+  reference_id?: string; // For enterprise alignment
   description?: string;
   TotalAmount: number;
   status: 'Posted' | 'Saved';
@@ -514,11 +556,14 @@ export interface AccountingEntry extends SyncableEntity {
   branchId?: string;
   lines: JournalLine[];
   hash?: string;
+  created_at?: string;
 }
 
 export interface JournalLine {
   lineId: string;
+  entry_id?: string; // For enterprise alignment
   entryId: string;
+  account_id?: string; // For enterprise alignment
   accountId: string;
   accountName: string;
   debit: number;
@@ -550,7 +595,7 @@ export interface MedicineAlert {
   IsRead: boolean;
 }
 
-export interface SystemErrorLog {
+export interface SystemErrorLog extends SyncableEntity {
   Error_ID: string;
   Module_Name: string;
   Error_Message: string;
@@ -588,16 +633,57 @@ export interface ItemUsageLog extends SyncableEntity {
   sourceSupplierId?: string; 
 }
 
-export interface AccountingPeriod {
+export interface AccountingPeriod extends SyncableEntity {
   id: string;
   Start_Date: string;
   End_Date: string;
-  Is_Closed: boolean;
-  closedBy?: string;
-  closedAt?: string;
+  Is_Locked: boolean;
+  Locked_By?: string;
+  Locked_At?: string;
+  lastModified?: string;
 }
 
-export interface InvoiceAdjustment {
+export interface PriceHistory extends SyncableEntity {
+  id: string;
+  productId: string;
+  Item_Name: string;
+  Customer: string;
+  Price: number;
+  Invoice_Date: string;
+  lastModified?: string;
+}
+
+export interface TestResult {
+  testName: string;
+  status: 'PASSED' | 'FAILED' | 'WARNING';
+  message: string;
+  details?: any;
+}
+
+export interface SystemTestReport {
+  timestamp: string;
+  totalTests: number;
+  passed: number;
+  failed: number;
+  warnings: number;
+  results: TestResult[];
+  performanceMetrics?: {
+    avgResponseTimeMs: number;
+    errorRate: number;
+    peakMemoryMb?: number;
+  };
+}
+
+export interface PeriodLockLog extends SyncableEntity {
+  id: string;
+  action: string;
+  user: string;
+  timestamp: string;
+  periodId: string;
+  details?: string;
+}
+
+export interface InvoiceAdjustment extends SyncableEntity {
   AdjustmentID: string;
   InvoiceID: string;
   Type: 'Discount' | 'Additional Fee' | 'Tax Adjustment';
@@ -622,20 +708,27 @@ export interface DailyAuditTask {
   items: AuditItem[];
 }
 
-export interface ItemUnit {
+export interface ItemUnit extends SyncableEntity {
   Unit_ID: string;
   Item_ID: string;
   Unit_Name: string;
 }
 
-export interface Account {
+export interface Account extends SyncableEntity {
   id: string;
+  account_id?: string; // For enterprise alignment
   code: string;
   name: string;
+  account_name?: string; // For enterprise alignment
   type: AccountType;
+  account_type?: AccountType; // For enterprise alignment
+  parent_id?: string; // For hierarchy
+  parentId?: string;
+  balance_type: 'DEBIT' | 'CREDIT';
   description?: string;
   isSystem: boolean;
   isActive: boolean;
+  balance?: number;
 }
 
 export interface BackupSnapshot {
@@ -645,13 +738,14 @@ export interface BackupSnapshot {
   type: 'AUTO' | 'MANUAL';
 }
 
-export interface PriceHistory extends SyncableEntity {
+export interface AIInsight extends SyncableEntity {
   id: string;
-  productId: string;
-  Item_Name: string;   
-  Customer: string;    
-  Price: number;       
-  Invoice_Date: string; 
+  type: 'TREND' | 'PERFORMANCE' | 'BEHAVIOR' | 'COST' | 'RISK';
+  title: string;
+  message: string;
+  severity: 'INFO' | 'WARNING' | 'CRITICAL';
+  data?: any;
+  timestamp: string;
 }
 
 export interface InvoiceCounter extends SyncableEntity {
@@ -756,10 +850,13 @@ export interface MedicineAlternative {
 }
 
 export interface MedicineBatch {
+  id: string;
   BatchID: string;
   ProductID: string;
+  warehouseId: string;
   ExpiryDate: string;
   Quantity: number;
+  lastUpdated?: string;
 }
 
 export interface PurchaseRecord {

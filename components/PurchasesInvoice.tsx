@@ -65,6 +65,10 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
   const qtyInputRef = useRef<HTMLInputElement>(null);
   const priceInputRef = useRef<HTMLInputElement>(null);
 
+  const expiryInputRef = useRef<HTMLInputElement>(null);
+  const noteInputRef = useRef<HTMLInputElement>(null);
+  const categoryInputRef = useRef<HTMLSelectElement>(null);
+
   const [header, setHeader] = useState({ 
     invoice_number: '', 
     supplier_id: '',
@@ -345,7 +349,7 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-[#f7f8fa] font-['Cairo'] max-w-[420px] mx-auto relative overflow-x-hidden" dir="rtl">
+    <div className="flex flex-col min-h-screen bg-[#f7f8fa] font-['Cairo'] w-full max-w-7xl mx-auto relative overflow-x-hidden" dir="rtl">
       {/* HEADER SECTION */}
       <header className="bg-white border-b border-slate-100 p-4 shrink-0 z-50 shadow-sm space-y-4">
         {/* Top Row */}
@@ -564,7 +568,7 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
       </div>
 
       {/* BOTTOM SUMMARY BAR */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-100 p-4 z-[100] max-w-[420px] mx-auto shadow-[0_-4px_10px_rgba(0,0,0,0.03)] flex items-center gap-3">
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-100 p-4 z-[100] max-w-7xl mx-auto shadow-[0_-4px_10px_rgba(0,0,0,0.03)] flex items-center gap-3">
         <div className="w-20 bg-slate-50 h-[56px] rounded-2xl border border-slate-100 flex flex-col items-center justify-center">
           <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">البنود</p>
           <p className="text-sm font-black text-[#1E4D4D]">{items.length}</p>
@@ -640,15 +644,28 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
                 placeholder="0" 
                 value={tempQty} 
                 onChange={e => setTempQty(e.target.value)} 
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    expiryInputRef.current?.focus();
+                  }
+                }}
               />
             </div>
             <div className="space-y-1">
               <label className="text-[10px] font-bold text-slate-500">تاريخ الصلاحية</label>
               <input 
+                ref={expiryInputRef}
                 type="date"
                 className="w-full h-[40px] bg-slate-50 border border-slate-100 rounded-lg px-4 text-xs font-bold text-[#1E4D4D] outline-none focus:border-[#1E4D4D]"
                 value={tempExpiry} 
                 onChange={e => setTempExpiry(e.target.value)} 
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    priceInputRef.current?.focus();
+                  }
+                }}
               />
             </div>
           </div>
@@ -664,14 +681,27 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
                 placeholder="0.00" 
                 value={tempPrice} 
                 onChange={e => setTempPrice(e.target.value)} 
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    categoryInputRef.current?.focus();
+                  }
+                }}
               />
             </div>
             <div className="space-y-1">
               <label className="text-[10px] font-bold text-slate-500">التصنيف</label>
               <select 
+                ref={categoryInputRef}
                 className="w-full h-[40px] bg-slate-50 border border-slate-100 rounded-lg px-4 text-xs font-bold text-[#1E4D4D] outline-none focus:border-[#1E4D4D] appearance-none"
                 value={manualCategoryName} 
                 onChange={e => setManualCategoryName(e.target.value)} 
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    noteInputRef.current?.focus();
+                  }
+                }}
               >
                 <option value="">اختر تصنيفاً...</option>
                 {['أدوية', 'مستلزمات طبية', 'مستحضرات تجميل', 'مكملات غذائية', 'أجهزة طبية', 'مواد استهلاكية', 'أصناف أخرى'].map(cat => (
@@ -695,10 +725,17 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
           <div className="space-y-1">
             <label className="text-[10px] font-bold text-slate-500">ملاحظة الصنف</label>
             <input 
+              ref={noteInputRef}
               className="w-full h-[40px] bg-slate-50 border border-slate-100 rounded-lg px-4 text-xs font-bold text-[#1E4D4D] outline-none focus:border-[#1E4D4D]"
               placeholder="أضف ملاحظة هنا..." 
               value={tempNote} 
               onChange={e => setTempNote(e.target.value)} 
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  finalizeItemAdd();
+                }
+              }}
             />
           </div>
 

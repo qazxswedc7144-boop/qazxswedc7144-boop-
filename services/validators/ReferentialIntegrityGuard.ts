@@ -51,5 +51,20 @@ export const ReferentialIntegrityGuard = {
     if (hasVouchers) return true;
 
     return false;
+  },
+
+  /**
+   * التحقق من وجود ارتباطات للحساب
+   */
+  async checkAccountReferences(accountId: string): Promise<boolean> {
+    // 1. فحص قيود اليومية
+    const hasEntries = await db.db.journalEntries.filter(e => e.lines.some(l => l.accountId === accountId)).count() > 0;
+    if (hasEntries) return true;
+
+    // 2. فحص الحسابات الأبناء (Hierarchy)
+    const hasChildren = await db.db.accounts.where('parentId').equals(accountId).count() > 0;
+    if (hasChildren) return true;
+
+    return false;
   }
 };

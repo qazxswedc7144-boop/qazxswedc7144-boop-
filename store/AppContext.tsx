@@ -1,5 +1,5 @@
 
-import React, { useEffect, useCallback, useRef } from 'react';
+import React, { useEffect, useCallback, useRef, useState } from 'react';
 import { useAppStore } from './useAppStore';
 import { eventBus, EVENTS } from '../services/eventBus';
 
@@ -61,8 +61,8 @@ export const useAccounting = () => {
 };
 
 export const useInvoice = () => {
-  const [generatedHtml, setGeneratedHtml] = React.useState<string | null>(null);
-  const [isGenerating, setIsGenerating] = React.useState(false);
+  const [generatedHtml, setGeneratedHtml] = useState<string | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
   return { generatedHtml, setGeneratedHtml, isGenerating, setIsGenerating };
 };
 

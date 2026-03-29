@@ -3,6 +3,7 @@ import { AccountingPeriodRepository } from '../repositories/AccountingPeriodRepo
 import { AccountingError } from '../types';
 import { authService } from './auth.service';
 import { BackupService } from './backupService';
+import { PeriodLockEngine } from './PeriodLockEngine';
 
 /**
  * Period Service - نظام حماية الفترات المحاسبية (Accounting Period Locking)
@@ -15,22 +16,13 @@ export const periodService = {
    * @throws AccountingError إذا كان التاريخ مغلقاً والمستخدم ليس مسؤولاً
    */
   validatePeriod: async (date: string): Promise<void> => {
-    if (!date) return;
-    
-    // 1. التحقق من صلاحية المستخدم (Admin Override Only)
-    const currentUser = authService.getCurrentUser();
-    if (currentUser?.Role === 'Admin') {
-      console.log(`[PeriodGuard] Admin override access granted for date: ${date}`);
-      return; 
-    }
-    
-    // 2. التحقق من حالة الفترة عبر المستودع (Async)
-    const isClosed = await AccountingPeriodRepository.isDateClosed(date);
-    if (isClosed) {
-      const formattedDate = new Date(date).toLocaleDateString('ar-SA');
-      throw new AccountingError(
-        `خطأ حماية سيادي (Period Lock): التاريخ [${formattedDate}] يقع ضمن فترة مالية مغلقة ومعتمدة. لا يمكن الإضافة أو التعديل أو الحذف إلا للمسؤولين.`
-      );
+    try {
+      await PeriodLockEngine.validateOperation(date, 'عملية محاسبية');
+    } catch (error: any) {
+      if (error.message.includes('SECURITY_BLOCK')) {
+        throw new AccountingError(error.message);
+      }
+      throw error;
     }
   },
 

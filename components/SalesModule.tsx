@@ -49,6 +49,11 @@ const SalesModule: React.FC<{ onNavigate?: (view: any, params?: any) => void }> 
     setCategoryName
   } = useSales(onNavigate);
 
+  const priceInputRef = React.useRef<HTMLInputElement>(null);
+  const expiryInputRef = React.useRef<HTMLInputElement>(null);
+  const noteInputRef = React.useRef<HTMLInputElement>(null);
+  const categoryInputRef = React.useRef<HTMLSelectElement>(null);
+
   const systemStatus = useAppStore(state => state.systemStatus);
   const isRecovery = systemStatus === 'RECOVERY_MODE';
 
@@ -65,7 +70,7 @@ const SalesModule: React.FC<{ onNavigate?: (view: any, params?: any) => void }> 
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-[#f7f8fa] font-['Cairo'] max-w-[420px] mx-auto relative overflow-x-hidden" dir="rtl">
+    <div className="flex flex-col min-h-screen bg-[#f7f8fa] font-['Cairo'] w-full max-w-7xl mx-auto relative overflow-x-hidden" dir="rtl">
       {/* HEADER SECTION */}
       <div className="p-4 space-y-4 shrink-0 z-50">
         <div className="bg-white rounded-[24px] p-4 shadow-sm border border-slate-100 space-y-4">
@@ -298,7 +303,7 @@ const SalesModule: React.FC<{ onNavigate?: (view: any, params?: any) => void }> 
     </div>
 
       {/* BOTTOM SUMMARY BAR */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-100 p-4 z-[100] max-w-[420px] mx-auto shadow-[0_-4px_10px_rgba(0,0,0,0.03)] flex items-center gap-3">
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-100 p-4 z-[100] max-w-7xl mx-auto shadow-[0_-4px_10px_rgba(0,0,0,0.03)] flex items-center gap-3">
         <div className="w-20 bg-slate-50 h-[56px] rounded-2xl border border-slate-100 flex flex-col items-center justify-center">
           <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">البنود</p>
           <p className="text-sm font-black text-[#1E4D4D]">{items.length}</p>
@@ -376,15 +381,28 @@ const SalesModule: React.FC<{ onNavigate?: (view: any, params?: any) => void }> 
                   placeholder="0" 
                   value={tempQty} 
                   onChange={e => setTempQty(e.target.value)} 
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      expiryInputRef.current?.focus();
+                    }
+                  }}
                 />
               </div>
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-slate-500">تاريخ الصلاحية</label>
                 <input 
+                  ref={expiryInputRef}
                   type="date"
                   className="w-full h-[40px] bg-slate-50 border border-slate-100 rounded-xl px-4 text-xs font-bold text-[#1E4D4D] outline-none focus:border-[#1E4D4D]"
                   value={tempExpiry} 
                   onChange={e => setTempExpiry(e.target.value)} 
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      priceInputRef.current?.focus();
+                    }
+                  }}
                 />
               </div>
             </div>
@@ -394,19 +412,33 @@ const SalesModule: React.FC<{ onNavigate?: (view: any, params?: any) => void }> 
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-slate-500">السعر</label>
                 <input 
+                  ref={priceInputRef}
                   type="number" 
                   className="w-full h-[40px] bg-slate-50 border border-slate-100 rounded-xl px-4 text-center text-xs font-bold text-[#1E4D4D] outline-none focus:border-[#1E4D4D]" 
                   placeholder="0.00" 
                   value={tempPrice} 
                   onChange={e => setTempPrice(e.target.value)} 
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      categoryInputRef.current?.focus();
+                    }
+                  }}
                 />
               </div>
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-slate-500">التصنيف</label>
                 <select 
+                  ref={categoryInputRef}
                   className="w-full h-[40px] bg-slate-50 border border-slate-100 rounded-xl px-4 text-xs font-bold text-[#1E4D4D] outline-none focus:border-[#1E4D4D] appearance-none"
                   value={categoryName} 
                   onChange={e => setCategoryName(e.target.value)} 
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      noteInputRef.current?.focus();
+                    }
+                  }}
                 >
                   <option value="">اختر تصنيفاً...</option>
                   {['أدوية', 'مستلزمات طبية', 'مستحضرات تجميل', 'مكملات غذائية', 'أجهزة طبية', 'مواد استهلاكية', 'أصناف أخرى'].map(cat => (
@@ -430,10 +462,17 @@ const SalesModule: React.FC<{ onNavigate?: (view: any, params?: any) => void }> 
             <div className="space-y-1">
               <label className="text-[10px] font-bold text-slate-500">ملاحظة الصنف</label>
               <input 
+                ref={noteInputRef}
                 className="w-full h-[40px] bg-slate-50 border border-slate-100 rounded-xl px-4 text-xs font-bold text-[#1E4D4D] outline-none focus:border-[#1E4D4D]"
                 placeholder="أضف ملاحظة هنا..." 
                 value={tempNote} 
                 onChange={e => setTempNote(e.target.value)} 
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    finalizeItemAdd();
+                  }
+                }}
               />
             </div>
           </div>

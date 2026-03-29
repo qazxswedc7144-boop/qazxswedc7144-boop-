@@ -8,15 +8,16 @@ import { PriceHistoryRepository } from './PriceHistoryRepository';
 import { PurchaseRepository } from './PurchaseRepository';
 
 export const ProductRepository = {
-  getAll: async (options: { limit?: number, offset?: number } = {}): Promise<Product[]> => {
-    const { limit, offset } = options;
+  getAll: async (options: { limit?: number, offset?: number, branchId?: string } = {}): Promise<Product[]> => {
+    const { limit = 20, offset = 0, branchId } = options;
     const all = await db.getProducts();
     let filtered = all.filter(p => p.Is_Active !== false);
     
-    if (offset !== undefined) filtered = filtered.slice(offset);
-    if (limit !== undefined) filtered = filtered.slice(0, limit);
-    
-    return filtered;
+    if (branchId) {
+      filtered = filtered.filter(p => p.branchId === branchId || !p.branchId);
+    }
+
+    return filtered.slice(offset, offset + limit);
   },
 
   getById: async (id: string): Promise<Product | undefined> => {
@@ -67,6 +68,8 @@ export const ProductRepository = {
       SourceDocumentType: sourceDocType,
       SourceDocumentID: sourceDocId,
       QuantityChange: quantityChange,
+      before_qty: product.StockQuantity,
+      after_qty: product.StockQuantity + quantityChange,
       TransactionType: txType,
       TransactionDate: now,
       UserID: user?.User_Email || 'SYSTEM',
@@ -131,5 +134,38 @@ export const ProductRepository = {
 
   getPurchaseHistory: async (productId: string, limit: number = 5): Promise<Purchase[]> => {
     return await PurchaseRepository.getItemPurchaseHistory(productId, limit);
+  },
+
+  getItemAutoFillDetails: async (productId: string) => {
+    const product = await ProductRepository.getById(productId);
+    if (!product) return null;
+
+    const lastPurchase = await db.db.purchasesByItem
+      .where('itemId')
+      .equals(productId)
+      .reverse()
+      .first();
+
+    return {
+      lastPrice: lastPurchase?.unitCost || product.UnitPrice || 0,
+      category: product.categoryName || 'General',
+      supplierId: lastPurchase?.supplierId || product.supplierId || '',
+      supplierName: lastPurchase?.supplierId || '' 
+    };
+  },
+
+  getExpiringSoon: async (days: number = 30): Promise<Product[]> => {
+    const today = new Date();
+    const limitDate = new Date();
+    limitDate.setDate(today.getDate() + days);
+    
+    const all = await db.getProducts();
+    return all
+      .filter(p => {
+        if (!p.ExpiryDate) return false;
+        const expiry = new Date(p.ExpiryDate);
+        return expiry > today && expiry <= limitDate;
+      })
+      .sort((a, b) => new Date(a.ExpiryDate!).getTime() - new Date(b.ExpiryDate!).getTime());
   }
 };

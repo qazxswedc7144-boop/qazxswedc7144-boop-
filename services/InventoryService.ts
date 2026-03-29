@@ -1,7 +1,9 @@
 
 import { db } from './database';
-import { Warehouse, WarehouseStock, InventoryTransaction, Product, InventoryTransactionType, StockReservation, FIFOCostLayer } from '../types';
+import { authService } from './auth.service';
+import { Warehouse, WarehouseStock, InventoryTransaction, Product, InventoryTransactionType, StockReservation } from '../types';
 import { ValidationError } from '../types';
+import { FIFOEngine } from './FIFOEngine';
 
 export class InventoryService {
   
@@ -90,53 +92,70 @@ export class InventoryService {
       });
     }
 
-    // 2. FIFO Costing Logic
+    // 2. FIFO Costing Logic (ENTERPRISE UPGRADE)
     if (quantity > 0 && sourceDocType === 'PURCHASE') {
-      // Add new cost layer
+      // Add new cost layer via FIFOEngine
       const unitCost = await this.calculateUnitCost(productId, sourceDocId);
-      await db.db.fifoCostLayers.put({
-        id: db.generateId('FIFO'),
-        productId,
-        warehouseId,
-        purchaseDocId: sourceDocId,
-        initialQuantity: quantity,
-        remainingQuantity: quantity,
-        unitCost,
-        date: new Date().toISOString(),
-        lastModified: new Date().toISOString()
-      });
-    } else if (quantity < 0) {
-      // Consume cost layers
-      await this.consumeFIFOLayers(productId, warehouseId, Math.abs(quantity));
+      await FIFOEngine.addPurchaseLayer(productId, quantity, unitCost, new Date().toISOString(), sourceDocId);
+    } else if (quantity < 0 && (sourceDocType === 'ADJUSTMENT' || sourceDocType === 'PURCHASE')) {
+      // For manual adjustments (deductions) or purchase returns (deductions), we consume layers
+      // Note: Sales are handled by transactionOrchestrator to capture the cost for the Sale object
+      await FIFOEngine.consumeLayers(productId, Math.abs(quantity));
     }
 
-    // 3. Record Transaction
+    // 3. FEFO (First Expired First Out) - Deduct from batches
+    if (quantity < 0) {
+      let remainingToDeduct = Math.abs(quantity);
+      const batches = await db.db.medicineBatches
+        .where('[ProductID+warehouseId]')
+        .equals([productId, warehouseId])
+        .filter(b => b.Quantity > 0)
+        .sortBy('ExpiryDate');
+
+      for (const batch of batches) {
+        if (remainingToDeduct <= 0) break;
+        const deductFromBatch = Math.min(batch.Quantity, remainingToDeduct);
+        await db.db.medicineBatches.update(batch.BatchID, {
+          Quantity: batch.Quantity - deductFromBatch,
+          lastUpdated: new Date().toISOString()
+        });
+        remainingToDeduct -= deductFromBatch;
+      }
+    }
+
+    // 4. Record Transaction
+    const before_qty = existingStock?.quantity || 0;
+    const after_qty = before_qty + quantity;
+
     const tx: InventoryTransaction = {
       TransactionID: db.generateId('INV_TX'),
       ItemID: productId,
       SourceDocumentType: sourceDocType,
       SourceDocumentID: sourceDocId,
       QuantityChange: quantity,
+      before_qty,
+      after_qty,
       TransactionType: type,
       TransactionDate: new Date().toISOString(),
       UserID: userId,
+      branchId: authService.getCurrentBranchId() || 'MAIN',
       notes,
       lastModified: new Date().toISOString()
     };
     await db.db.inventoryTransactions.put(tx);
 
     // 4. Update Global Product Stock
-    const product = await db.db.products.get(productId);
+    const product = await db.db.products.where('ProductID').equals(productId).first();
     if (product) {
       const newStock = (product.StockQuantity || 0) + quantity;
       const newCost = await this.getAverageCost(productId);
-      await db.db.products.update(productId, {
+      await db.db.products.where('ProductID').equals(productId).modify({
         StockQuantity: newStock,
         CostPrice: newCost
       });
 
       // 5. Update Denormalized Inventory Collection (User Request)
-      const updatedProduct = await db.db.products.get(productId);
+      const updatedProduct = await db.db.products.where('ProductID').equals(productId).first();
       if (updatedProduct) {
         const status = updatedProduct.StockQuantity <= 0 ? 'expired' : 
                        updatedProduct.StockQuantity <= (updatedProduct.MinLevel || 0) ? 'low_stock' : 'active';
@@ -159,38 +178,18 @@ export class InventoryService {
   }
 
   private static async calculateUnitCost(productId: string, purchaseId: string): Promise<number> {
-    const purchase = await db.db.purchases.get(purchaseId);
+    const purchase = await db.db.purchases.where('purchase_id').equals(purchaseId).first();
     const item = purchase?.items.find(i => i.product_id === productId);
     return item?.price || 0;
   }
 
-  private static async consumeFIFOLayers(productId: string, warehouseId: string, qtyToConsume: number) {
-    const layers = await db.db.fifoCostLayers
-      .where('[productId+warehouseId]')
-      .equals([productId, warehouseId])
-      .filter(l => l.remainingQuantity > 0)
-      .sortBy('date');
-
-    let remainingToConsume = qtyToConsume;
-    for (const layer of layers) {
-      if (remainingToConsume <= 0) break;
-
-      const consumed = Math.min(layer.remainingQuantity, remainingToConsume);
-      await db.db.fifoCostLayers.update(layer.id, {
-        remainingQuantity: layer.remainingQuantity - consumed,
-        lastModified: new Date().toISOString()
-      });
-      remainingToConsume -= consumed;
-    }
-  }
-
   static async getAverageCost(productId: string): Promise<number> {
     const layers = await db.db.fifoCostLayers.where('productId').equals(productId).toArray();
-    const activeLayers = layers.filter(l => l.remainingQuantity > 0);
+    const activeLayers = layers.filter(l => !l.isClosed);
     if (activeLayers.length === 0) return 0;
 
-    const totalValue = activeLayers.reduce((sum, l) => sum + (l.remainingQuantity * l.unitCost), 0);
-    const totalQty = activeLayers.reduce((sum, l) => sum + l.remainingQuantity, 0);
+    const totalValue = activeLayers.reduce((sum, l) => sum + (l.quantityRemaining * l.unitCost), 0);
+    const totalQty = activeLayers.reduce((sum, l) => sum + l.quantityRemaining, 0);
     return totalValue / totalQty;
   }
 
@@ -201,7 +200,7 @@ export class InventoryService {
   static async validateStockAvailability(warehouseId: string, productId: string, requiredQty: number) {
     const available = await this.getWarehouseStock(warehouseId, productId);
     if (available < requiredQty) {
-      const product = await db.db.products.get(productId);
+      const product = await db.db.products.where('ProductID').equals(productId).first();
       throw new ValidationError(`عجز مخزني: الصنف [${product?.Name}] غير متوفر بالكمية المطلوبة. المتاح: ${available}`);
     }
   }
@@ -212,8 +211,9 @@ export class InventoryService {
       const status = p.StockQuantity <= 0 ? 'expired' : 
                      p.StockQuantity <= (p.MinLevel || 0) ? 'low_stock' : 'active';
       
+      const itemId = p.ProductID || db.generateId('ITM');
       await db.db.inventory.put({
-        itemId: p.ProductID,
+        itemId: itemId,
         itemName: p.Name,
         category: p.categoryName || 'عام',
         currentQuantity: p.StockQuantity,
@@ -226,5 +226,42 @@ export class InventoryService {
         lastModified: new Date().toISOString()
       });
     }
+  }
+
+  static async getBestBatchForSale(productId: string, warehouseId: string) {
+    const batches = await db.db.medicineBatches
+      .where('[ProductID+warehouseId]')
+      .equals([productId, warehouseId])
+      .filter(b => b.Quantity > 0 && new Date(b.ExpiryDate) > new Date())
+      .sortBy('ExpiryDate');
+    
+    return batches[0] || null;
+  }
+
+  static async checkNearExpiryAlerts(days: number = 30) {
+    const today = new Date();
+    const limitDate = new Date();
+    limitDate.setDate(today.getDate() + days);
+    
+    const nearExpiry = await db.db.medicineBatches
+      .filter(b => {
+        const expiry = new Date(b.ExpiryDate);
+        return expiry > today && expiry <= limitDate && b.Quantity > 0;
+      })
+      .toArray();
+
+    for (const batch of nearExpiry) {
+      await db.db.medicineAlerts.put({
+        AlertID: `EXP-${batch.BatchID}`,
+        ReferenceID: batch.ProductID,
+        type: 'EXPIRY',
+        message: `الصنف [${batch.ProductID}] تنتهي صلاحيته في ${batch.ExpiryDate}`,
+        severity: 'HIGH',
+        status: 'PENDING',
+        createdAt: new Date().toISOString()
+      } as any);
+    }
+    
+    return nearExpiry.length;
   }
 }

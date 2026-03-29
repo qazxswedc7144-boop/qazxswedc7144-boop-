@@ -24,6 +24,7 @@ const AccountManagement: React.FC<AccountManagementProps> = ({ onNavigate }) => 
       code: editingAccount.code,
       name: editingAccount.name,
       type: editingAccount.type as AccountType,
+      balance_type: (editingAccount.type === 'REVENUE' || editingAccount.type === 'LIABILITY' || editingAccount.type === 'EQUITY') ? 'CREDIT' : 'DEBIT',
       description: editingAccount.description || '',
       isSystem: editingAccount.isSystem || false,
       isActive: editingAccount.isActive !== undefined ? editingAccount.isActive : true

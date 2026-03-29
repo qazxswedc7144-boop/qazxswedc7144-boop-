@@ -13,9 +13,12 @@ import { useUI } from '../store/AppContext';
 import { authService } from '../services/auth.service';
 import { ProductionCleanupService } from '../services/ProductionCleanupService';
 
+import { Cloud, CloudOff, RefreshCw } from 'lucide-react';
+
 const BackupManagement: React.FC = () => {
   const [backups, setBackups] = useState<SystemBackup[]>([]);
   const [loading, setLoading] = useState(false);
+  const [isGoogleConnected, setIsGoogleConnected] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [showCleanupModal, setShowCleanupModal] = useState(false);
   const [cleanupConfirmText, setCleanupConfirmText] = useState('');
@@ -25,6 +28,14 @@ const BackupManagement: React.FC = () => {
   useEffect(() => {
     loadBackups();
   }, []);
+
+  const handleGoogleConnect = async () => {
+    addToast('خدمة Google Drive غير متوفرة حالياً في هذا الإصدار.', 'info');
+  };
+
+  const handleGoogleSync = async () => {
+    addToast('خدمة المزامنة السحابية غير متوفرة حالياً.', 'info');
+  };
 
   const loadBackups = async () => {
     const data = await db.db.systemBackups.orderBy('createdAt').reverse().toArray();
@@ -132,13 +143,35 @@ const BackupManagement: React.FC = () => {
           <div className="absolute -right-10 -bottom-10 w-40 h-40 bg-emerald-500/10 rounded-full blur-3xl"></div>
         </Card>
 
-        <Card className="!p-6 flex flex-col items-center justify-center text-center space-y-3 bg-emerald-50 border-emerald-100">
-          <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center shadow-sm">
-            <ShieldCheck size={24} />
+        <Card className="!p-6 flex flex-col items-center justify-center text-center space-y-3 bg-blue-50 border-blue-100">
+          <div className={`w-12 h-12 rounded-xl flex items-center justify-center shadow-sm ${isGoogleConnected ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-400'}`}>
+            {isGoogleConnected ? <Cloud size={24} /> : <CloudOff size={24} />}
           </div>
           <div>
-            <h4 className="text-sm font-black text-[#1E4D4D]">حالة الحماية</h4>
-            <p className="text-[10px] text-emerald-700 font-bold">النظام مؤمن ومشفر بالكامل</p>
+            <h4 className="text-sm font-black text-[#1E4D4D]">المزامنة السحابية</h4>
+            <p className="text-[10px] text-blue-700 font-bold mb-2">
+              {isGoogleConnected ? 'متصل بجوجل درايف' : 'غير متصل بالسحابة'}
+            </p>
+            {isGoogleConnected ? (
+              <Button 
+                size="sm" 
+                variant="secondary" 
+                className="h-8 text-[10px] !rounded-lg w-full"
+                onClick={handleGoogleSync}
+                isLoading={loading}
+              >
+                <RefreshCw size={12} className="ml-1" /> مزامنة الآن
+              </Button>
+            ) : (
+              <Button 
+                size="sm" 
+                variant="primary" 
+                className="h-8 text-[10px] !rounded-lg w-full"
+                onClick={handleGoogleConnect}
+              >
+                ربط الحساب
+              </Button>
+            )}
           </div>
         </Card>
       </div>

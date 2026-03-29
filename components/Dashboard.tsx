@@ -1,4 +1,5 @@
 
+import NotificationCenter from './NotificationCenter';
 import { authService } from '../services/auth.service';
 import React, { useMemo, useState, useEffect } from 'react';
 import { useUI, useAccounting } from '../store/AppContext';
@@ -16,7 +17,7 @@ import { AISummaryPanel } from './AISummaryPanel';
 import { ProfitHealthAnalyzer } from '../services/ProfitHealthAnalyzer';
 import { motion } from 'motion/react';
 import { 
-  PackagePlus, Settings, FileText, DollarSign, PackageCheck, Sparkles as AutoAwesome,
+  PackagePlus, FileText, DollarSign, PackageCheck, Sparkles as AutoAwesome,
   Users, Home, ShieldCheck, RefreshCw, Plus, ArrowUpRight, LayoutList, ShoppingCart,
   Clock, ArrowDownCircle, CreditCard, Wallet2, TrendingUp, Activity, BarChart3, PieChart as PieChartIcon,
   Search, Bell, Calendar, Package as PackageIcon, History
@@ -144,85 +145,82 @@ const Dashboard: React.FC<{ lang?: 'ar', onNavigate?: (view: any, params?: any) 
     <div className="h-full flex flex-col bg-[#F8FAFA] font-['Cairo'] overflow-hidden" dir="rtl">
       {/* Modern Header */}
       <div className="px-6 sm:px-10 py-8 bg-white/40 backdrop-blur-xl border-b border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-6 shrink-0 z-20">
-        <div className="flex items-center gap-5">
-          <div className="relative">
-            <div className="w-16 h-16 bg-gradient-to-br from-[#1E4D4D] to-emerald-900 rounded-[24px] flex items-center justify-center shadow-2xl shadow-emerald-900/20">
-              <span className="text-2xl font-black text-white">{user?.User_Name.charAt(0)}</span>
-            </div>
-            <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-emerald-500 border-4 border-white rounded-full"></div>
-          </div>
+        <div className="flex items-center gap-3">
+          <NotificationCenter />
           <div>
             <h2 className="text-2xl font-black text-[#1E4D4D] tracking-tight leading-none mb-2">أهلاً بك، {user?.User_Name}</h2>
-            <div className="flex items-center gap-3">
-              <Badge variant={user?.Role === 'Admin' ? 'success' : 'info'} className="!rounded-full px-4 py-1 text-[10px] font-black uppercase tracking-widest">{user?.Role}</Badge>
-              <div className="flex items-center gap-1.5 px-3 py-1 bg-slate-50 rounded-full border border-slate-100">
-                <Calendar size={12} className="text-slate-400" />
-                <span className="text-[10px] font-bold text-slate-500">{new Date().toLocaleDateString('ar-SA', { weekday: 'long', day: 'numeric', month: 'long' })}</span>
-              </div>
+            <div className="flex items-center gap-1.5 px-3 py-1 bg-slate-50 rounded-full border border-slate-100 w-fit">
+              <Calendar size={12} className="text-slate-400" />
+              <span className="text-[10px] font-bold text-slate-500">{new Date().toLocaleDateString('ar-SA', { weekday: 'long', day: 'numeric', month: 'long' })}</span>
             </div>
           </div>
         </div>
 
         <div className="flex items-center gap-4">
-          <div className="hidden md:flex items-center gap-2 px-4 py-2 bg-white border border-slate-100 rounded-2xl shadow-sm">
-            <Search size={18} className="text-slate-300" />
-            <input type="text" placeholder="بحث سريع..." className="bg-transparent border-none outline-none text-xs font-bold text-slate-600 w-40" />
-          </div>
-          <button className="w-12 h-12 bg-white border border-slate-100 rounded-2xl flex items-center justify-center text-slate-400 hover:text-[#1E4D4D] hover:border-[#1E4D4D] transition-all shadow-sm relative">
-            <Bell size={20} />
-            <div className="absolute top-3 right-3 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></div>
-          </button>
           <InstallPWAButton />
         </div>
       </div>
 
-      <main className="flex-1 overflow-y-auto p-6 sm:p-10 space-y-12 custom-scrollbar">
+      <main className="flex-1 overflow-y-auto p-6 sm:p-10 space-y-8 custom-scrollbar">
         
-        {/* Stats Row - Top Priority */}
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+        {/* 1. Main Action Cards - Top Priority */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <motion.button 
+            whileHover={{ y: -2 }}
+            onClick={() => onNavigate?.('sales')}
+            className="group h-24 bg-gradient-to-br from-[#10B981] to-[#059669] text-white p-4 rounded-[24px] flex items-center gap-4 text-right transition-all shadow-lg shadow-emerald-900/10 relative overflow-hidden"
+          >
+            <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-md shrink-0">
+              <ShoppingCart size={24} />
+            </div>
+            <div>
+              <h3 className="text-lg font-black tracking-tight">المبيعات</h3>
+              <p className="text-[10px] font-bold opacity-80 uppercase tracking-widest">فاتورة بيع جديدة</p>
+            </div>
+            <ArrowUpRight size={18} className="absolute top-4 left-4 opacity-40 group-hover:opacity-100 transition-opacity" />
+          </motion.button>
+
+          <motion.button 
+            whileHover={{ y: -2 }}
+            onClick={() => onNavigate?.('purchases')}
+            className="group h-24 bg-gradient-to-br from-[#1E4D4D] to-[#0f2a2a] text-white p-4 rounded-[24px] flex items-center gap-4 text-right transition-all shadow-lg shadow-emerald-900/10 relative overflow-hidden"
+          >
+            <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-md shrink-0">
+              <PackagePlus size={24} />
+            </div>
+            <div>
+              <h3 className="text-lg font-black tracking-tight">المشتريات</h3>
+              <p className="text-[10px] font-bold opacity-80 uppercase tracking-widest">توريد بضاعة للمخزن</p>
+            </div>
+            <ArrowUpRight size={18} className="absolute top-4 left-4 opacity-40 group-hover:opacity-100 transition-opacity" />
+          </motion.button>
+        </div>
+
+        {/* Quick Access Grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+          <QuickActionBtn icon={<PackageIcon size={24} />} label="المخزون" onClick={() => onNavigate?.('inventory')} color="bg-purple-500" />
+          <QuickActionBtn icon={<Users size={24} />} label="العملاء" onClick={() => onNavigate?.('partners')} color="bg-blue-500" />
+          <QuickActionBtn icon={<Wallet2 size={24} />} label="المحاسبة" onClick={() => onNavigate?.('accounting')} color="bg-amber-500" />
+          <QuickActionBtn icon={<Clock size={24} />} label="تعمير الذمم" onClick={() => onNavigate?.('aging-report')} color="bg-red-500" />
+          <QuickActionBtn icon={<ShieldCheck size={24} />} label="التدقيق" onClick={() => onNavigate?.('audit-history')} color="bg-emerald-600" />
+          <QuickActionBtn icon={<History size={24} />} label="الأرشيف" onClick={() => onNavigate?.('invoices-archive')} color="bg-slate-500" />
+        </div>
+
+        {/* 2. Primary Stats Row - Below Actions */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <StatMiniCard label="إيرادات اليوم" value={stats.todaySalesTotal} icon={<DollarSign size={24} />} color="border-emerald-500" unit={currency} />
           <StatMiniCard label="فواتير اليوم" value={stats.todayInvoicesCount} icon={<FileText size={24} />} color="border-[#1E4D4D]" unit="وثيقة" />
+        </div>
+
+        {/* 3. Secondary Stats Row - Visual Hierarchy */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <StatMiniCard label="فواتير نشطة" value={stats.activeInvoicesCount} icon={<Clock size={24} />} color="border-amber-500" unit="مسودة" />
           <StatMiniCard label="قيمة المخزون" value={stats.stockValue} icon={<PackageCheck size={24} />} color="border-blue-500" unit={currency} />
           <StatMiniCard label="مبيعات الشهر" value={stats.monthSalesTotal} icon={<Activity size={24} />} color="border-purple-500" unit={currency} />
         </div>
 
-        {/* Bento Grid Layout */}
+        {/* Bento Grid Layout - Distribution and AI */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          
-          {/* Main Action Cards */}
-          <div className="lg:col-span-8 grid grid-cols-2 gap-4">
-            <motion.button 
-              whileHover={{ y: -2 }}
-              onClick={() => onNavigate?.('sales')}
-              className="group h-24 bg-gradient-to-br from-[#10B981] to-[#059669] text-white p-4 rounded-[24px] flex items-center gap-4 text-right transition-all shadow-lg shadow-emerald-900/10 relative overflow-hidden"
-            >
-              <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-md shrink-0">
-                <ShoppingCart size={24} />
-              </div>
-              <div>
-                <h3 className="text-lg font-black tracking-tight">المبيعات</h3>
-                <p className="text-[10px] font-bold opacity-80 uppercase tracking-widest">فاتورة بيع جديدة</p>
-              </div>
-              <ArrowUpRight size={18} className="absolute top-4 left-4 opacity-40 group-hover:opacity-100 transition-opacity" />
-            </motion.button>
-
-            <motion.button 
-              whileHover={{ y: -2 }}
-              onClick={() => onNavigate?.('purchases')}
-              className="group h-24 bg-gradient-to-br from-[#1E4D4D] to-[#0f2a2a] text-white p-4 rounded-[24px] flex items-center gap-4 text-right transition-all shadow-lg shadow-emerald-900/10 relative overflow-hidden"
-            >
-              <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-md shrink-0">
-                <PackagePlus size={24} />
-              </div>
-              <div>
-                <h3 className="text-lg font-black tracking-tight">المشتريات</h3>
-                <p className="text-[10px] font-bold opacity-80 uppercase tracking-widest">توريد بضاعة للمخزن</p>
-              </div>
-              <ArrowUpRight size={18} className="absolute top-4 left-4 opacity-40 group-hover:opacity-100 transition-opacity" />
-            </motion.button>
-          </div>
-
           {/* Side Bento Column */}
           <div className="lg:col-span-4 space-y-4">
             <Card className="!p-4 !rounded-[24px] bg-white border border-slate-100 shadow-sm h-full flex flex-col justify-between">
@@ -269,8 +267,8 @@ const Dashboard: React.FC<{ lang?: 'ar', onNavigate?: (view: any, params?: any) 
             </Card>
           </div>
 
-          {/* AI Summary Panel - Full Width */}
-          <div className="lg:col-span-12">
+          {/* AI Summary Panel */}
+          <div className="lg:col-span-8">
             <RoleGuard permission="VIEW_REPORTS" hideOnFailure>
               <AISummaryPanel />
             </RoleGuard>
@@ -364,16 +362,6 @@ const Dashboard: React.FC<{ lang?: 'ar', onNavigate?: (view: any, params?: any) 
           </Card>
         </div>
 
-        {/* Quick Access Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-4">
-          <QuickActionBtn icon={<Users size={24} />} label="العملاء" onClick={() => onNavigate?.('partners')} color="bg-blue-500" />
-          <QuickActionBtn icon={<PackageIcon size={24} />} label="المخزون" onClick={() => onNavigate?.('inventory')} color="bg-purple-500" />
-          <QuickActionBtn icon={<Wallet2 size={24} />} label="المحاسبة" onClick={() => onNavigate?.('accounting')} color="bg-amber-500" />
-          <QuickActionBtn icon={<History size={24} />} label="الأرشيف" onClick={() => onNavigate?.('invoices-archive')} color="bg-slate-500" />
-          <QuickActionBtn icon={<ShieldCheck size={24} />} label="التدقيق" onClick={() => onNavigate?.('audit-history')} color="bg-emerald-600" />
-          <QuickActionBtn icon={<Clock size={24} />} label="تعمير الذمم" onClick={() => onNavigate?.('aging-report')} color="bg-red-500" />
-          <QuickActionBtn icon={<Settings size={24} />} label="الإعدادات" onClick={() => onNavigate?.('settings')} color="bg-indigo-500" />
-        </div>
 
       </main>
     </div>

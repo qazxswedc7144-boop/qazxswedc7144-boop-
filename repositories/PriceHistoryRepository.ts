@@ -22,7 +22,7 @@ export const PriceHistoryRepository = {
       Invoice_Date: date,
       lastModified: new Date().toISOString()
     };
-    await db.db.priceHistory.put(entry);
+    await db.db.aiInsights_History.put(entry);
     
     // إخلاء الكاش عند تسجيل حركة جديدة لضمان دقة التوقعات اللاحقة
     PRICE_CACHE.delete(`avg_${productId}`);
@@ -39,7 +39,7 @@ export const PriceHistoryRepository = {
     const cached = PRICE_CACHE.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < CACHE_TTL) return cached.data;
 
-    const history = await db.db.priceHistory.where('productId').equals(productId).toArray();
+    const history = await db.db.aiInsights_History.where('productId').equals(productId).toArray();
     if (history.length === 0) return null;
 
     // حساب التكرارات لكل شريك
@@ -68,7 +68,7 @@ export const PriceHistoryRepository = {
     const cached = PRICE_CACHE.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < CACHE_TTL) return cached.data;
 
-    const result = await db.db.priceHistory
+    const result = await db.db.aiInsights_History
       .where('productId').equals(productId)
       .filter(h => h.Customer === partnerName)
       .reverse()
@@ -88,7 +88,7 @@ export const PriceHistoryRepository = {
     const cached = PRICE_CACHE.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < CACHE_TTL) return cached.data;
 
-    const result = await db.db.priceHistory
+    const result = await db.db.aiInsights_History
       .where('productId').equals(productId)
       .reverse()
       .sortBy('Invoice_Date')
@@ -103,7 +103,7 @@ export const PriceHistoryRepository = {
     const cached = PRICE_CACHE.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < CACHE_TTL) return cached.data;
 
-    const history = await db.db.priceHistory.where('productId').equals(productId).toArray();
+    const history = await db.db.aiInsights_History.where('productId').equals(productId).toArray();
     if (history.length === 0) return null;
     
     // حساب المتوسط الحسابي البسيط

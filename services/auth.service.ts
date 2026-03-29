@@ -11,13 +11,40 @@ export const authService = {
   // للحصول على تجربة المحاكاة، يمكن تغيير الدور هنا يدوياً لاختبار الأدوار المختلفة
   // الخيارات: 'Admin', 'Accountant', 'DataEntry'
   getCurrentUser: (): User => {
+    const session = localStorage.getItem(SESSION_KEY);
+    if (session) {
+      try {
+        return JSON.parse(session);
+      } catch (e) {
+        localStorage.removeItem(SESSION_KEY);
+      }
+    }
+    // Default mock user for development if no session
     return {
-      User_Email: 'user@pharmaflow.local',
-      User_Name: 'موظف النظام',
-      Role: 'Admin', // افتراضياً Admin للمطور، يتم التحكم به برمجياً في الواجهة
+      user_id: 'USR-DEV-001',
+      User_Email: 'admin@pharmaflow.local',
+      User_Name: 'مدير النظام',
+      Role: 'Admin',
       Is_Active: true,
+      tenant_id: 'TEN-DEV-001',
       lastLogin: new Date().toISOString()
     };
+  },
+
+  login: async (email: string, password?: string, tenantId?: string): Promise<boolean> => {
+    // In a real SaaS, this would call Firebase Auth or a backend API
+    // For now, we simulate a successful login and store the tenant info
+    const mockUser: User = {
+      user_id: `USR-${Date.now()}`,
+      User_Email: email,
+      User_Name: email.split('@')[0],
+      Role: 'Admin',
+      Is_Active: true,
+      tenant_id: tenantId || 'TEN-DEV-001',
+      lastLogin: new Date().toISOString()
+    };
+    localStorage.setItem(SESSION_KEY, JSON.stringify(mockUser));
+    return true;
   },
 
   /**
@@ -71,5 +98,12 @@ export const authService = {
     if (!authService.hasPermission(permission)) {
       throw new Error(`خطأ أمني سيادي: لا تملك الصلاحيات الكافية لـ [${actionDescription}]. يرجى مراجعة مدير النظام.`);
     }
+  },
+
+  /**
+   * الحصول على معرف الفرع الحالي
+   */
+  getCurrentBranchId: (): string => {
+    return localStorage.getItem('pharmaflow_branch_id') || 'MAIN-BRANCH';
   }
 };

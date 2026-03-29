@@ -1,4 +1,5 @@
 import { db } from './database';
+import { ReportEngine } from './ReportEngine';
 
 export class AccountingReportsService {
   
@@ -11,26 +12,13 @@ export class AccountingReportsService {
 
   // 2. تحليل الربح على مستوى العميل (Top 10)
   static async getTopProfitableCustomers() {
-    return await db.db.customerProfits
-      .orderBy('totalProfit')
-      .reverse()
-      .limit(10)
-      .toArray();
+    return await ReportEngine.getCustomerProfitability();
   }
 
   // 3. الأصناف القريبة من الانتهاء (خلال 30 يوم)
   static async getExpiringSoonItems() {
-    const today = new Date();
-    const nextMonth = new Date();
-    nextMonth.setDate(today.getDate() + 30);
-    
-    return await db.db.inventory
-      .filter(item => {
-        if (!item.expiryDate) return false;
-        const expiry = new Date(item.expiryDate);
-        return expiry > today && expiry <= nextMonth;
-      })
-      .toArray();
+    const report = await ReportEngine.getExpiryReport();
+    return report.filter(r => r.daysRemaining <= 30 && r.daysRemaining > 0);
   }
 
   // 4. حركة الحسابات للفترة الحالية
@@ -40,5 +28,18 @@ export class AccountingReportsService {
       .reverse()
       .limit(limit)
       .toArray();
+  }
+
+  // New enterprise methods
+  static async getTrialBalance() {
+    return await ReportEngine.getTrialBalance();
+  }
+
+  static async getIncomeStatement() {
+    return await ReportEngine.getIncomeStatement();
+  }
+
+  static async getInventoryValuation() {
+    return await ReportEngine.getInventoryValuation();
   }
 }

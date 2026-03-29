@@ -177,39 +177,39 @@ const InventoryModule: React.FC<{ onNavigate?: (view: any) => void }> = ({ onNav
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#F8FAFA] font-['Cairo'] overflow-hidden" dir="rtl">
+    <div className="flex flex-col min-h-screen bg-[#F8FAFA] font-['Cairo']" dir="rtl">
       {/* Modern Header */}
-      <header className="p-10 pb-6 shrink-0 bg-white border-b border-slate-100 z-20">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-8 mb-10">
-          <div className="flex items-center gap-8">
-            <div className="w-20 h-20 bg-[#1E4D4D] text-white rounded-[32px] flex items-center justify-center shadow-2xl shadow-emerald-900/40">
-              <Layers size={36} />
+      <header className="p-4 sm:p-10 pb-6 shrink-0 bg-white border-b border-slate-100 z-20">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 sm:gap-8 mb-6 sm:mb-10">
+          <div className="flex items-center gap-4 sm:gap-8">
+            <div className="w-16 h-16 sm:w-20 sm:h-20 bg-[#1E4D4D] text-white rounded-[24px] sm:rounded-[32px] flex items-center justify-center shadow-2xl shadow-emerald-900/40">
+              <Layers size={28} className="sm:w-9 sm:h-9" />
             </div>
             <div>
-              <h2 className="text-4xl font-black text-[#1E4D4D] tracking-tighter leading-none">المستودع الرقمي</h2>
-              <p className="text-xs text-slate-400 font-bold uppercase tracking-[4px] mt-3 opacity-60">Inventory Management System</p>
+              <h2 className="text-2xl sm:text-4xl font-black text-[#1E4D4D] tracking-tighter leading-none">المستودع الرقمي</h2>
+              <p className="text-[10px] sm:text-xs text-slate-400 font-bold uppercase tracking-[2px] sm:tracking-[4px] mt-2 sm:mt-3 opacity-60">Inventory Management System</p>
             </div>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-3 sm:gap-4">
             <button 
               onClick={() => { setEditingProduct({ id: '', ProductID: db.generateId('ITM'), Name: '', DefaultUnit: 'حبة', LastPurchasePrice: 0, TaxDefault: 15, UnitPrice: 0, CostPrice: 0, StockQuantity: 0, ExpiryDate: '', MinLevel: 5, category: 'أدوية' } as any); setActiveTab('details'); }}
-              className="h-14 px-8 bg-[#1E4D4D] text-white rounded-[20px] flex items-center gap-3 text-sm font-black shadow-xl shadow-emerald-900/20 hover:scale-105 transition-all"
+              className="flex-1 sm:flex-none h-12 sm:h-14 px-4 sm:px-8 bg-[#1E4D4D] text-white rounded-[16px] sm:rounded-[20px] flex items-center justify-center gap-2 sm:gap-3 text-xs sm:text-sm font-black shadow-xl shadow-emerald-900/20 hover:scale-105 transition-all"
             >
-              <Plus size={20} />
-              <span>إضافة صنف جديد</span>
+              <Plus size={18} />
+              <span>إضافة صنف</span>
             </button>
             <button 
               onClick={() => onNavigate?.('inventory-audit')}
-              className="h-14 px-8 bg-white border border-slate-100 text-[#1E4D4D] rounded-[20px] flex items-center gap-3 text-sm font-black shadow-sm hover:bg-slate-50 transition-all"
+              className="flex-1 sm:flex-none h-12 sm:h-14 px-4 sm:px-8 bg-white border border-slate-100 text-[#1E4D4D] rounded-[16px] sm:rounded-[20px] flex items-center justify-center gap-2 sm:gap-3 text-xs sm:text-sm font-black shadow-sm hover:bg-slate-50 transition-all"
             >
-              <BarChart3 size={20} />
-              <span>جرد المخزون</span>
+              <BarChart3 size={18} />
+              <span>جرد</span>
             </button>
             <button 
               onClick={() => onNavigate?.('dashboard')}
-              className="w-14 h-14 bg-slate-50 text-slate-400 rounded-[20px] flex items-center justify-center hover:bg-slate-100 transition-all"
+              className="w-12 h-12 sm:w-14 sm:h-14 bg-slate-50 text-slate-400 rounded-[16px] sm:rounded-[20px] flex items-center justify-center hover:bg-slate-100 transition-all"
             >
-              <ArrowRight size={24} />
+              <ArrowRight size={20} />
             </button>
           </div>
         </div>
@@ -268,7 +268,7 @@ const InventoryModule: React.FC<{ onNavigate?: (view: any) => void }> = ({ onNav
       </header>
 
       {/* List Area */}
-      <div className="flex-1 min-h-0 bg-[#F8FAFA] pt-6" ref={containerRef}>
+      <div className="flex-1 bg-[#F8FAFA] pt-6" ref={containerRef}>
         <List 
           height={containerRef.current?.offsetHeight || 600} 
           itemCount={filteredAndSorted.length} 

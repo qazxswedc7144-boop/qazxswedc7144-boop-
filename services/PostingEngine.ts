@@ -16,6 +16,10 @@ export class PostingEngine {
   
   static async postSale(saleId: string): Promise<void> {
     if (this.isMaintenanceMode) throw new Error("PostingEngine is in maintenance mode");
+    
+    // Ensure accounts are seeded
+    await AccountingEngine.seedAccounts();
+
     const sale = await InvoiceRepository.getSaleById(saleId);
     if (!sale) throw new Error("Sale not found");
     if (sale.InvoiceStatus === 'POSTED') return;
@@ -102,6 +106,10 @@ export class PostingEngine {
 
   static async postPurchase(purchaseId: string): Promise<void> {
     if (this.isMaintenanceMode) throw new Error("PostingEngine is in maintenance mode");
+    
+    // Ensure accounts are seeded
+    await AccountingEngine.seedAccounts();
+
     const purchase = await InvoiceRepository.getPurchaseById(purchaseId);
     if (!purchase) throw new Error("Purchase not found");
     if (purchase.invoiceStatus === 'POSTED') return;
@@ -186,6 +194,10 @@ export class PostingEngine {
 
   static async postVoucher(voucherId: string): Promise<void> {
     if (this.isMaintenanceMode) throw new Error("PostingEngine is in maintenance mode");
+    
+    // Ensure accounts are seeded
+    await AccountingEngine.seedAccounts();
+
     const voucher = await db.db.cashFlow.get(voucherId);
     if (!voucher) throw new Error("Voucher not found");
     
@@ -219,6 +231,16 @@ export class PostingEngine {
         await db.updateAccountBalance(line.accountId, line.debit - line.credit);
       }
     }
+  }
+
+  static async repostSale(saleId: string): Promise<void> {
+    await this.unpostSale(saleId);
+    await this.postSale(saleId);
+  }
+
+  static async repostPurchase(purchaseId: string): Promise<void> {
+    await this.unpostPurchase(purchaseId);
+    await this.postPurchase(purchaseId);
   }
 
   private static createReversalEntry(entry: AccountingEntry, sourceId: string, sourceType: string): AccountingEntry {

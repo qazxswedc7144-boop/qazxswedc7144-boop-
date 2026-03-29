@@ -45,6 +45,14 @@ export const AccountRepository = {
   },
 
   addEntry: async (entry: AccountingEntry) => {
+    // Accounting Protection: Ensure total debit == total credit
+    const totalDebit = entry.lines.reduce((sum, l) => sum + (l.debit || 0), 0);
+    const totalCredit = entry.lines.reduce((sum, l) => sum + (l.credit || 0), 0);
+    
+    if (Math.abs(totalDebit - totalCredit) > 0.01) {
+      throw new Error(`قيد غير متزن: إجمالي المدين (${totalDebit}) لا يساوي إجمالي الدائن (${totalCredit}) للفاتورة #${entry.sourceId}`);
+    }
+
     await db.addJournalEntry(entry);
   },
 

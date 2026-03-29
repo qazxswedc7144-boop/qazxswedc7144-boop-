@@ -29,7 +29,7 @@ class ReportCacheService {
    * جلب البيانات مع التحقق من صلاحيتها زمنياً (Logic Evaluation)
    */
   get<T>(key: string): T | null {
-    const currentDbVersion = db.getVersion();
+    const currentDataVersion = db.getDataVersion();
     const entry = this.cache.get(key);
 
     if (!entry) return null;
@@ -42,7 +42,7 @@ class ReportCacheService {
     const isExpired = timeSinceCached > this.DEFAULT_TTL;
     
     // التحقق الإضافي من توافق إصدار الداتا (لضمان الدقة المالية)
-    const isOldVersion = entry.version !== currentDbVersion;
+    const isOldVersion = entry.version !== currentDataVersion;
 
     if (isExpired || isOldVersion) {
       this.cache.delete(key);
@@ -65,7 +65,7 @@ class ReportCacheService {
 
     const now = Date.now();
     this.cache.set(key, {
-      version: db.getVersion(),
+      version: db.getDataVersion(),
       data,
       CacheTimestamp: now,
       expiresAt: now + ttl,

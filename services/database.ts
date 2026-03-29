@@ -15,14 +15,17 @@ import {
   UserBehavior, HistoricalMetric, ProfitHealth,
   Warehouse, WarehouseStock, Currency, ExchangeRate, Category,
   InventoryItem, ItemProfitEntry, CustomerProfitEntry, SupplierProfitEntry,
-  AccountMovement, PurchaseByItemEntry, ExpiringItemEntry
+  AccountMovement, PurchaseByItemEntry, ExpiringItemEntry,
+  PeriodLockLog, AIInsight
 } from '../types';
 import { authService } from './auth.service';
 import { ErrorManager } from './errorManager';
+import { SyncService } from './SyncService';
 
 import { IS_PREVIEW } from '../constants';
 
 class PharmaFlowDB extends Dexie {
+  private dataVersion = 0;
   users!: Table<User, string>;
   userRoles!: Table<UserRoleEntry, string>; 
   products!: Table<Product, string>;
@@ -41,6 +44,8 @@ class PharmaFlowDB extends Dexie {
   partnerLedger!: Table<any, string>;
   pendingOperations!: Table<PendingOperation, string>;
   Accounting_Periods!: Table<AccountingPeriod, string>;
+  periodLockLogs!: Table<PeriodLockLog, string>;
+  aiInsights!: Table<AIInsight, string>;
   journalRules!: Table<any, string>;
   dailyAuditTask!: Table<DailyAuditTask, string>;
   bankTransactions!: Table<BankTransaction, string>;
@@ -56,7 +61,7 @@ class PharmaFlowDB extends Dexie {
   financialTransactions!: Table<FinancialTransaction, string>;
   voucherInvoiceLinks!: Table<VoucherInvoiceLink, string>;
   Invoice_Counters!: Table<InvoiceCounter, string>;
-  priceHistory!: Table<PriceHistory, string>;
+  aiInsights_History!: Table<PriceHistory, string>;
   Audit_Log!: Table<FinancialAuditEntry, string>;
   System_Error_Log!: Table<SystemErrorLog, string>;
   printTemplates!: Table<PrintTemplate, string>;
@@ -89,8 +94,8 @@ class PharmaFlowDB extends Dexie {
   constructor() {
     super('PharmaFlowDB');
     
-    // التحديث لإصدار 52 لدعم الفهرسة المتقدمة للتقارير السريعة
-    this.version(52).stores({
+    // التحديث لإصدار 56 لدعم محرك FIFO وAI Insights
+    this.version(56).stores({
       users: 'User_Email, User_Name, Role, Is_Active',
       userRoles: 'User_Email, Role_Type', 
       products: 'id, ProductID, Name, barcode, Is_Active, categoryId, supplierId',
@@ -108,7 +113,9 @@ class PharmaFlowDB extends Dexie {
       Invoice_Adjustments: 'AdjustmentID, InvoiceID, Type',
       partnerLedger: 'id, partnerId, date, referenceId, [partnerId+date]',
       pendingOperations: 'id, type, status',
-      Accounting_Periods: 'id, Start_Date, End_Date, Is_Closed',
+      Accounting_Periods: 'id, Start_Date, End_Date, Is_Locked',
+      periodLockLogs: 'id, periodId, user, timestamp',
+      aiInsights: 'id, type, severity, timestamp',
       journalRules: 'id',
       dailyAuditTask: 'date',
       bankTransactions: 'id, date',
@@ -116,7 +123,7 @@ class PharmaFlowDB extends Dexie {
       paymentGateways: 'id',
       medicineAlternatives: 'id, MedicineID',
       medicineAlerts: 'AlertID, ReferenceID',
-      medicineBatches: 'BatchID, ProductID',
+      medicineBatches: 'BatchID, ProductID, ExpiryDate, warehouseId, [ProductID+warehouseId]',
       snapshots: 'id, timestamp, type', 
       itemUnits: 'Unit_ID, Item_ID, Unit_Name',
       itemUsageLog: 'id, productId, timestamp, type, partnerId, userId, [productId+timestamp]',
@@ -124,7 +131,7 @@ class PharmaFlowDB extends Dexie {
       financialTransactions: 'Transaction_ID, Transaction_Type, Reference_ID, Entity_Name, Transaction_Date, [Reference_ID+Transaction_Type]',
       voucherInvoiceLinks: 'linkId, voucherId, invoiceId, Created_At',
       Invoice_Counters: 'Counter_Type',
-      priceHistory: 'id, productId, Item_Name, Customer, Invoice_Date',
+      aiInsights_History: 'id, productId, Item_Name, Customer, Invoice_Date', // Replaced priceHistory
       Audit_Log: 'Log_ID, Table_Name, Record_ID, Column_Name, Modified_At',
       System_Error_Log: 'Error_ID, Module_Name, Record_ID, User_Email, Timestamp',
       printTemplates: 'TemplateID, TemplateName, TemplateType, IsDefaultTemplate',
@@ -140,11 +147,11 @@ class PharmaFlowDB extends Dexie {
       historicalMetrics: 'id, month, type',
       profitHealth: 'id, date',
       warehouses: 'id, name, isDefault',
-      warehouseStock: 'id, warehouseId, productId',
+      warehouseStock: 'id, warehouseId, productId, [warehouseId+productId]',
       currencies: 'id, code, isBase',
       exchangeRates: 'id, fromCurrency, toCurrency, date',
-      stockReservations: 'id, productId, warehouseId, sourceDocId',
-      fifoCostLayers: 'id, productId, warehouseId, purchaseDocId, date',
+      stockReservations: 'id, productId, warehouseId, sourceDocId, [warehouseId+productId]',
+      fifoCostLayers: 'id, productId, quantityRemaining, purchaseDate, referenceId, isClosed',
       categories: 'id, categoryId, categoryName, isSystem',
       inventory: 'itemId, itemName, category, status, currentQuantity',
       itemProfits: 'id, itemId, itemName, totalSales, grossProfit',
@@ -185,6 +192,7 @@ class PharmaFlowDB extends Dexie {
         });
       });
       table.hook('deleting', (primaryKey, obj) => {
+        this.incrementDataVersion();
         import('./SyncService').then(({ SyncService }) => {
           SyncService.queueSync(name, String(primaryKey || (obj as any)[pk]), 'DELETE', { id: primaryKey });
         });
@@ -216,12 +224,22 @@ class PharmaFlowDB extends Dexie {
       { name: 'Customers', table: this.customers, pk: 'Supplier_ID' }
     ];
 
+    this.sales.hook('creating', (pk, obj) => {
+      this.updatePreCalculatedData('SALE', obj);
+    });
+    this.purchases.hook('creating', (pk, obj) => {
+      this.updatePreCalculatedData('PURCHASE', obj);
+    });
+
     financialTables.forEach(({ name, table, pk }) => {
       table.hook('creating', (primaryKey, obj) => {
+        this.incrementDataVersion();
         const recordId = String(primaryKey || (obj as any)[pk] || 'NEW');
         this.logAuditEntryAsync(name, recordId, 'ALL', 'NULL', 'Record Created', 'ADD');
+        SyncService.queueSync(name, recordId, 'CREATE', obj);
       });
       table.hook('updating', (mods, obj) => {
+        this.incrementDataVersion();
         const recordId = String((obj as any)[pk] || (obj as any).id || 'UNKNOWN');
         Object.keys(mods).forEach(key => {
           if (SENSITIVE_MAP[key]) {
@@ -232,10 +250,13 @@ class PharmaFlowDB extends Dexie {
             }
           }
         });
+        SyncService.queueSync(name, recordId, 'UPDATE', { ...(obj as any), ...(mods as any) });
       });
       table.hook('deleting', (primaryKey, obj) => {
+        this.incrementDataVersion();
         const recordId = String(primaryKey || (obj as any)[pk] || 'DELETED');
         this.logAuditEntryAsync(name, recordId, 'RECORD', 'Record Deleted', 'DELETED', 'DELETE');
+        SyncService.queueSync(name, recordId, 'DELETE', { id: recordId });
       });
     });
   }
@@ -258,13 +279,132 @@ class PharmaFlowDB extends Dexie {
     }, 0);
   }
 
+  generateId(prefix: string) { return `${prefix}-${Date.now()}-${Math.floor(Math.random()*10000)}`; }
+  getDataVersion() { return this.dataVersion; }
+  incrementDataVersion() { this.dataVersion++; }
+
+  private async updatePreCalculatedData(type: 'SALE' | 'PURCHASE', doc: any) {
+    setTimeout(async () => {
+      try {
+        if (type === 'SALE') {
+          const sale = doc as Sale;
+          // 1. Update Item Profits
+          for (const item of sale.items) {
+            const profitEntry = await this.itemProfits.get(item.product_id) || {
+              id: item.product_id,
+              itemId: item.product_id,
+              itemName: item.name,
+              totalSales: 0,
+              totalCost: 0,
+              grossProfit: 0,
+              profitMargin: 0,
+              unitsSold: 0,
+              period: { start: new Date().toISOString(), end: new Date().toISOString() }
+            };
+            
+            const cost = (sale.totalCost / sale.finalTotal) * item.sum || 0;
+            profitEntry.totalSales += item.sum;
+            profitEntry.totalCost += cost;
+            profitEntry.grossProfit = profitEntry.totalSales - profitEntry.totalCost;
+            profitEntry.profitMargin = (profitEntry.grossProfit / profitEntry.totalSales) * 100;
+            profitEntry.unitsSold += item.qty;
+            profitEntry.lastModified = new Date().toISOString();
+            await this.itemProfits.put(profitEntry);
+          }
+
+          // 2. Update Customer Profits
+          if (sale.customerId) {
+            const custProfit = await this.customerProfits.get(sale.customerId) || {
+              id: sale.customerId,
+              customerId: sale.customerId,
+              customerName: sale.customerId, // Should be fetched from customers table
+              totalPurchases: 0,
+              totalProfit: 0,
+              transactionsCount: 0,
+              period: { start: new Date().toISOString(), end: new Date().toISOString() }
+            };
+            custProfit.totalPurchases += sale.finalTotal;
+            custProfit.totalProfit += (sale.finalTotal - (sale.totalCost || 0));
+            custProfit.transactionsCount += 1;
+            custProfit.lastModified = new Date().toISOString();
+            await this.customerProfits.put(custProfit);
+          }
+
+          // 3. Update Account Movements
+          await this.accountMovements.add({
+            movementId: this.generateId('MOV'),
+            type: 'income',
+            amount: sale.finalTotal,
+            description: `بيع فاتورة #${sale.SaleID}`,
+            date: sale.date,
+            balance: 0, // Should be calculated
+            reference: { type: 'SALE', id: sale.id },
+            lastModified: new Date().toISOString()
+          });
+        } else {
+          const purchase = doc as Purchase;
+          // 1. Update Purchases By Item
+          for (const item of purchase.items) {
+            await this.purchasesByItem.add({
+              id: this.generateId('PBI'),
+              purchaseId: purchase.id,
+              itemId: item.product_id,
+              supplierId: purchase.partnerId,
+              quantity: item.qty,
+              unitCost: item.price,
+              totalCost: item.sum,
+              purchaseDate: purchase.date,
+              invoiceNumber: purchase.invoiceId,
+              lastModified: new Date().toISOString()
+            });
+          }
+
+          // 2. Update Account Movements
+          await this.accountMovements.add({
+            movementId: this.generateId('MOV'),
+            type: 'expense',
+            amount: purchase.totalAmount,
+            description: `شراء فاتورة #${purchase.invoiceId}`,
+            date: purchase.date,
+            balance: 0,
+            reference: { type: 'PURCHASE', id: purchase.id },
+            lastModified: new Date().toISOString()
+          });
+
+          // 3. Update Supplier Profits
+          if (purchase.partnerId) {
+            const supplierProfit = await this.supplierProfits.get(purchase.partnerId) || {
+              id: purchase.partnerId,
+              supplierId: purchase.partnerId,
+              supplierName: purchase.partnerId,
+              period: { start: purchase.date, end: purchase.date },
+              totalPurchases: 0,
+              totalSales: 0,
+              totalSalesFromSupplier: 0,
+              grossProfit: 0,
+              margin: 0,
+              transactionsCount: 0,
+              lastModified: new Date().toISOString()
+            } as SupplierProfitEntry;
+            supplierProfit.totalPurchases += purchase.totalAmount;
+            supplierProfit.transactionsCount += 1;
+            supplierProfit.lastModified = new Date().toISOString();
+            await this.supplierProfits.put(supplierProfit);
+          }
+        }
+      } catch (e) {
+        console.error("Pre-calculation error:", e);
+      }
+    }, 0);
+  }
+
   async isDateLocked(dateStr: string): Promise<boolean> {
     if (!dateStr) return false;
     const checkDate = new Date(dateStr);
     checkDate.setHours(0, 0, 0, 0);
     const periods = await this.Accounting_Periods.toArray();
     return periods.some((p: AccountingPeriod) => {
-      if (!p.Is_Closed) return false;
+      if (!p.Is_Locked) return false;
       const start = new Date(p.Start_Date);
       const end = new Date(p.End_Date);
       start.setHours(0, 0, 0, 0);
@@ -400,6 +540,8 @@ class LocalDatabase {
 
   generateId(prefix: string) { return `${prefix}-${Date.now()}-${Math.floor(Math.random()*10000)}`; }
   getVersion() { return this.version; }
+  getDataVersion() { return this.db.getDataVersion(); }
+  incrementDataVersion() { this.db.incrementDataVersion(); }
   getCurrentBranchId() { return 'MAIN'; }
 
   async runTransaction<T>(fn: () => Promise<T>): Promise<T> {
@@ -499,6 +641,7 @@ class LocalDatabase {
   async saveSetting(key: string, value: any) { await this.ensureOpen(); await this.db.settings.put({ key, value }); }
   async saveProduct(p: Product) { 
     await this.ensureOpen();
+    if (!p.id) p.id = p.ProductID || this.generateId('PRD');
     await this.db.products.put(p); 
   }
   async deleteProduct(id: string) { 
@@ -507,16 +650,19 @@ class LocalDatabase {
   }
   async saveSupplier(s: Supplier) { 
     await this.ensureOpen();
+    if (!s.id) s.id = s.Supplier_ID || this.generateId('SUP');
     await this.db.suppliers.put(s); 
     await this.init(); 
   }
   async saveCustomer(c: Supplier) { 
     await this.ensureOpen();
+    if (!c.id) c.id = c.Supplier_ID || this.generateId('CUS');
     await this.db.customers.put(c); 
     await this.init(); 
   }
   async addJournalEntry(entry: AccountingEntry) { 
     await this.ensureOpen();
+    if (!entry.id) entry.id = this.generateId('ENT');
     const isLocked = await this.getSetting('JOURNAL_EDIT_LOCKED', 'FALSE');
     if (isLocked === 'TRUE') {
       throw new Error("تعديل القيود المحاسبية معطل حالياً بسبب ارتفاع مستوى المخاطر 🛡️");
@@ -524,7 +670,12 @@ class LocalDatabase {
     await this.db.journalEntries.put(entry); 
   }
   async getCategories() { await this.ensureOpen(); return await this.db.categories.toArray(); }
-  async saveCategory(cat: Category) { await this.ensureOpen(); await this.db.categories.put(cat); await this.init(); }
+  async saveCategory(cat: Category) { 
+    await this.ensureOpen(); 
+    if (!cat.id) cat.id = this.generateId('CAT');
+    await this.db.categories.put(cat); 
+    await this.init(); 
+  }
   async deleteCategory(id: string) { 
     await this.ensureOpen();
     // Check if linked to products
@@ -566,26 +717,32 @@ class LocalDatabase {
       await this.db.purchases.put(purchase);
     }
   }
-  async processSale(customerId: string, items: any[], total: number, isReturn: boolean, inv: string, curr: string, status: string, pid?: string, invStatus: InvoiceStatus = 'PENDING', hash?: string, auditScore?: number, riskLevel?: 'LOW' | 'MEDIUM' | 'HIGH') {
+  async processSale(customerId: string, items: any[], total: number, isReturn: boolean, inv: string, curr: string, status: string, pid?: string, invStatus: InvoiceStatus = 'PENDING', hash?: string, auditScore?: number, riskLevel?: 'LOW' | 'MEDIUM' | 'HIGH', totalSaleCost?: number) {
     const products = await this.getProducts();
     const user = authService.getCurrentUser();
     const now = new Date().toISOString();
-    let totalSaleCost = 0;
-    items.forEach(item => {
-      const p = products.find(prod => prod.ProductID === item.product_id);
-      if (p) totalSaleCost += (p.CostPrice || 0) * item.qty;
-    });
+    
+    // إذا لم يتم توفير التكلفة (مثلاً من محرك FIFO)، نحسبها بالطريقة التقليدية
+    let finalSaleCost = totalSaleCost;
+    if (finalSaleCost === undefined || finalSaleCost === null) {
+      finalSaleCost = 0;
+      items.forEach(item => {
+        const p = products.find(prod => prod.ProductID === item.product_id);
+        if (p) finalSaleCost! += (p.CostPrice || 0) * item.qty;
+      });
+    }
+
     const sale: Sale = {
       id: inv || this.generateId('SALE'), SaleID: inv || this.generateId('INV'), date: now,
       customerId, finalTotal: total, subtotal: total, paymentStatus: status as any,
       paidAmount: status === 'Cash' ? total : 0, branchId: 'MAIN', items, 
-      totalCost: totalSaleCost, isReturn, currency: curr, InvoiceStatus: invStatus, tax: 0,
+      totalCost: finalSaleCost, isReturn, currency: curr, InvoiceStatus: invStatus, tax: 0,
       Created_By: user?.User_Email || 'SYSTEM', Created_At: now, lastModified: now,
       hash, auditScore, riskLevel
     };
     await this.db.sales.put(sale); 
     await this.addAuditLog(inv ? 'UPDATE' : 'CREATE', 'SALE', sale.id, `Sale ${sale.SaleID} processed with risk ${riskLevel || 'LOW'}`);
-    return { sale_id: sale.SaleID, totalSaleCost };
+    return { sale_id: sale.SaleID, totalSaleCost: finalSaleCost };
   }
   async processPurchase(supplierId: string, items: any[], total: number, inv: string, isCash: boolean, curr: string = 'USD', invStatus: InvoiceStatus = 'PENDING', type: string = 'شراء', hash?: string, auditScore?: number, riskLevel?: 'LOW' | 'MEDIUM' | 'HIGH') {
     const user = authService.getCurrentUser();
@@ -673,18 +830,40 @@ class LocalDatabase {
     return state;
   }
   async getValidationRules() { return await this.db.validationRules.toArray(); }
-  async saveAccount(account: any) { await this.db.accounts.put(account); await this.init(); }
+  async saveAccount(account: any) { 
+    if (!account.id) account.id = this.generateId('ACC');
+    await this.db.accounts.put(account); 
+    await this.init(); 
+  }
   async deleteAccount(id: string) { await this.db.accounts.delete(id); await this.init(); }
   async updateSyncDate() { await this.saveSetting('last_sync_date', new Date().toISOString()); }
-  async updatePendingOperation(op: any) { await this.db.pendingOperations.put(op); }
+  async updatePendingOperation(op: any) { 
+    if (!op.id) op.id = this.generateId('POP');
+    await this.db.pendingOperations.put(op); 
+  }
   async removePendingOperation(id: string) { await this.db.pendingOperations.delete(id); }
-  async addPendingOperation(op: any) { await this.db.pendingOperations.add(op); }
-  async saveBankTransactions(txs: any[]) { await this.db.bankTransactions.bulkPut(txs); }
+  async addPendingOperation(op: any) { 
+    if (!op.id) op.id = this.generateId('POP');
+    await this.db.pendingOperations.add(op); 
+  }
+  async saveBankTransactions(txs: any[]) { 
+    txs.forEach(tx => {
+      if (!tx.id) tx.id = this.generateId('BTX');
+    });
+    await this.db.bankTransactions.bulkPut(txs); 
+  }
   async getBankAccounts() { return await this.db.bankAccounts.toArray(); }
-  async saveBankAccount(acc: any) { await this.db.bankAccounts.put(acc); }
+  async saveBankAccount(acc: any) { 
+    if (!acc.id) acc.id = this.generateId('BAC');
+    await this.db.bankAccounts.put(acc); 
+  }
   getPaymentGateways() { return this.cache.paymentGateways || []; }
   async getBankTransactions() { return await this.db.bankTransactions.toArray(); }
-  async savePaymentGateway(gw: any) { await this.db.paymentGateways.put(gw); await this.init(); }
+  async savePaymentGateway(gw: any) { 
+    if (!gw.id) gw.id = this.generateId('PGW');
+    await this.db.paymentGateways.put(gw); 
+    await this.init(); 
+  }
   async getLatestPartnerLedgerEntry(partnerId: string) {
     if (!partnerId) return undefined;
     return await this.db.partnerLedger.where('partnerId').equals(partnerId).reverse().sortBy('date').then(res => res[0]);
@@ -697,20 +876,32 @@ class LocalDatabase {
     purchases.forEach(p => txs.push({ id: p.id, date: p.date, amount: p.totalAmount, type: 'purchase', customer: p.partnerId }));
     return txs;
   }
-  async addPartnerLedgerEntry(entry: any) { await this.db.partnerLedger.add(entry); }
-  async saveAccountingPeriod(period: any) { await this.db.Accounting_Periods.put(period); }
+  async addPartnerLedgerEntry(entry: any) { 
+    if (!entry.id) entry.id = this.generateId('PLE');
+    await this.db.partnerLedger.add(entry); 
+  }
+  async saveAccountingPeriod(period: any) { 
+    if (!period.id) period.id = this.generateId('PER');
+    await this.db.Accounting_Periods.put(period); 
+  }
   async getProductByBarcode(barcode: string) { 
     if (!barcode) return undefined;
     return await this.db.products.where('barcode').equals(barcode).first(); 
   }
   getItemUnits(itemId: string) { return (this.cache.itemUnits || []).filter((u: any) => u.Item_ID === itemId); }
   async getMedicineAlerts() { return await this.db.medicineAlerts.toArray(); }
-  async saveMedicineAlert(alert: any) { await this.db.medicineAlerts.put(alert); }
+  async saveMedicineAlert(alert: any) { 
+    if (!alert.AlertID) alert.AlertID = this.generateId('MAL');
+    await this.db.medicineAlerts.put(alert); 
+  }
   async getInvoiceAdjustments(invoiceId?: string) {
     if (invoiceId) return await this.db.Invoice_Adjustments.where('InvoiceID').equals(invoiceId).toArray();
     return await this.db.Invoice_Adjustments.toArray();
   }
-  async saveInvoiceAdjustment(adj: any) { await this.db.Invoice_Adjustments.put(adj); }
+  async saveInvoiceAdjustment(adj: any) { 
+    if (!adj.AdjustmentID) adj.AdjustmentID = this.generateId('IAD');
+    await this.db.Invoice_Adjustments.put(adj); 
+  }
   async deleteInvoiceAdjustment(id: string) { await this.db.Invoice_Adjustments.delete(id); }
 }
 

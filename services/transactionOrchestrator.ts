@@ -19,6 +19,9 @@ import { LockService } from './LockService';
 import { AIAuditEngine } from './AIAuditEngine';
 import { InventoryService } from './InventoryService';
 import { AccountingEngine } from './AccountingEngine';
+import { PeriodLockEngine } from './PeriodLockEngine';
+import { FIFOEngine } from './FIFOEngine';
+import { AIInsightsEngine } from './AIInsightsEngine';
 
 export interface SaleOptions {
   isCash: boolean;
@@ -47,151 +50,194 @@ export interface InvoiceRequest {
 
 export const transactionOrchestrator = {
   async processInvoiceTransaction(invoice: InvoiceRequest): Promise<{ success: boolean; refId?: string }> {
-    let finalStatus: InvoiceStatus = invoice.options?.invoiceStatus || 'PENDING';
-    const isEdit = !!(invoice.payload.invoiceId || invoice.payload.id);
-    const invoiceDate = invoice.payload.date || (invoice.options as any)?.date || new Date().toISOString();
-    const isReturn = !!invoice.options?.isReturn;
-
-    // 1. حماية الصلاحيات
-    authService.assertPermission(isEdit ? 'EDIT_INVOICE' : 'CREATE_INVOICE', isEdit ? 'تعديل مستند' : 'إنشاء مستند');
-
-    // 2. فحص سير العمل عبر محرك القواعد المركزي (BRE)
-    if (isEdit) {
-       const table = invoice.type === 'SALE' ? 'sales' : 'purchases';
-       const id = invoice.payload.invoiceId || invoice.payload.id!;
-       
-       if (await LockService.isLockedByOther(table, id)) {
-          throw new ValidationError("هذا السجل مقفل حالياً بواسطة مستخدم آخر 🔒");
-       }
-       
-       const existing = invoice.type === 'SALE' 
-          ? await InvoiceRepository.getSaleById(id)
-          : await InvoiceRepository.getPurchaseById(id);
-       
-       // LOGIC: If invoice is linked to a financial voucher -> prevent total change
-       const hasVoucher = await InvoiceRepository.checkHasDependencies(id, invoice.type);
-       if (hasVoucher && existing) {
-          const payloadTotal = invoice.payload.total;
-          const existingTotal = (existing as any).finalTotal || (existing as any).totalAmount || 0;
-          if (Math.abs(payloadTotal - existingTotal) > 0.01) {
-             throw new ValidationError("لا يمكن تعديل إجمالي الفاتورة لأنها مرتبطة بسند مالي. يسمح فقط بتعديل الملاحظات. 🔗");
-          }
-       }
-
-       const currentStatus = (existing as any)?.InvoiceStatus || (existing as any)?.invoiceStatus || 'DRAFT';
-       if (!BusinessRulesEngine.workflow.canTransitionTo(currentStatus, finalStatus)) {
-          throw new ValidationError(`BRE Constraint: لا يمكن الانتقال من [${currentStatus}] إلى [${finalStatus}] ⚠️`);
-       }
-
-       await LockService.acquireLock(table, id);
+    // 1. Global Transaction Lock (Prevent parallel operations / double click)
+    const lockAcquired = await LockService.acquireGlobalTransactionLock();
+    if (!lockAcquired) {
+      throw new ValidationError("العملية قيد المعالجة حالياً، يرجى الانتظار... ⏳");
     }
 
-    // 3. التحقق الموحد (تم نقله للمستودع ولكن نترك التحقق الرياضي هنا كطبقة إضافية)
-    FinancialIntegrityValidator.validateInvoiceMath(invoice.payload.items, invoice.payload.total);
+    try {
+      let finalStatus: InvoiceStatus = invoice.options?.invoiceStatus || 'PENDING';
+      const isEdit = !!(invoice.payload.invoiceId || invoice.payload.id);
+      const invoiceDate = invoice.payload.date || (invoice.options as any)?.date || new Date().toISOString();
+      const isReturn = !!invoice.options?.isReturn;
+      const invoiceId = invoice.payload.invoiceId || invoice.payload.id;
 
-    const isPostingAction = finalStatus === 'POSTED' || finalStatus === 'LOCKED';
-
-    if (isPostingAction) {
-      const integrity = await integrityVerifier.verifyChain();
-      if (!integrity.isValid) throw new SecurityError("Security Breach: تلاعب بالسجلات مكتشف.");
-    }
-
-    // PHASE: AI Audit
-    const auditResult = await AIAuditEngine.auditInvoice(
-      invoice.type, 
-      invoice.payload as any, 
-      invoice.payload.items, 
-      authService.getCurrentUser().User_Email
-    );
-    
-    const isAuditIntensive = await db.getSetting('AUDIT_INTENSIVE_MODE', 'FALSE') === 'TRUE';
-    if (isAuditIntensive) {
-      console.warn("AUDIT INTENSIVE MODE ACTIVE: Forcing deep validation 🛡️");
-      // Force extra validation if needed
-    }
-
-    if (auditResult.riskLevel === 'HIGH' && !(invoice.payload as any).isApproved && isPostingAction) {
-      // Auto Lock High Risk Mode
-      finalStatus = 'LOCKED';
-      console.warn(`[AI_Audit] High Risk Invoice ${invoice.payload.id} Auto-Locked for Admin Approval.`);
-      // We still allow saving but as LOCKED
-    }
-
-    // PHASE: Inventory Validation (Pre-Transaction)
-    const warehouseId = (invoice.options as any)?.warehouseId || 'WH-MAIN';
-    if (invoice.type === 'SALE' && isPostingAction) {
+      // 2. Data Validation Layer
+      if (!invoice.payload.items || invoice.payload.items.length === 0) {
+        throw new ValidationError("يجب إضافة صنف واحد على الأقل للفاتورة.");
+      }
       for (const item of invoice.payload.items) {
-        await InventoryService.validateStockAvailability(warehouseId, item.product_id, item.qty);
+        if (item.qty <= 0) throw new ValidationError(`الكمية للصنف [${item.name}] يجب أن تكون أكبر من صفر.`);
+        if (item.price < 0) throw new ValidationError(`السعر للصنف [${item.name}] لا يمكن أن يكون سالباً.`);
       }
-    }
+      if (invoice.payload.total < 0) throw new ValidationError("إجمالي الفاتورة لا يمكن أن يكون سالباً.");
 
-    return await db.runTransaction(async () => {
-      // 4. التنفيذ عبر البوتات
-      let result;
-      const userId = authService.getCurrentUser().User_Email;
-
-      if (invoice.type === 'SALE') {
-        result = await this.executeSaleBot(
-          invoice.payload.customerId!, 
-          invoice.payload.items, 
-          invoice.payload.total, 
-          { ...(invoice.options as SaleOptions), invoiceStatus: finalStatus, date: invoiceDate }, 
-          invoice.payload.invoiceId || invoice.payload.id,
-          auditResult.auditScore,
-          auditResult.riskLevel
-        );
-      } else {
-        result = await this.executePurchaseBot(
-          invoice.payload.supplierId!, 
-          invoice.payload.items, 
-          invoice.payload.total, 
-          invoice.payload.invoiceId || invoice.payload.id, 
-          (invoice.options as any)?.isCash || false, 
-          finalStatus, 
-          invoiceDate, 
-          isReturn,
-          auditResult.auditScore,
-          auditResult.riskLevel
-        );
+      // 3. Duplicate Prevention (Check invoice_id uniqueness for new invoices)
+      if (!isEdit && invoiceId) {
+        const table = invoice.type === 'SALE' ? 'sales' : 'purchases';
+        const exists = await (db.db as any)[table].get(invoiceId);
+        if (exists) {
+          throw new ValidationError(`رقم الفاتورة [${invoiceId}] موجود مسبقاً في النظام.`);
+        }
       }
 
-      const refId = invoice.payload.invoiceId || (result as any)?.sale_id || (result as any)?.purchase_id;
-      
-      // 5. محرك تحليل سجل الأسعار
-      if (isPostingAction) {
-        const partnerId = invoice.type === 'SALE' ? invoice.payload.customerId : invoice.payload.supplierId;
-        await priceIntelligenceService.recordInvoiceUsage(
-          invoice.payload.items, 
-          invoice.type, 
-          partnerId || 'عميل نقدي', 
-          authService.getCurrentUser().User_Email
-        );
-      }
+      // 4. Accounting Period Lock Check
+      await PeriodLockEngine.validateOperation(invoiceDate, isEdit ? 'تعديل' : 'إنشاء');
 
+      // 5. Permissions Check
+      authService.assertPermission(isEdit ? 'EDIT_INVOICE' : 'CREATE_INVOICE', isEdit ? 'تعديل مستند' : 'إنشاء مستند');
+
+      // 6. Record Locking (For edits)
       if (isEdit) {
         const table = invoice.type === 'SALE' ? 'sales' : 'purchases';
-        const id = invoice.payload.invoiceId || invoice.payload.id!;
-        await LockService.releaseLock(table, id);
+        const id = invoiceId!;
+        
+        if (await LockService.isLockedByOther(table, id)) {
+           throw new ValidationError("هذا السجل مقفل حالياً بواسطة مستخدم آخر 🔒");
+        }
+        
+        const existing = invoice.type === 'SALE' 
+           ? await InvoiceRepository.getSaleById(id)
+           : await InvoiceRepository.getPurchaseById(id);
+        
+        // LOGIC: If invoice is linked to a financial voucher -> prevent total change
+        const hasVoucher = await InvoiceRepository.checkHasDependencies(id, invoice.type);
+        if (hasVoucher && existing) {
+           const payloadTotal = invoice.payload.total;
+           const existingTotal = (existing as any).finalTotal || (existing as any).totalAmount || 0;
+           if (Math.abs(payloadTotal - existingTotal) > 0.01) {
+              throw new ValidationError("لا يمكن تعديل إجمالي الفاتورة لأنها مرتبطة بسند مالي. يسمح فقط بتعديل الملاحظات. 🔗");
+           }
+        }
+
+        const currentStatus = (existing as any)?.InvoiceStatus || (existing as any)?.invoiceStatus || 'DRAFT';
+        if (!BusinessRulesEngine.workflow.canTransitionTo(currentStatus, finalStatus)) {
+           throw new ValidationError(`BRE Constraint: لا يمكن الانتقال من [${currentStatus}] إلى [${finalStatus}] ⚠️`);
+        }
+
+        await LockService.acquireLock(table, id);
+        
+        // 7. Backup Before Critical Actions (Edit)
+        await BackupService.createBackup(`Auto Backup before Edit #${id}`, 'PRE_EDIT', true);
       }
 
-      // 6. تسجيل التاريخ والأثر المالي
-      await SharedAutomationActions.syncDocumentHistory(
-        refId, 
-        isPostingAction ? 'POSTED' : 'CREATED',
-        `تمت معالجة ${isReturn ? 'مرتجع' : 'فاتورة'} ${invoice.type === 'SALE' ? 'مبيعات' : 'مشتريات'} بحالة [${finalStatus}]`
-      );
+      // 8. Financial Integrity Math Check
+      FinancialIntegrityValidator.validateInvoiceMath(invoice.payload.items, invoice.payload.total);
+
+      const isPostingAction = finalStatus === 'POSTED' || finalStatus === 'LOCKED';
 
       if (isPostingAction) {
-        await this.applyFinancialImpact(invoice, refId, invoiceDate, isReturn);
+        const integrity = await integrityVerifier.verifyChain();
+        if (!integrity.isValid) throw new SecurityError("Security Breach: تلاعب بالسجلات مكتشف.");
       }
 
-      // 7. تشغيل محرك المطابقة
-      const partnerId = invoice.type === 'SALE' ? invoice.payload.customerId : invoice.payload.supplierId;
-      const itemIds = invoice.payload.items.map(it => it.product_id);
-      await ReconciliationEngine.reconcileDocument(refId, partnerId, itemIds);
+      // PHASE: AI Audit
+      const auditResult = await AIAuditEngine.auditInvoice(
+        invoice.type, 
+        invoice.payload as any, 
+        invoice.payload.items, 
+        authService.getCurrentUser().User_Email
+      );
+      
+      if (auditResult.riskLevel === 'HIGH' && !(invoice.payload as any).isApproved && isPostingAction) {
+        finalStatus = 'LOCKED';
+        console.warn(`[AI_Audit] High Risk Invoice ${invoice.payload.id} Auto-Locked for Admin Approval.`);
+      }
 
-      return { success: true, refId };
-    });
+      // PHASE: Inventory Validation (Pre-Transaction)
+      const warehouseId = (invoice.options as any)?.warehouseId || 'WH-MAIN';
+      if (invoice.type === 'SALE' && isPostingAction) {
+        for (const item of invoice.payload.items) {
+          await InventoryService.validateStockAvailability(warehouseId, item.product_id, item.qty);
+        }
+      }
+
+      // 9. ATOMIC TRANSACTION EXECUTION
+      return await db.runTransaction(async () => {
+        let result;
+        const userId = authService.getCurrentUser().User_Email;
+
+        if (invoice.type === 'SALE') {
+          result = await this.executeSaleBot(
+            invoice.payload.customerId!, 
+            invoice.payload.items, 
+            invoice.payload.total, 
+            { ...(invoice.options as SaleOptions), invoiceStatus: finalStatus, date: invoiceDate }, 
+            invoiceId,
+            auditResult.auditScore,
+            auditResult.riskLevel
+          );
+        } else {
+          result = await this.executePurchaseBot(
+            invoice.payload.supplierId!, 
+            invoice.payload.items, 
+            invoice.payload.total, 
+            invoiceId, 
+            (invoice.options as any)?.isCash || false, 
+            finalStatus, 
+            invoiceDate, 
+            isReturn,
+            auditResult.auditScore,
+            auditResult.riskLevel
+          );
+        }
+
+        const refId = invoiceId || (result as any)?.sale_id || (result as any)?.purchase_id;
+        
+        if (isPostingAction) {
+          setTimeout(() => AIInsightsEngine.runAnalysis(), 1000);
+
+          const partnerId = invoice.type === 'SALE' ? invoice.payload.customerId : invoice.payload.supplierId;
+          await priceIntelligenceService.recordInvoiceUsage(
+            invoice.payload.items, 
+            invoice.type, 
+            partnerId || 'عميل نقدي', 
+            authService.getCurrentUser().User_Email
+          );
+        }
+
+        if (isEdit) {
+          const table = invoice.type === 'SALE' ? 'sales' : 'purchases';
+          await LockService.releaseLock(table, invoiceId!);
+        }
+
+        await SharedAutomationActions.syncDocumentHistory(
+          refId, 
+          isPostingAction ? 'POSTED' : 'CREATED',
+          `تمت معالجة ${isReturn ? 'مرتجع' : 'فاتورة'} ${invoice.type === 'SALE' ? 'مبيعات' : 'مشتريات'} بحالة [${finalStatus}]`
+        );
+
+        if (isPostingAction) {
+          await this.applyFinancialImpact(invoice, refId, invoiceDate, isReturn);
+          
+          const sale = await InvoiceRepository.getSaleById(refId);
+          if (sale) {
+            const entry = isReturn 
+              ? await AccountingEngine.generateReturnEntry(sale, sale.items)
+              : await AccountingEngine.generateSalesEntry(sale, sale.items);
+            await AccountRepository.addEntry(entry);
+          }
+        }
+
+        const partnerId = invoice.type === 'SALE' ? invoice.payload.customerId : invoice.payload.supplierId;
+        const itemIds = invoice.payload.items.map(it => it.product_id);
+        await ReconciliationEngine.reconcileDocument(refId, partnerId, itemIds);
+
+        // 10. Logging System
+        await db.addAuditLog(isEdit ? 'UPDATE' : 'CREATE', invoice.type, refId, 
+          `Invoice ${refId} ${isEdit ? 'updated' : 'created'} and ${isPostingAction ? 'posted' : 'saved as draft'} by ${userId}`);
+
+        return { success: true, refId };
+      });
+    } catch (error: any) {
+      console.error("Transaction Orchestrator Error:", error);
+      // 11. Error Handling & Rollback (Rollback is automatic by db.runTransaction if error thrown inside)
+      throw error; 
+    } finally {
+      // 12. Release Global Lock
+      await LockService.releaseGlobalTransactionLock();
+    }
   },
 
   async applyFinancialImpact(invoice: InvoiceRequest, refId: string, invoiceDate: string, isReturn: boolean) {
@@ -244,8 +290,22 @@ export const transactionOrchestrator = {
       await SharedAutomationActions.applyInventoryMovement(items, 'SALE', isReturn, docId);
     }
 
-    const { sale_id, totalSaleCost } = await InvoiceRepository.saveSale(
-      customerId, items, total, isReturn, invoiceId || '', options.currency, options.paymentStatus, options.invoiceStatus, auditScore, riskLevel
+    // حساب التكلفة بناءً على محرك FIFO
+    let totalSaleCost = 0;
+    if (isPosting) {
+      if (!isReturn) {
+        totalSaleCost = await FIFOEngine.calculateInvoiceCOGS(items);
+      } else {
+        // في حالة المرتجع، نقوم بعكس التكلفة (إعادة الطبقات)
+        for (const item of items) {
+          const product = await db.db.products.get(item.product_id);
+          await FIFOEngine.reverseConsumption(item.product_id, item.qty, product?.CostPrice || 0);
+        }
+      }
+    }
+
+    const { sale_id } = await InvoiceRepository.saveSale(
+      customerId, items, total, isReturn, invoiceId || '', options.currency, options.paymentStatus, options.invoiceStatus, auditScore, riskLevel, totalSaleCost
     );
 
     if (isPosting) {
@@ -273,6 +333,13 @@ export const transactionOrchestrator = {
 
     if (isPosting) {
       await SharedAutomationActions.applyInventoryMovement(items, 'PURCHASE', isReturn, purchaseRef);
+      
+      // إضافة طبقات التكلفة لمحرك FIFO عند الشراء
+      if (!isReturn) {
+        for (const item of items) {
+          await FIFOEngine.addPurchaseLayer(item.product_id, item.qty, item.price, date || new Date().toISOString(), purchaseRef);
+        }
+      }
     }
 
     const { purchase_id } = await InvoiceRepository.savePurchase(
@@ -324,9 +391,7 @@ export const transactionOrchestrator = {
       // Phase 1: Validation Before Unpost
       // 1) Block if accounting period is closed.
       const date = (invoice as any).date || (invoice as any).Date;
-      if (await db.isDateLocked(date)) {
-        throw new ValidationError("Invoice cannot be unposted due to accounting restrictions (Period Locked).");
-      }
+      await PeriodLockEngine.validateOperation(date, 'إلغاء ترحيل');
 
       // 2) Block if invoice linked to locked tax report. (Assuming period lock covers this for now)
       // 3) Block if invoice has reconciled payments.
@@ -441,21 +506,33 @@ export const transactionOrchestrator = {
   },
 
   async deleteInvoice(invoiceId: string, type: 'SALE' | 'PURCHASE'): Promise<{ success: boolean }> {
-    const table = type === 'SALE' ? 'sales' : 'purchases';
-    if (await LockService.isLockedByOther(table, invoiceId)) {
-      throw new ValidationError("هذا السجل مقفل حالياً بواسطة مستخدم آخر 🔒");
+    // 1. Global Transaction Lock
+    const lockAcquired = await LockService.acquireGlobalTransactionLock();
+    if (!lockAcquired) {
+      throw new ValidationError("العملية قيد المعالجة حالياً، يرجى الانتظار... ⏳");
     }
 
-    const invoice = type === 'SALE' 
-      ? await InvoiceRepository.getSaleById(invoiceId)
-      : await InvoiceRepository.getPurchaseById(invoiceId);
-    
-    if (!invoice) throw new ValidationError("Invoice not found.");
-    
-    await LockService.acquireLock(table, invoiceId);
-
     try {
-      // PHASE 3 — AUTO BACKUP RULES
+      const table = type === 'SALE' ? 'sales' : 'purchases';
+      if (await LockService.isLockedByOther(table, invoiceId)) {
+        throw new ValidationError("هذا السجل مقفل حالياً بواسطة مستخدم آخر 🔒");
+      }
+
+      const invoice = type === 'SALE' 
+        ? await InvoiceRepository.getSaleById(invoiceId)
+        : await InvoiceRepository.getPurchaseById(invoiceId);
+      
+      if (!invoice) throw new ValidationError("Invoice not found.");
+
+      // 2. Safe Delete: Check dependencies before delete
+      const hasDeps = await InvoiceRepository.checkHasDependencies(invoiceId, type);
+      if (hasDeps) {
+        throw new ValidationError("لا يمكن حذف الفاتورة لوجود مستندات مرتبطة بها (سندات قبض/صرف). يرجى حذف الارتباطات أولاً.");
+      }
+      
+      await LockService.acquireLock(table, invoiceId);
+
+      // 3. Backup Before Critical Actions (Delete)
       await BackupService.createBackup(`Auto Backup before Delete #${invoiceId}`, 'PRE_DELETE', true);
 
       const status = (invoice as any).InvoiceStatus || (invoice as any).invoiceStatus;
@@ -480,12 +557,17 @@ export const transactionOrchestrator = {
           await db.db.purchases.put(purchase);
         }
         
-        await db.addAuditLog('DELETE', type, invoiceId, `Invoice marked as VOID (Soft Delete)`);
+        await db.addAuditLog('DELETE', type, invoiceId, `Invoice marked as VOID (Soft Delete) by ${authService.getCurrentUser().User_Email}`);
         return { success: true };
       });
       return result;
+    } catch (error: any) {
+      console.error("Delete Invoice Error:", error);
+      throw error;
     } finally {
+      const table = type === 'SALE' ? 'sales' : 'purchases';
       await LockService.releaseLock(table, invoiceId);
+      await LockService.releaseGlobalTransactionLock();
     }
   }
 };

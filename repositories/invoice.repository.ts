@@ -130,14 +130,14 @@ export const InvoiceRepository = {
 
   getAllSales: async (): Promise<Sale[]> => await db.getSales(),
   getSaleById: async (id: string) => await db.db.sales.where('SaleID').equals(id).first() || await db.db.sales.get(id),
-  saveSale: async (cId: string, items: any[], total: number, isR: boolean, inv: string, curr: string, st: string, invSt: InvoiceStatus = 'PENDING', auditScore?: number, riskLevel?: 'LOW' | 'MEDIUM' | 'HIGH') => {
+  saveSale: async (cId: string, items: any[], total: number, isR: boolean, inv: string, curr: string, st: string, invSt: InvoiceStatus = 'PENDING', auditScore?: number, riskLevel?: 'LOW' | 'MEDIUM' | 'HIGH', totalSaleCost?: number) => {
     return await db.runTransaction(async () => {
       const invoiceData = { id: inv, customerId: cId, items, finalTotal: total, date: new Date().toISOString() };
       
-      // Phase 7: Day Lock System
-      if (await db.isDateLocked(invoiceData.date)) {
-        throw new Error("Accounting period closed (الفترة المحاسبية مغلقة)");
-      }
+      // Phase 7: Day Lock System (تم استبداله بـ PeriodLockEngine في المنسق)
+      // if (await db.isDateLocked(invoiceData.date)) {
+      //   throw new Error("Accounting period closed (الفترة المحاسبية مغلقة)");
+      // }
 
       // Phase 1: State Engine Validation
       if (inv) {
@@ -169,7 +169,7 @@ export const InvoiceRepository = {
       // Phase 2 & 3: Validation & Hashing
       const hash = await InvoiceValidationEngine.validate(invoiceData, 'SALE');
       
-      const result = await db.processSale(cId, items, total, isR, inv, curr, st, undefined, invSt, hash, auditScore, riskLevel);
+      const result = await db.processSale(cId, items, total, isR, inv, curr, st, undefined, invSt, hash, auditScore, riskLevel, totalSaleCost);
       if (inv) await LockService.releaseLock('sales', inv);
       return result;
     });
@@ -178,10 +178,10 @@ export const InvoiceRepository = {
     return await db.runTransaction(async () => {
       const invoiceData = { id: inv, partnerId: sId, items, totalAmount: total, date: new Date().toISOString() };
       
-      // Phase 7: Day Lock System
-      if (await db.isDateLocked(invoiceData.date)) {
-        throw new Error("Accounting period closed (الفترة المحاسبية مغلقة)");
-      }
+      // Phase 7: Day Lock System (تم استبداله بـ PeriodLockEngine في المنسق)
+      // if (await db.isDateLocked(invoiceData.date)) {
+      //   throw new Error("Accounting period closed (الفترة المحاسبية مغلقة)");
+      // }
 
       // Phase 1: State Engine Validation
       if (inv) {

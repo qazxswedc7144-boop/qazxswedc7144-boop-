@@ -165,6 +165,8 @@ export class LoadTestService {
           SourceDocumentID: `DOC-${i}`,
           TransactionType: i % 2 === 0 ? 'PURCHASE' : 'SALE',
           QuantityChange: i % 2 === 0 ? 10 : -1,
+          before_qty: 100,
+          after_qty: i % 2 === 0 ? 110 : 99,
           TransactionDate: date.toISOString(),
           UserID: 'LOAD_TEST',
           Created_By: 'LOAD_TEST',
