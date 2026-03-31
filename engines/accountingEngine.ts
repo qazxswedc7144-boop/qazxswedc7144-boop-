@@ -1,19 +1,19 @@
 
-import { Sale, Purchase, CashFlow, AccountingEntry, Product, Supplier, InvoiceAdjustment } from '../types';
+import { Sale, Purchase, CashFlow, AccountingEntry, Product, Supplier, InvoiceAdjustment, JournalLine } from '../types';
 
 export class AccountingEngine {
   /**
    * Calculates the total amount for a sale, including taxes and discounts.
    */
   static calculateSaleTotal(sale: Sale, adjustments: InvoiceAdjustment[] = []): number {
-    let total = sale.items.reduce((acc, item) => acc + (item.Quantity * item.UnitPrice), 0);
+    let total = sale.items.reduce((acc, item) => acc + (item.qty * item.price), 0);
     
     // Apply adjustments
     adjustments.forEach(adj => {
-      if (adj.Type === 'DISCOUNT') {
-        total -= adj.Amount;
-      } else if (adj.Type === 'TAX') {
-        total += adj.Amount;
+      if (adj.Type === 'Discount') {
+        total -= adj.Value;
+      } else if (adj.Type === 'Tax Adjustment') {
+        total += adj.Value;
       }
     });
 
@@ -24,82 +24,88 @@ export class AccountingEngine {
    * Calculates the total amount for a purchase.
    */
   static calculatePurchaseTotal(purchase: Purchase): number {
-    return purchase.items.reduce((acc, item) => acc + (item.Quantity * item.CostPrice), 0);
+    return purchase.items.reduce((acc, item) => acc + (item.qty * item.price), 0);
   }
 
   /**
    * Generates accounting entries for a sale.
    */
   static generateSaleEntries(sale: Sale, total: number): AccountingEntry[] {
-    const entries: AccountingEntry[] = [];
+    const entryId = `ENT-SALE-${sale.id}`;
     const date = new Date().toISOString();
 
-    // Debit: Accounts Receivable or Cash
-    entries.push({
-      id: `ENT-SALE-DR-${sale.id}`,
-      EntryID: `ENT-SALE-DR-${sale.id}`,
+    const entry: AccountingEntry = {
+      id: entryId,
       date,
-      description: `Sale ${sale.SaleID}`,
-      accountId: sale.customerId ? 'AC-AR' : 'AC-CASH',
-      debit: total,
-      credit: 0,
+      TotalAmount: total,
+      status: 'Posted',
       sourceId: sale.id,
-      status: 'POSTED',
-      hash: ''
-    });
+      sourceType: 'SALE',
+      lines: [
+        {
+          lineId: `${entryId}-DR`,
+          entryId,
+          accountId: sale.customerId ? 'AC-AR' : 'AC-CASH',
+          accountName: sale.customerId ? 'Accounts Receivable' : 'Cash',
+          debit: total,
+          credit: 0,
+          type: 'DEBIT',
+          amount: total
+        },
+        {
+          lineId: `${entryId}-CR`,
+          entryId,
+          accountId: 'AC-SALES',
+          accountName: 'Sales Revenue',
+          debit: 0,
+          credit: total,
+          type: 'CREDIT',
+          amount: total
+        }
+      ]
+    };
 
-    // Credit: Sales Revenue
-    entries.push({
-      id: `ENT-SALE-CR-${sale.id}`,
-      EntryID: `ENT-SALE-CR-${sale.id}`,
-      date,
-      description: `Sale ${sale.SaleID}`,
-      accountId: 'AC-SALES',
-      debit: 0,
-      credit: total,
-      sourceId: sale.id,
-      status: 'POSTED',
-      hash: ''
-    });
-
-    return entries;
+    return [entry];
   }
 
   /**
    * Generates accounting entries for a purchase.
    */
   static generatePurchaseEntries(purchase: Purchase, total: number): AccountingEntry[] {
-    const entries: AccountingEntry[] = [];
+    const entryId = `ENT-PUR-${purchase.id}`;
     const date = new Date().toISOString();
 
-    // Debit: Inventory
-    entries.push({
-      id: `ENT-PUR-DR-${purchase.id}`,
-      EntryID: `ENT-PUR-DR-${purchase.id}`,
+    const entry: AccountingEntry = {
+      id: entryId,
       date,
-      description: `Purchase ${purchase.purchase_id}`,
-      accountId: 'AC-INV',
-      debit: total,
-      credit: 0,
+      TotalAmount: total,
+      status: 'Posted',
       sourceId: purchase.id,
-      status: 'POSTED',
-      hash: ''
-    });
+      sourceType: 'PURCHASE',
+      lines: [
+        {
+          lineId: `${entryId}-DR`,
+          entryId,
+          accountId: 'AC-INV',
+          accountName: 'Inventory',
+          debit: total,
+          credit: 0,
+          type: 'DEBIT',
+          amount: total
+        },
+        {
+          lineId: `${entryId}-CR`,
+          entryId,
+          accountId: purchase.partnerId ? 'AC-AP' : 'AC-CASH',
+          accountName: purchase.partnerId ? 'Accounts Payable' : 'Cash',
+          debit: 0,
+          credit: total,
+          type: 'CREDIT',
+          amount: total
+        }
+      ]
+    };
 
-    // Credit: Accounts Payable or Cash
-    entries.push({
-      id: `ENT-PUR-CR-${purchase.id}`,
-      EntryID: `ENT-PUR-CR-${purchase.id}`,
-      date,
-      description: `Purchase ${purchase.purchase_id}`,
-      accountId: purchase.partnerId ? 'AC-AP' : 'AC-CASH',
-      debit: 0,
-      credit: total,
-      sourceId: purchase.id,
-      status: 'POSTED',
-      hash: ''
-    });
-
-    return entries;
+    return [entry];
   }
 }

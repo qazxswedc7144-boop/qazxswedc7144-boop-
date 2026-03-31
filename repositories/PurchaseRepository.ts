@@ -72,24 +72,24 @@ export const PurchaseRepository = {
   /**
    * جلب سعر الشراء المقترح (Phase 13)
    */
-  getLastPurchasePriceForItem: async (itemId: string, supplierId?: string): Promise<number> => {
-    if (!itemId) return 0;
+  getLastPurchasePriceForItem: async (productId: string, supplierId?: string): Promise<number> => {
+    if (!productId) return 0;
 
-    const suggestion = await priceIntelligenceService.getSuggestedPrice(itemId, 'PURCHASE', supplierId);
+    const suggestion = await priceIntelligenceService.getSuggestedPrice(productId, 'PURCHASE', supplierId);
     if (suggestion.suggestedPrice !== null) {
       return suggestion.suggestedPrice;
     }
 
     const products = await db.getProducts();
-    const product = products.find(p => p.ProductID === itemId || p.id === itemId);
+    const product = products.find(p => p.id === productId);
     if (product && typeof product.LastPurchasePrice === 'number' && product.LastPurchasePrice > 0) {
       return product.LastPurchasePrice;
     }
 
     const allPurchases = await db.getPurchases() || [];
-    const itemHistory = allPurchases.filter(p => (p.invoiceStatus !== 'DRAFT' && p.invoiceStatus !== 'CANCELLED') && Array.isArray(p.items) && p.items.some(it => it && it.product_id === itemId)).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    const itemHistory = allPurchases.filter(p => (p.invoiceStatus !== 'DRAFT' && p.invoiceStatus !== 'CANCELLED') && Array.isArray(p.items) && p.items.some(it => it && it.product_id === productId)).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     if (itemHistory.length === 0) return 0;
-    const detailRow = itemHistory[0].items.find(it => it.product_id === itemId);
+    const detailRow = itemHistory[0].items.find(it => it.product_id === productId);
     return detailRow ? (detailRow.price || 0) : 0;
   },
 
@@ -113,13 +113,13 @@ export const PurchaseRepository = {
     return purchases.some(p => p.invoiceId?.trim().toLowerCase() === normalizedNum && (p.partnerId?.trim().toLowerCase() === normalizedSupplier || p.partnerName?.trim().toLowerCase() === normalizedSupplier) && p.id !== excludeId && p.purchase_id !== excludeId && p.isDeleted !== true);
   },
 
-  getItemPurchaseHistory: async (itemId: string, limit: number = 5): Promise<Purchase[]> => {
+  getItemPurchaseHistory: async (productId: string, limit: number = 5): Promise<Purchase[]> => {
     const all = await PurchaseRepository.getAll();
     return all
       .filter(p => 
         p.invoiceStatus !== 'CANCELLED' && 
         Array.isArray(p.items) && 
-        p.items.some(it => it.product_id === itemId)
+        p.items.some(it => it.product_id === productId)
       )
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
       .slice(0, limit);

@@ -94,11 +94,11 @@ class PharmaFlowDB extends Dexie {
   constructor() {
     super('PharmaFlowDB');
     
-    // التحديث لإصدار 56 لدعم محرك FIFO وAI Insights
-    this.version(56).stores({
+    // التحديث لإصدار 58 لدعم محرك FIFO وAI Insights وإصلاح الفهرسة وإضافة مستودعات
+    this.version(58).stores({
       users: 'User_Email, User_Name, Role, Is_Active',
       userRoles: 'User_Email, Role_Type', 
-      products: 'id, ProductID, Name, barcode, Is_Active, categoryId, supplierId',
+      products: 'id, Name, barcode, Is_Active, categoryId, supplierId',
       sales: 'id, SaleID, date, customerId, InvoiceStatus, hash, deleted_at, [customerId+date], [InvoiceStatus+date], riskLevel',
       purchases: 'id, purchase_id, invoiceId, date, partnerId, invoiceStatus, hash, deleted_at, [partnerId+date], [invoiceStatus+date], riskLevel',
       cashFlow: 'transaction_id, date, type, category, [type+date]',
@@ -123,7 +123,7 @@ class PharmaFlowDB extends Dexie {
       paymentGateways: 'id',
       medicineAlternatives: 'id, MedicineID',
       medicineAlerts: 'AlertID, ReferenceID',
-      medicineBatches: 'BatchID, ProductID, ExpiryDate, warehouseId, [ProductID+warehouseId]',
+      medicineBatches: 'BatchID, productId, ExpiryDate, warehouseId, [productId+warehouseId]',
       snapshots: 'id, timestamp, type', 
       itemUnits: 'Unit_ID, Item_ID, Unit_Name',
       itemUsageLog: 'id, productId, timestamp, type, partnerId, userId, [productId+timestamp]',
@@ -136,7 +136,7 @@ class PharmaFlowDB extends Dexie {
       System_Error_Log: 'Error_ID, Module_Name, Record_ID, User_Email, Timestamp',
       printTemplates: 'TemplateID, TemplateName, TemplateType, IsDefaultTemplate',
       templateAssignments: 'AssignmentID, TemplateID, DocumentType, BranchID, IsActive',
-      inventoryTransactions: 'TransactionID, ItemID, SourceDocumentID, TransactionType, TransactionDate, [ItemID+TransactionDate]',
+      inventoryTransactions: 'TransactionID, productId, warehouseId, SourceDocumentID, TransactionType, TransactionDate, [productId+TransactionDate]',
       systemBackups: 'id, backupName, backupType, createdAt, status',
       syncQueue: 'id, entityType, entityId, action, syncStatus, localTimestamp',
       conflictArchive: 'id, entityType, entityId, resolvedAt',
@@ -153,13 +153,13 @@ class PharmaFlowDB extends Dexie {
       stockReservations: 'id, productId, warehouseId, sourceDocId, [warehouseId+productId]',
       fifoCostLayers: 'id, productId, quantityRemaining, purchaseDate, referenceId, isClosed',
       categories: 'id, categoryId, categoryName, isSystem',
-      inventory: 'itemId, itemName, category, status, currentQuantity',
-      itemProfits: 'id, itemId, itemName, totalSales, grossProfit',
+      inventory: 'id, itemName, category, status, currentQuantity',
+      itemProfits: 'id, productId, itemName, totalSales, grossProfit',
       customerProfits: 'id, customerId, customerName, totalProfit',
       supplierProfits: 'id, supplierId, supplierName, totalProfit',
       accountMovements: 'movementId, type, date, amount',
-      purchasesByItem: 'id, itemId, supplierId, purchaseDate',
-      expiringItems: 'id, itemId, expiryDate, status'
+      purchasesByItem: 'id, productId, supplierId, purchaseDate',
+      expiringItems: 'id, productId, expiryDate, status'
     });
 
     this.setupOptimizedAuditHooks();
@@ -217,7 +217,7 @@ class PharmaFlowDB extends Dexie {
     const financialTables = [
       { name: 'Invoices_Sales', table: this.sales, pk: 'SaleID' },
       { name: 'Invoices_Purchases', table: this.purchases, pk: 'invoiceId' },
-      { name: 'Items_Inventory', table: this.products, pk: 'ProductID' },
+      { name: 'Items_Inventory', table: this.products, pk: 'id' },
       { name: 'Financial_Transactions', table: this.financialTransactions, pk: 'Transaction_ID' },
       { name: 'Voucher_Invoice_Link', table: this.voucherInvoiceLinks, pk: 'linkId' },
       { name: 'Suppliers', table: this.suppliers, pk: 'Supplier_ID' },
@@ -292,7 +292,7 @@ class PharmaFlowDB extends Dexie {
           for (const item of sale.items) {
             const profitEntry = await this.itemProfits.get(item.product_id) || {
               id: item.product_id,
-              itemId: item.product_id,
+              productId: item.product_id,
               itemName: item.name,
               totalSales: 0,
               totalCost: 0,
@@ -348,7 +348,7 @@ class PharmaFlowDB extends Dexie {
             await this.purchasesByItem.add({
               id: this.generateId('PBI'),
               purchaseId: purchase.id,
-              itemId: item.product_id,
+              productId: item.product_id,
               supplierId: purchase.partnerId,
               quantity: item.qty,
               unitCost: item.price,
@@ -419,6 +419,21 @@ class LocalDatabase {
   private cache: any = {};
   private version: number = 1;
 
+  get products() { return this.db.products; }
+  get sales() { return this.db.sales; }
+  get purchases() { return this.db.purchases; }
+  get cashFlow() { return this.db.cashFlow; }
+  get journalEntries() { return this.db.journalEntries; }
+  get suppliers() { return this.db.suppliers; }
+  get customers() { return this.db.customers; }
+  get inventory() { return this.db.inventory; }
+  get medicineBatches() { return this.db.medicineBatches; }
+  get medicineAlerts() { return this.db.medicineAlerts; }
+  get inventoryTransactions() { return this.db.inventoryTransactions; }
+  get warehouseStock() { return this.db.warehouseStock; }
+  get settlements() { return this.db.settlements; }
+  get accounts() { return this.db.accounts; }
+
   constructor() {
     this.db = new PharmaFlowDB();
     this.init();
@@ -448,19 +463,19 @@ class LocalDatabase {
 
     const mockProducts: Product[] = [
       { 
-        id: 'P1', ProductID: 'P1', Name: 'بندول إكسترا', 
+        id: 'P1', Name: 'بندول إكسترا', 
         categoryId: 'CAT1', UnitPrice: 15, CostPrice: 10, StockQuantity: 100, barcode: '1001',
         DefaultUnit: 'علبة', LastPurchasePrice: 10, TaxDefault: 0, MinLevel: 10, ExpiryDate: '2027-12-31',
         Is_Active: true
       },
       { 
-        id: 'P2', ProductID: 'P2', Name: 'أوميبرازول 20 ملغ', 
+        id: 'P2', Name: 'أوميبرازول 20 ملغ', 
         categoryId: 'CAT1', UnitPrice: 45, CostPrice: 30, StockQuantity: 50, barcode: '1002',
         DefaultUnit: 'علبة', LastPurchasePrice: 30, TaxDefault: 0, MinLevel: 5, ExpiryDate: '2026-06-30',
         Is_Active: true
       },
       { 
-        id: 'P3', ProductID: 'P3', Name: 'فيتامين سي 1000 ملغ', 
+        id: 'P3', Name: 'فيتامين سي 1000 ملغ', 
         categoryId: 'CAT2', UnitPrice: 25, CostPrice: 15, StockQuantity: 200, barcode: '1003',
         DefaultUnit: 'علبة', LastPurchasePrice: 15, TaxDefault: 0, MinLevel: 20, ExpiryDate: '2028-01-01',
         Is_Active: true
@@ -641,7 +656,7 @@ class LocalDatabase {
   async saveSetting(key: string, value: any) { await this.ensureOpen(); await this.db.settings.put({ key, value }); }
   async saveProduct(p: Product) { 
     await this.ensureOpen();
-    if (!p.id) p.id = p.ProductID || this.generateId('PRD');
+    if (!p.id) p.id = this.generateId('PRD');
     await this.db.products.put(p); 
   }
   async deleteProduct(id: string) { 
@@ -727,7 +742,7 @@ class LocalDatabase {
     if (finalSaleCost === undefined || finalSaleCost === null) {
       finalSaleCost = 0;
       items.forEach(item => {
-        const p = products.find(prod => prod.ProductID === item.product_id);
+        const p = products.find(prod => prod.id === item.product_id);
         if (p) finalSaleCost! += (p.CostPrice || 0) * item.qty;
       });
     }
@@ -888,7 +903,7 @@ class LocalDatabase {
     if (!barcode) return undefined;
     return await this.db.products.where('barcode').equals(barcode).first(); 
   }
-  getItemUnits(itemId: string) { return (this.cache.itemUnits || []).filter((u: any) => u.Item_ID === itemId); }
+  getItemUnits(productId: string) { return (this.cache.itemUnits || []).filter((u: any) => u.Item_ID === productId); }
   async getMedicineAlerts() { return await this.db.medicineAlerts.toArray(); }
   async saveMedicineAlert(alert: any) { 
     if (!alert.AlertID) alert.AlertID = this.generateId('MAL');

@@ -71,10 +71,10 @@ export const SalesRepository = {
   /**
    * جلب سعر البيع المقترح باستخدام محرك تحليل سجل الأسعار (Phase 13)
    */
-  getLastSellingPriceForItem: async (itemId: string, customerId?: string): Promise<PriceInsight> => {
-    if (!itemId) return { price: 0, type: 'standard' };
+  getLastSellingPriceForItem: async (productId: string, customerId?: string): Promise<PriceInsight> => {
+    if (!productId) return { price: 0, type: 'standard' };
 
-    const suggestion = await priceIntelligenceService.getSuggestedPrice(itemId, 'SALE', customerId === 'عميل نقدي' ? undefined : customerId);
+    const suggestion = await priceIntelligenceService.getSuggestedPrice(productId, 'SALE', customerId === 'عميل نقدي' ? undefined : customerId);
 
     if (suggestion.suggestedPrice !== null) {
       return {
@@ -85,14 +85,14 @@ export const SalesRepository = {
     }
 
     if (customerId && customerId !== 'عميل نقدي') {
-      const lastEntry = await PriceHistoryRepository.getDetailedLastPrice(itemId, customerId);
+      const lastEntry = await PriceHistoryRepository.getDetailedLastPrice(productId, customerId);
       if (lastEntry) return { price: lastEntry.Price, type: 'customer', lastDate: lastEntry.Invoice_Date, lastCustomer: lastEntry.Customer };
     }
 
-    const recentInsights = await PriceHistoryRepository.getRecentInsights(itemId, 1);
+    const recentInsights = await PriceHistoryRepository.getRecentInsights(productId, 1);
     if (recentInsights.length > 0) return { price: recentInsights[0].Price, type: 'global', lastDate: recentInsights[0].Invoice_Date, lastCustomer: recentInsights[0].Customer };
 
-    const product = (await db.getProducts()).find(p => p.ProductID === itemId || p.id === itemId);
+    const product = (await db.getProducts()).find(p => p.id === productId);
     if (product) return { price: product.UnitPrice || 0, type: 'standard' };
 
     return { price: 0, type: 'standard' };

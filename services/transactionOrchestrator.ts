@@ -221,8 +221,8 @@ export const transactionOrchestrator = {
         }
 
         const partnerId = invoice.type === 'SALE' ? invoice.payload.customerId : invoice.payload.supplierId;
-        const itemIds = invoice.payload.items.map(it => it.product_id);
-        await ReconciliationEngine.reconcileDocument(refId, partnerId, itemIds);
+        const productIds = invoice.payload.items.map(it => it.product_id);
+        await ReconciliationEngine.reconcileDocument(refId, partnerId, productIds);
 
         // 10. Logging System
         await db.addAuditLog(isEdit ? 'UPDATE' : 'CREATE', invoice.type, refId, 

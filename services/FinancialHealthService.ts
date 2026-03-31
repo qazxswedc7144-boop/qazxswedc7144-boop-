@@ -172,7 +172,7 @@ export class FinancialHealthService {
     const stagnantProducts = products.filter(p => {
       if (p.StockQuantity > 0) {
         const hasRecentSale = sales.some(s => 
-          s.items.some(i => i.product_id === p.ProductID) && 
+          s.items.some(i => i.product_id === p.id) && 
           new Date(s.date) >= ninetyDaysAgo
         );
         return !hasRecentSale;

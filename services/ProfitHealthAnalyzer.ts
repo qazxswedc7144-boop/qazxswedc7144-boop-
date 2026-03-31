@@ -36,7 +36,7 @@ export class ProfitHealthAnalyzer {
     const recentSales = sales.filter(s => s.date > thirtyDaysAgo);
     const soldProductIds = new Set(recentSales.flatMap(s => s.items.map(it => it.product_id)));
     const slowMovingItems = products
-      .filter(p => p.StockQuantity > 0 && !soldProductIds.has(p.ProductID))
+      .filter(p => p.StockQuantity > 0 && !soldProductIds.has(p.id))
       .map(p => ({ id: p.id, name: p.Name, daysSinceLastSale: 30 }))
       .slice(0, 5);
       

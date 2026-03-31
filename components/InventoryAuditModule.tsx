@@ -24,11 +24,11 @@ const InventoryAuditModule: React.FC<InventoryAuditModuleProps> = ({ lang, onNav
     fetchTask();
   }, []);
 
-  const handleQtyChange = async (itemId: string, val: string) => {
+  const handleQtyChange = async (id: string, val: string) => {
     if (!task) return;
     const qty = parseInt(val);
     const updatedItems: AuditItem[] = task.items.map(item => {
-      if (item.itemId === itemId) {
+      if (item.id === id) {
         const status: 'pending' | 'matched' | 'mismatch' = isNaN(qty) ? 'pending' : (qty === item.bookQty ? 'matched' : 'mismatch');
         return { ...item, actualQty: isNaN(qty) ? undefined : qty, status };
       }
@@ -39,10 +39,10 @@ const InventoryAuditModule: React.FC<InventoryAuditModuleProps> = ({ lang, onNav
     await db.saveAuditProgress(updatedItems);
   };
 
-  const handleReasonChange = async (itemId: string, reason: string) => {
+  const handleReasonChange = async (id: string, reason: string) => {
     if (!task) return;
     const updatedItems: AuditItem[] = task.items.map(item => 
-      item.itemId === itemId ? { ...item, reason } : item
+      item.id === id ? { ...item, reason } : item
     );
     setTask({ ...task, items: updatedItems });
     // Fix: Await saveAuditProgress
@@ -126,7 +126,7 @@ const InventoryAuditModule: React.FC<InventoryAuditModuleProps> = ({ lang, onNav
 
       <div className="grid grid-cols-1 gap-6">
         {filteredItems.map((item, idx) => (
-          <div key={item.itemId} className="bg-white rounded-[40px] p-8 border-2 border-white shadow-sm flex flex-col md:flex-row items-center gap-8 transition-all hover:shadow-md">
+          <div key={item.id} className="bg-white rounded-[40px] p-8 border-2 border-white shadow-sm flex flex-col md:flex-row items-center gap-8 transition-all hover:shadow-md">
             <div className="w-20 h-20 bg-slate-50 rounded-3xl flex items-center justify-center text-4xl shadow-inner shrink-0">
                {idx % 2 === 0 ? '💊' : '🩹'}
             </div>
@@ -145,7 +145,7 @@ const InventoryAuditModule: React.FC<InventoryAuditModuleProps> = ({ lang, onNav
                 type="number"
                 placeholder="0"
                 value={item.actualQty ?? ''}
-                onChange={(e) => handleQtyChange(item.itemId, e.target.value)}
+                onChange={(e) => handleQtyChange(item.id, e.target.value)}
                 className={`w-full text-center py-4 rounded-2xl text-xl font-black border-4 focus:outline-none transition-all ${
                   item.status === 'matched' ? 'border-emerald-400 bg-emerald-50 text-emerald-700' : 
                   item.status === 'mismatch' ? 'border-red-400 bg-red-50 text-red-700' : 'border-slate-100 bg-slate-50 text-slate-400'
@@ -159,7 +159,7 @@ const InventoryAuditModule: React.FC<InventoryAuditModuleProps> = ({ lang, onNav
                 <select 
                   className="w-full bg-red-50 border border-red-200 rounded-2xl px-4 py-3 text-sm font-bold text-red-700 focus:outline-none"
                   value={item.reason || ''}
-                  onChange={(e) => handleReasonChange(item.itemId, e.target.value)}
+                  onChange={(e) => handleReasonChange(item.id, e.target.value)}
                 >
                    <option value="">-- {isAr ? 'اختر السبب' : 'Select Reason'} --</option>
                    <option value="Damage">{isAr ? 'تلف صنف' : 'Damaged Item'}</option>

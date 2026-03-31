@@ -17,7 +17,7 @@ export const inventoryService = {
     const products = await ProductRepository.getAll();
     
     for (const item of items) {
-      const product = products.find(p => p.ProductID === item.product_id);
+      const product = products.find(p => p.id === item.product_id);
       
       if (!product) {
         throw new InventoryError(`الصنف [${item.product_id}] غير موجود في سجلات المخزن.`);

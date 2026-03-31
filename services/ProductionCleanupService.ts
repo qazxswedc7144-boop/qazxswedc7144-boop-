@@ -114,8 +114,8 @@ export class ProductionCleanupService {
       const realPurchases = (await db.db.purchases.toArray()).filter(p => !this.isDemo(p));
       
       const productsToDelete = demoProducts.filter(p => {
-        const linkedToSale = realSales.some(s => s.items.some(it => it.product_id === p.ProductID));
-        const linkedToPurchase = realPurchases.some(pur => pur.items.some(it => it.product_id === p.ProductID));
+        const linkedToSale = realSales.some(s => s.items.some(it => it.product_id === p.id));
+        const linkedToPurchase = realPurchases.some(pur => pur.items.some(it => it.product_id === p.id));
         return !linkedToSale && !linkedToPurchase;
       }).map(p => p.id).filter(Boolean) as string[];
       
@@ -155,7 +155,7 @@ export class ProductionCleanupService {
       const remainingProducts = await db.db.products.toArray();
       for (const p of remainingProducts) {
         if (!p.id) continue;
-        const movements = await db.db.inventoryTransactions.where('ItemID').equals(p.ProductID).toArray();
+        const movements = await db.db.inventoryTransactions.where('productId').equals(p.id).toArray();
         const calculatedStock = movements.reduce((sum, m) => sum + (m.QuantityChange || 0), 0);
         if (Math.abs(calculatedStock - (p.StockQuantity || 0)) > 0.001) {
           console.warn(`Stock mismatch for ${p.Name}: Ledger=${p.StockQuantity}, Calculated=${calculatedStock}. Fixing...`);

@@ -51,7 +51,6 @@ export class LoadTestService {
       console.log("Generating base products...");
       const baseProducts: Product[] = Array.from({ length: 100 }, (_, i) => ({
         id: `PROD-${i}`,
-        ProductID: `P${i}`,
         Name: `Test Product ${i}`,
         barcode: `BAR-${i}`,
         CostPrice: 10 + Math.random() * 90,
@@ -160,7 +159,7 @@ export class LoadTestService {
         const date = this.getRandomDateWithin12Months();
         return {
           TransactionID: `STK-LOAD-${i}`,
-          ItemID: 'P1',
+          productId: 'P1',
           SourceDocumentType: i % 2 === 0 ? 'PURCHASE' : 'SALE',
           SourceDocumentID: `DOC-${i}`,
           TransactionType: i % 2 === 0 ? 'PURCHASE' : 'SALE',
@@ -255,7 +254,7 @@ export class LoadTestService {
     await this.measure("STOCK_RECALCULATION_TIME", async () => {
       const products = await db.getProducts();
       for (const p of products.slice(0, 10)) {
-        await db.db.inventoryTransactions.where('ItemID').equals(p.ProductID).toArray();
+        await db.db.inventoryTransactions.where('productId').equals(p.id).toArray();
       }
     });
 

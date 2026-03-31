@@ -41,7 +41,7 @@ const ItemProfitsReport: React.FC<{ onNavigate?: (view: any) => void }> = ({ onN
     sales.forEach(sale => {
       sale.items.forEach(item => {
         const productId = item.product_id;
-        const product = products.find(p => p.ProductID === productId || p.id === productId);
+        const product = products.find(p => p.id === productId);
         
         if (!itemStats[productId]) {
           itemStats[productId] = {

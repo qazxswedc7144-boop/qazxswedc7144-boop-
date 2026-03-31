@@ -7,7 +7,8 @@ import { ExportService } from '../services/exportService';
 import { 
   Plus, Minus, ArrowLeft, CheckCircle2, AlertCircle, Package, Clock, Calendar,
   ShoppingCart, User, CreditCard, Wallet, Tag, Trash2, ChevronRight, Save, Search,
-  RotateCcw, Camera, Edit3, Home, History, Printer, FileSpreadsheet, ArrowRight
+  RotateCcw, Camera, Edit3, Home, History, Printer, FileSpreadsheet, ArrowRight,
+  Percent, ChevronDown
 } from 'lucide-react';
 import { useSales } from '../hooks/useSales';
 import { useAppStore } from '../store/useAppStore';
@@ -25,6 +26,8 @@ const SalesModule: React.FC<{ onNavigate?: (view: any, params?: any) => void }> 
     showSearchDropdown, setShowSearchDropdown,
     isDetailModalOpen, setIsDetailModalOpen,
     isConfirmSaveOpen, setIsConfirmSaveOpen,
+    isAdjustmentsOpen, setIsAdjustmentsOpen,
+    adjData, setAdjData,
     itemNameInputRef,
     qtyInputRef,
     priceInputRef,
@@ -49,190 +52,215 @@ const SalesModule: React.FC<{ onNavigate?: (view: any, params?: any) => void }> 
     isRecovery,
     getStatusLabel,
     handleExport,
-    printData
+    printData,
+    customerSearchTerm, setCustomerSearchTerm,
+    showCustomerDropdown, setShowCustomerDropdown,
+    isAddCustomerModalOpen, setIsAddCustomerModalOpen,
+    newCustomerName, setNewCustomerName,
+    filteredCustomers,
+    handleCustomerSearch,
+    selectCustomer,
+    handleCustomerBlur,
+    confirmAddCustomer,
+    cancelAddCustomer
   } = useSales(onNavigate);
 
   return (
-    <div className="flex flex-col min-h-screen bg-[#f7f8fa] font-['Cairo'] w-full max-w-7xl mx-auto relative overflow-x-hidden" dir="rtl">
-      {/* HEADER SECTION */}
-      <div className="p-4 space-y-4 shrink-0 z-50">
-        <div className="bg-white rounded-[24px] p-4 shadow-sm border border-slate-100 space-y-4">
-          {/* Top Row */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <button 
-                onClick={() => onNavigate?.('dashboard')} 
-                className="w-10 h-10 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-center text-[#1E4D4D] hover:bg-slate-100 transition-all"
-                title="الرجوع للرئيسية"
-              >
-                <ArrowRight size={20} />
-              </button>
-              <div className="w-10 h-10 bg-[#1E4D4D]/5 rounded-xl flex items-center justify-center text-[#1E4D4D]">
-                <ShoppingCart size={20} />
-              </div>
-              <div className="text-right">
-                <h2 className="text-lg font-black text-[#1E4D4D]">مبيعات</h2>
-                <p className="text-[10px] font-bold text-slate-400"># ---</p>
-              </div>
-            </div>
+    <div className="flex flex-col min-h-screen bg-white font-['Cairo'] w-full relative overflow-x-hidden" dir="rtl">
+      {/* HEADER SECTION - FLAT & FULL WIDTH */}
+      <div className="shrink-0 z-[100] border-b border-slate-100">
+        <div className="p-3 flex items-center justify-between gap-4">
+          {/* Right: Title & Main Actions */}
+          <div className="flex items-center gap-4 min-w-max">
+            <button 
+              onClick={() => onNavigate?.('dashboard')} 
+              className="w-10 h-10 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-center text-[#1E4D4D] hover:bg-slate-100 transition-all shadow-sm active:scale-95"
+              title="الرجوع للرئيسية"
+            >
+              <ArrowRight size={20} />
+            </button>
+            <h2 className="text-xl font-black text-[#1E4D4D] whitespace-nowrap ml-2">مبيعات</h2>
+            
+            <div className="h-8 w-px bg-slate-100 mx-2" /> {/* Vertical Divider */}
+            
+            <PrintMenu data={printData} type="SALE" items={items} />
+          </div>
 
+          {/* Left: Controls (Return + Payment Method) */}
+          <div className="flex items-center gap-4">
+            {/* Return Switch */}
             <div className="flex items-center gap-2">
+              <span className="text-[10px] font-black text-slate-400">مرتجع؟</span>
               <button 
                 onClick={() => setHeader({...header, isReturn: !header.isReturn})}
-                className={`h-10 px-4 rounded-xl text-xs font-black flex items-center gap-2 transition-all ${header.isReturn ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-slate-50 text-slate-400 border border-slate-100'}`}
+                className={`w-10 h-5 rounded-full relative transition-colors duration-300 ${header.isReturn ? 'bg-red-500' : 'bg-slate-200'}`}
               >
-                <RotateCcw size={14} />
-                <span>مرتجع؟</span>
-              </button>
-
-              <div className="flex bg-slate-50 p-1 rounded-xl border border-slate-100">
-                <button 
-                  onClick={() => setHeader({...header, payment_method: 'Cash'})}
-                  className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${header.payment_method === 'Cash' ? 'bg-[#064e3b] text-white shadow-sm' : 'text-slate-400'}`}
-                >
-                  نقداً
-                </button>
-                <button 
-                  onClick={() => setHeader({...header, payment_method: 'Credit'})}
-                  className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${header.payment_method === 'Credit' ? 'bg-[#7f1d1d] text-white shadow-sm' : 'text-slate-400'}`}
-                >
-                  آجل
-                </button>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button 
-                onClick={handleExport}
-                disabled={items.length === 0}
-                className="w-10 h-10 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-center text-[#1E4D4D] hover:bg-slate-100 transition-all disabled:opacity-50"
-                title="تصدير CSV"
-              >
-                <FileSpreadsheet size={20} />
-              </button>
-
-              <PrintMenu data={printData} type="SALE" items={items} />
-              
-              <button 
-                onClick={() => onNavigate?.('invoices-archive', { filter: 'SALE' })} 
-                className="w-10 h-10 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-center text-[#1E4D4D] hover:bg-slate-100 transition-all"
-                title="سجل المبيعات"
-              >
-                <History size={20} />
-              </button>
-            </div>
-          </div>
-
-          {/* Middle Row */}
-          <div className="flex gap-3">
-            <div className="flex-1 relative">
-              <input 
-                  disabled={isLocked || isRecovery} 
-                  className="w-full h-[48px] bg-slate-50 border border-slate-100 rounded-xl px-4 text-sm font-black text-[#1E4D4D] outline-none focus:border-[#1E4D4D] transition-all text-right" 
-                  placeholder="اسم العميل..." 
-                  value={header.customer_id} 
-                  onChange={e => setHeader({...header, customer_id: e.target.value})} 
+                <motion.div 
+                  animate={{ x: header.isReturn ? -22 : -2 }}
+                  className="absolute top-0.5 right-0.5 w-4 h-4 bg-white rounded-full shadow-sm"
                 />
-                <User size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" />
+              </button>
             </div>
-            <div className="w-[120px] relative">
-              <input 
-                type="date" 
-                disabled={isLocked || isRecovery}
-                className="w-full h-[48px] bg-slate-50 border border-slate-100 rounded-xl px-2 text-[11px] font-black text-center outline-none focus:border-[#1E4D4D]"
-                value={header.date}
-                onChange={e => setHeader({...header, date: e.target.value})}
-              />
-            </div>
-          </div>
 
-          {/* Bottom Row */}
-          <div className="flex gap-3">
-            <div className="w-[120px] relative">
-              <input 
-                disabled 
-                className="w-full h-[48px] bg-slate-50 border border-slate-100 rounded-xl px-4 text-sm font-black text-center outline-none" 
-                value={header.invoice_number} 
-                placeholder="رقم الفاتورة..."
-              />
-              <Edit3 size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" />
-            </div>
-            <div className="flex-1">
-              <input 
-                className="w-full h-[48px] bg-slate-50 border border-slate-100 rounded-xl px-4 text-sm font-black text-right outline-none focus:border-[#1E4D4D]"
-                placeholder="ملاحظات الفاتورة..."
-                value={header.notes}
-                onChange={e => setHeader({...header, notes: e.target.value})}
-              />
-            </div>
-            <div className="w-12 h-[48px] bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-center text-slate-300">
-              <Camera size={20} />
+            {/* Payment Method Segmented Control */}
+            <div className="flex bg-slate-100 p-0.5 rounded-lg border border-slate-200 min-w-max">
+              <button 
+                onClick={() => setHeader({...header, payment_method: 'Cash'})}
+                className={`px-4 py-1 rounded-md text-[10px] font-black transition-all relative z-10 ${header.payment_method === 'Cash' ? 'text-white' : 'text-slate-400'}`}
+              >
+                {header.payment_method === 'Cash' && (
+                  <motion.div layoutId="payment-bg-sales" className="absolute inset-0 bg-[#1E4D4D] rounded-md -z-10 shadow-sm" />
+                )}
+                نقداً
+              </button>
+              <button 
+                onClick={() => setHeader({...header, payment_method: 'Credit'})}
+                className={`px-4 py-1 rounded-md text-[10px] font-black transition-all relative z-10 ${header.payment_method === 'Credit' ? 'text-white' : 'text-slate-400'}`}
+              >
+                {header.payment_method === 'Credit' && (
+                  <motion.div layoutId="payment-bg-sales" className="absolute inset-0 bg-[#7f1d1d] rounded-md -z-10 shadow-sm" />
+                )}
+                آجل
+              </button>
             </div>
           </div>
         </div>
-      </div>
 
-      <div className="flex-1 overflow-y-auto pb-[100px] custom-scrollbar space-y-4">
-        {/* ITEM ENTRY AREA */}
-        <div className="px-4 mt-2">
-          <div className="bg-white rounded-[24px] p-3 shadow-sm border border-slate-100 flex justify-between items-center gap-3">
-            <div className="relative flex-1">
-              <Search size={18} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300" />
+        {/* CUSTOMER & DATE SECTION - FLAT & FULL WIDTH */}
+        <div className="px-3 pb-3">
+          <div className="grid grid-cols-10 gap-2">
+            {/* Customer Name (60%) */}
+            <div className="col-span-6 relative">
+              <User className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
               <input 
-                ref={itemNameInputRef}
-                disabled={isLocked || isRecovery}
-                className="w-full h-[48px] bg-slate-50 border border-slate-100 rounded-xl pr-10 pl-4 text-sm font-black text-[#1E4D4D] focus:border-[#1E4D4D] transition-all outline-none text-right" 
-                placeholder="تصفية البنود المضافة..." 
-                value={manualItemName} 
-                onChange={e => { setManualItemName(e.target.value); setShowSearchDropdown(true); setSelectedIndex(-1); }} 
-                onFocus={() => setShowSearchDropdown(true)}
-                onKeyDown={handleSearchKeyDown}
+                disabled={isLocked || isRecovery} 
+                className="w-full h-10 bg-slate-50 border border-slate-100 rounded-lg pr-9 pl-3 text-xs font-bold text-[#1E4D4D] outline-none focus:bg-white focus:ring-1 focus:ring-[#1E4D4D]/20 transition-all text-right" 
+                placeholder="اسم العميل..." 
+                value={customerSearchTerm} 
+                onChange={e => handleCustomerSearch(e.target.value)}
+                onBlur={handleCustomerBlur}
               />
               
+              {/* Customer Dropdown */}
               <AnimatePresence>
-                {showSearchDropdown && filteredProducts.length > 0 && (
+                {showCustomerDropdown && filteredCustomers.length > 0 && (
                   <motion.div 
                     initial={{ opacity: 0, y: 5 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: 5 }}
-                    className="absolute top-full left-0 right-0 bg-white border border-slate-100 rounded-xl shadow-xl z-[100] mt-1 overflow-hidden"
+                    className="absolute top-full mt-1 right-0 left-0 bg-white border border-slate-100 rounded-xl shadow-xl z-[110] overflow-hidden"
                   >
-                    {filteredProducts.map((p, idx) => (
+                    {filteredCustomers.map(c => (
                       <button 
-                        key={p.ProductID} 
-                        onClick={() => selectProduct(p)}
-                        className={`w-full px-4 py-3 text-right flex justify-between items-center border-b border-slate-50 last:border-0 transition-colors ${selectedIndex === idx ? 'bg-emerald-50' : 'hover:bg-slate-50'}`}
+                        key={c.id}
+                        onMouseDown={() => selectCustomer(c)}
+                        className="w-full p-3 flex items-center gap-3 hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0 text-right"
                       >
-                        <div>
-                          <p className="text-xs font-black text-[#1E4D4D]">{p.Name}</p>
-                          <p className="text-[9px] font-bold text-slate-400">{p.categoryName || 'عام'}</p>
+                        <div className="w-6 h-6 bg-slate-100 rounded-md flex items-center justify-center text-slate-400">
+                          <User size={14} />
                         </div>
-                        <div className="text-left">
-                          <p className="text-xs font-black text-emerald-600">{p.UnitPrice} {currency}</p>
-                        </div>
+                        <span className="text-xs font-bold text-[#1E4D4D]">{c.Supplier_Name}</span>
                       </button>
                     ))}
                   </motion.div>
                 )}
               </AnimatePresence>
             </div>
-            <button 
-              disabled={isLocked || isRecovery} 
-              onClick={() => setIsDetailModalOpen(true)}
-              className="h-[48px] px-6 border-2 border-[#10B981] text-[#10B981] rounded-xl flex items-center gap-2 text-sm font-black hover:bg-emerald-50 transition-all shrink-0"
-            >
-              <Plus size={18} />
-              <span>إضافة</span>
-            </button>
+
+            {/* Invoice Date (40%) */}
+            <div className="col-span-4 relative">
+              <Calendar className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
+              <input 
+                type="date" 
+                disabled={isLocked || isRecovery}
+                className="w-full h-10 bg-slate-50 border border-slate-100 rounded-lg pr-9 pl-2 text-[10px] font-bold focus:bg-white focus:ring-1 focus:ring-[#1E4D4D]/20 transition-all outline-none"
+                value={header.date}
+                onChange={e => setHeader({...header, date: e.target.value})}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+        {/* Invoice Info Row - Compact */}
+        <div className="px-3 py-2 bg-slate-50/50 border-b border-slate-100 flex gap-2">
+          <div className="w-24 relative">
+            <input 
+              className="w-full h-8 bg-white border border-slate-200 rounded-lg px-2 text-[10px] font-black text-center outline-none focus:border-[#1E4D4D]" 
+              value={header.invoice_number} 
+              onChange={e => setHeader({...header, invoice_number: e.target.value})}
+              placeholder="رقم الفاتورة..."
+            />
+            <Edit3 size={10} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" />
+          </div>
+          <div className="flex-1">
+            <input 
+              className="w-full h-8 bg-white border border-slate-200 rounded-lg px-3 text-[10px] font-black text-right outline-none focus:border-[#1E4D4D]"
+              placeholder="ملاحظات الفاتورة..."
+              value={header.notes}
+              onChange={e => setHeader({...header, notes: e.target.value})}
+            />
           </div>
         </div>
 
-        {/* ITEM TABLE */}
-        <div className="px-4">
-          <div className="bg-white rounded-[24px] shadow-sm border border-slate-100 overflow-hidden">
-            <table className="w-full text-right border-collapse">
+        {/* ITEM ENTRY AREA - FLATTENED */}
+        <div className="p-3 border-b border-slate-100 flex items-center justify-between gap-2 shrink-0">
+          <div className="relative flex-1">
+            <Search size={16} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-300" />
+            <input 
+              ref={itemNameInputRef}
+              disabled={isLocked || isRecovery}
+              className="w-full h-10 bg-slate-50 border border-slate-100 rounded-lg pr-9 pl-3 text-xs font-bold text-[#1E4D4D] focus:bg-white focus:ring-1 focus:ring-[#1E4D4D]/20 transition-all outline-none text-right" 
+              placeholder="ابحث عن صنف أو كود..." 
+              value={manualItemName} 
+              onChange={e => { setManualItemName(e.target.value); setShowSearchDropdown(true); setSelectedIndex(-1); }} 
+              onFocus={() => setShowSearchDropdown(true)}
+              onKeyDown={handleSearchKeyDown}
+            />
+            
+            <AnimatePresence>
+              {showSearchDropdown && filteredProducts.length > 0 && (
+                <motion.div 
+                  initial={{ opacity: 0, y: 5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 5 }}
+                  className="absolute top-full left-0 right-0 bg-white border border-slate-100 rounded-xl shadow-xl z-[100] mt-1 overflow-hidden"
+                >
+                  {filteredProducts.map((p, idx) => (
+                    <button 
+                      key={p.id} 
+                      onClick={() => selectProduct(p)}
+                      className={`w-full px-4 py-3 text-right flex justify-between items-center border-b border-slate-50 last:border-0 transition-colors ${selectedIndex === idx ? 'bg-emerald-50' : 'hover:bg-slate-50'}`}
+                    >
+                      <div>
+                        <p className="text-xs font-black text-[#1E4D4D]">{p.Name}</p>
+                        <p className="text-[9px] font-bold text-slate-400">{p.categoryName || 'عام'}</p>
+                      </div>
+                      <div className="text-left">
+                        <p className="text-xs font-black text-emerald-600">{p.UnitPrice} {currency}</p>
+                      </div>
+                    </button>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+          <button 
+            disabled={isLocked || isRecovery} 
+            onClick={() => setIsDetailModalOpen(true)}
+            className="h-10 px-4 bg-[#10B981] text-white rounded-lg flex items-center gap-2 text-xs font-black hover:bg-emerald-600 transition-all shrink-0 shadow-sm"
+          >
+            <Plus size={16} />
+            <span>إضافة</span>
+          </button>
+        </div>
+
+        {/* ITEM TABLE - FLATTENED */}
+        <div className="flex-1 overflow-y-auto custom-scrollbar">
+          <table className="w-full text-right border-collapse">
             <thead className="sticky top-0 bg-slate-50 z-10 border-b border-slate-100">
-              <tr className="h-[44px]">
+              <tr className="h-10">
                 <th className="px-3 text-[10px] font-black text-slate-400 uppercase tracking-widest w-[45%]">الصنف</th>
                 <th className="px-2 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center w-[15%]">الكمية</th>
                 <th className="px-2 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center w-[20%]">السعر</th>
@@ -244,7 +272,7 @@ const SalesModule: React.FC<{ onNavigate?: (view: any, params?: any) => void }> 
                 <tr>
                   <td colSpan={4} className="py-20 text-center">
                     <div className="flex flex-col items-center opacity-20">
-                      <Package size={48} className="mb-2" />
+                      <Package size={40} className="mb-2" />
                       <p className="text-xs font-black">قائمة الأصناف فارغة</p>
                     </div>
                   </td>
@@ -253,7 +281,7 @@ const SalesModule: React.FC<{ onNavigate?: (view: any, params?: any) => void }> 
                 items.map((item) => (
                   <tr 
                     key={item.id} 
-                    className="h-[44px] hover:bg-slate-50/50 transition-colors cursor-pointer"
+                    className="h-12 hover:bg-slate-50/50 transition-colors cursor-pointer"
                     onClick={() => {
                       if (!isLocked && !isRecovery) {
                         setManualItemName(item.name);
@@ -265,10 +293,10 @@ const SalesModule: React.FC<{ onNavigate?: (view: any, params?: any) => void }> 
                     }}
                   >
                     <td className="px-3">
-                      <p className="text-[11px] font-black text-[#1E4D4D] truncate max-w-[120px]">{item.name}</p>
+                      <p className="text-[11px] font-black text-[#1E4D4D] truncate max-w-[150px]">{item.name}</p>
                     </td>
                     <td className="px-2 text-center">
-                      <span className="text-[11px] font-black text-[#1E4D4D]">{item.qty}</span>
+                      <span className="text-[11px] font-black text-[#1E4D4D] bg-slate-100 px-2 py-0.5 rounded-md">{item.qty}</span>
                     </td>
                     <td className="px-2 text-center">
                       <span className="text-[11px] font-black text-slate-500">{item.price}</span>
@@ -283,27 +311,50 @@ const SalesModule: React.FC<{ onNavigate?: (view: any, params?: any) => void }> 
           </table>
         </div>
       </div>
-    </div>
 
-      {/* BOTTOM SUMMARY BAR */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-100 p-4 z-[100] max-w-7xl mx-auto shadow-[0_-4px_10px_rgba(0,0,0,0.03)] flex items-center gap-3">
-        <div className="w-20 bg-slate-50 h-[56px] rounded-2xl border border-slate-100 flex flex-col items-center justify-center">
-          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">البنود</p>
-          <p className="text-sm font-black text-[#1E4D4D]">{items.length}</p>
+      {/* FIXED FOOTER SECTION - MATCHING PURCHASES DESIGN */}
+      <div className="shrink-0 bg-white border-t border-slate-100 p-4 space-y-3 shadow-[0_-4px_20px_rgba(0,0,0,0.03)]">
+        <div className="flex items-center justify-between">
+          <div className="flex flex-col items-center">
+            <span className="text-[10px] font-black text-slate-400 uppercase">الخصم</span>
+            <span className="text-sm font-bold text-red-500">{(adjData.discountPercent * vTotalSum / 100).toLocaleString()}</span>
+          </div>
+          <div className="flex flex-col items-center">
+            <span className="text-[10px] font-black text-slate-400 uppercase">رسوم أخرى</span>
+            <span className="text-sm font-bold text-slate-600">{adjData.otherFees.toLocaleString()}</span>
+          </div>
+          <div className="flex flex-col items-center">
+            <span className="text-[10px] font-black text-slate-400 uppercase">الصافي</span>
+            <div className="flex items-baseline gap-1">
+              <span className="text-2xl font-black text-[#1E4D4D]">{vTotalSum.toLocaleString()}</span>
+              <span className="text-[10px] font-bold text-slate-400">{currency}</span>
+            </div>
+          </div>
         </div>
 
-        <div className="flex-1 bg-emerald-50 h-[56px] rounded-2xl border border-emerald-100 flex flex-col items-center justify-center">
-          <p className="text-[9px] font-black text-emerald-600 uppercase tracking-widest">صافي المبيعات</p>
-          <p className="text-sm font-black text-emerald-700">{vTotalSum.toLocaleString()} <span className="text-[10px]">AED</span></p>
+        <div className="flex gap-2">
+          <button 
+            onClick={() => setIsAdjustmentsOpen(true)}
+            className="flex-1 h-12 bg-slate-100 text-[#1E4D4D] rounded-xl font-black text-sm flex items-center justify-center gap-2"
+          >
+            <Tag size={18} />
+            التسويات
+          </button>
+          <button 
+            onClick={() => setIsConfirmSaveOpen(true)} 
+            disabled={items.length === 0 || isLocked || isDuplicate || isSaving || isRecovery} 
+            className={`flex-[2] h-12 rounded-xl font-black text-sm text-white shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2 ${isLocked || isDuplicate || isRecovery ? 'bg-red-500 shadow-red-900/20' : 'bg-[#1E4D4D] shadow-emerald-900/20'} disabled:opacity-50`}
+          >
+            {isSaving ? (
+              <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            ) : (
+              <>
+                <CheckCircle2 size={18} />
+                <span>حفظ الفاتورة</span>
+              </>
+            )}
+          </button>
         </div>
-
-        <button 
-          onClick={() => setIsConfirmSaveOpen(true)} 
-          disabled={items.length === 0 || isLocked || isDuplicate || isSaving || isRecovery} 
-          className={`h-[56px] px-8 rounded-2xl font-black text-sm text-white shadow-lg active:scale-95 transition-all flex items-center justify-center gap-3 ${isLocked || isDuplicate || isRecovery ? 'bg-red-500' : 'bg-[#1E4D4D]'}`}
-        >
-          ترحيل السجل
-        </button>
       </div>
 
       {/* POPUP ITEM ENTRY */}
@@ -339,7 +390,7 @@ const SalesModule: React.FC<{ onNavigate?: (view: any, params?: any) => void }> 
                   >
                     {filteredProducts.map(p => (
                       <button 
-                        key={p.ProductID} 
+                        key={p.id} 
                         onClick={() => selectProduct(p)}
                         className="w-full px-4 py-3 text-right hover:bg-slate-50 border-b border-slate-50 last:border-0 transition-colors"
                       >
@@ -481,29 +532,66 @@ const SalesModule: React.FC<{ onNavigate?: (view: any, params?: any) => void }> 
         </div>
       </Modal>
 
-      {/* Confirmation Save Modal */}
+      {/* MODALS - FLATTENED DESIGN */}
+      <Modal 
+        isOpen={isAddCustomerModalOpen} 
+        onClose={cancelAddCustomer}
+        title=""
+        maxWidth="w-full sm:w-[340px]"
+        noPadding={true}
+      >
+        <div className="p-6 text-center space-y-5 bg-white">
+          <div className="w-16 h-16 bg-emerald-50 rounded-full flex items-center justify-center mx-auto text-emerald-500">
+            <User size={32} />
+          </div>
+          <div className="space-y-2">
+            <h3 className="text-lg font-black text-[#1E4D4D]">عميل جديد؟</h3>
+            <p className="text-[11px] font-bold text-slate-500 leading-relaxed">
+              هل تريد إضافة <span className="text-[#1E4D4D] underline">{newCustomerName}</span> كعميل جديد في النظام؟
+            </p>
+          </div>
+          <div className="flex gap-2 pt-2">
+            <button 
+              onClick={confirmAddCustomer}
+              className="flex-[2] h-11 bg-[#1E4D4D] text-white rounded-xl text-xs font-black shadow-md active:scale-95 transition-all"
+            >
+              نعم، إضافة
+            </button>
+            <button 
+              onClick={cancelAddCustomer}
+              className="flex-1 h-11 bg-slate-100 text-slate-500 rounded-xl text-xs font-black active:scale-95 transition-all"
+            >
+              إلغاء
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Confirmation Save Modal - FLATTENED */}
       <Modal
         isOpen={isConfirmSaveOpen}
         onClose={() => setIsConfirmSaveOpen(false)}
-        title="تأكيد الحفظ"
+        title=""
+        maxWidth="w-full sm:w-[340px]"
+        noPadding={true}
       >
-        <div className="p-6 text-center space-y-6" dir="rtl">
-          <div className="w-20 h-20 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center mx-auto">
-            <CheckCircle2 size={40} />
+        <div className="p-6 text-center space-y-5 bg-white" dir="rtl">
+          <div className="w-16 h-16 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center mx-auto">
+            <CheckCircle2 size={32} />
           </div>
           <div className="space-y-1">
-            <p className="text-lg font-black text-[#1E4D4D]">هل أنت متأكد؟</p>
-            <p className="text-[11px] font-bold text-slate-400">سيتم ترحيل الفاتورة وتحديث المخزون والحسابات.</p>
+            <p className="text-lg font-black text-[#1E4D4D]">تأكيد الحفظ</p>
+            <p className="text-[10px] font-bold text-slate-400">سيتم ترحيل الفاتورة وتحديث المخزون والحسابات.</p>
           </div>
           
-          <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 flex justify-between items-center">
-            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">المبلغ المستحق</span>
-            <span className="text-xl font-black text-[#1E4D4D]">{vTotalSum.toLocaleString()} {currency}</span>
+          <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 flex justify-between items-center">
+            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">المبلغ المستحق</span>
+            <span className="text-lg font-black text-[#1E4D4D]">{vTotalSum.toLocaleString()} {currency}</span>
           </div>
 
-          <div className="flex gap-3">
+          <div className="flex gap-2 pt-2">
             <button 
-              className="flex-[2] h-[52px] bg-[#1E4D4D] text-white rounded-xl text-sm font-black shadow-lg active:scale-95 transition-all"
+              className="flex-[2] h-11 bg-[#1E4D4D] text-white rounded-xl text-xs font-black shadow-md active:scale-95 transition-all"
               onClick={() => {
                 setIsConfirmSaveOpen(false);
                 handlePost();
@@ -512,12 +600,62 @@ const SalesModule: React.FC<{ onNavigate?: (view: any, params?: any) => void }> 
               تأكيد وحفظ
             </button>
             <button 
-              className="flex-1 h-[52px] bg-slate-100 text-slate-500 rounded-xl text-sm font-black active:scale-95 transition-all"
+              className="flex-1 h-11 bg-slate-100 text-slate-500 rounded-xl text-xs font-black active:scale-95 transition-all"
               onClick={() => setIsConfirmSaveOpen(false)}
             >
               مراجعة
             </button>
           </div>
+        </div>
+      </Modal>
+
+      {/* ADJUSTMENTS MODAL - MATCHING PURCHASES DESIGN */}
+      <Modal 
+        isOpen={isAdjustmentsOpen} 
+        onClose={() => setIsAdjustmentsOpen(false)}
+        title="التسويات والرسوم الإضافية"
+      >
+        <div className="space-y-6 p-2">
+          <div className="space-y-2">
+            <label className="text-xs font-black text-slate-500 uppercase tracking-widest">نسبة الخصم (%)</label>
+            <div className="relative">
+              <Percent className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+              <input 
+                type="number"
+                value={adjData.discountPercent}
+                onChange={(e) => setAdjData({...adjData, discountPercent: Number(e.target.value)})}
+                className="w-full h-14 bg-slate-50 border border-slate-100 rounded-2xl pr-12 pl-4 text-lg font-black focus:bg-white transition-all"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label className="text-xs font-black text-slate-500 uppercase tracking-widest">رسوم أخرى</label>
+              <input 
+                type="number"
+                value={adjData.otherFees}
+                onChange={(e) => setAdjData({...adjData, otherFees: Number(e.target.value)})}
+                className="w-full h-14 bg-slate-50 border border-slate-100 rounded-2xl px-4 text-lg font-black focus:bg-white transition-all"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-black text-slate-500 uppercase tracking-widest">الضريبة</label>
+              <input 
+                type="number"
+                value={adjData.tax}
+                onChange={(e) => setAdjData({...adjData, tax: Number(e.target.value)})}
+                className="w-full h-14 bg-slate-50 border border-slate-100 rounded-2xl px-4 text-lg font-black focus:bg-white transition-all"
+              />
+            </div>
+          </div>
+
+          <Button 
+            onClick={() => setIsAdjustmentsOpen(false)}
+            className="w-full h-14 bg-[#1E4D4D] text-white rounded-2xl font-black text-lg shadow-lg shadow-emerald-900/10 mt-4"
+          >
+            تطبيق التعديلات
+          </Button>
         </div>
       </Modal>
     </div>

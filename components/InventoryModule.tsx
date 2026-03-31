@@ -42,13 +42,13 @@ const InventoryModule: React.FC<{ onNavigate?: (view: any) => void }> = ({ onNav
   const [adjustment, setAdjustment] = useState({ qty: 0, reason: '', type: 'ADJUSTMENT' as any });
 
   useEffect(() => {
-    if (editingProduct?.ProductID) {
-      ProductRepository.getPriceHistory(editingProduct.ProductID).then(setPriceHistory);
-      ProductRepository.getPurchaseHistory(editingProduct.ProductID).then(setPurchaseHistory);
+    if (editingProduct?.id) {
+      ProductRepository.getPriceHistory(editingProduct.id).then(setPriceHistory);
+      ProductRepository.getPurchaseHistory(editingProduct.id).then(setPurchaseHistory);
       
       db.db.inventoryTransactions
-        .where('ItemID')
-        .equals(editingProduct.ProductID)
+        .where('productId')
+        .equals(editingProduct.id)
         .reverse()
         .limit(20)
         .toArray()
@@ -56,7 +56,7 @@ const InventoryModule: React.FC<{ onNavigate?: (view: any) => void }> = ({ onNav
 
       db.db.warehouseStock
         .where('productId')
-        .equals(editingProduct.ProductID)
+        .equals(editingProduct.id)
         .toArray()
         .then(setWarehouseStocks);
     }
@@ -76,7 +76,7 @@ const InventoryModule: React.FC<{ onNavigate?: (view: any) => void }> = ({ onNav
 
     if (debouncedSearch.trim()) {
       const lower = debouncedSearch.toLowerCase();
-      result = result.filter(p => p.Name.toLowerCase().includes(lower) || p.ProductID.toLowerCase().includes(lower));
+      result = result.filter(p => p.Name.toLowerCase().includes(lower) || p.id.toLowerCase().includes(lower));
     }
 
     if (filterBy === 'low') {
@@ -105,7 +105,7 @@ const InventoryModule: React.FC<{ onNavigate?: (view: any) => void }> = ({ onNav
       const user = authService.getCurrentUser();
       await InventoryService.recordMovement({
         type: 'ADJUSTMENT',
-        productId: editingProduct.ProductID,
+        productId: editingProduct.id,
         warehouseId: 'WH-MAIN',
         quantity: adjustment.qty,
         sourceDocId: `ADJ-${Date.now()}`,
@@ -125,7 +125,7 @@ const InventoryModule: React.FC<{ onNavigate?: (view: any) => void }> = ({ onNav
 
   const ProductRow = ({ index, style }: { index: number, style: React.CSSProperties }) => {
     const p = filteredAndSorted[index];
-    const lastRealPurchasePrice = PurchaseRepository.getLastPurchasePriceForItem(p.ProductID);
+    const lastRealPurchasePrice = PurchaseRepository.getLastPurchasePriceForItem(p.id);
 
     return (
       <div style={style} className="px-8 py-3">
@@ -142,7 +142,7 @@ const InventoryModule: React.FC<{ onNavigate?: (view: any) => void }> = ({ onNav
               <div className="min-w-0">
                 <h3 className="text-xl font-black text-[#1E4D4D] truncate leading-none mb-2">{p.Name}</h3>
                 <div className="flex items-center gap-4">
-                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">ID: {p.ProductID}</p>
+                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">ID: {p.id}</p>
                    <div className="w-1.5 h-1.5 bg-slate-200 rounded-full"></div>
                    <Badge variant={p.StockQuantity <= p.MinLevel ? 'danger' : 'info'} className="!rounded-full px-3 py-0.5 text-[9px] font-black uppercase tracking-widest">
                     {p.categoryName || 'بدون تصنيف'}
@@ -192,7 +192,11 @@ const InventoryModule: React.FC<{ onNavigate?: (view: any) => void }> = ({ onNav
           </div>
           <div className="flex flex-wrap items-center gap-3 sm:gap-4">
             <button 
-              onClick={() => { setEditingProduct({ id: '', ProductID: db.generateId('ITM'), Name: '', DefaultUnit: 'حبة', LastPurchasePrice: 0, TaxDefault: 15, UnitPrice: 0, CostPrice: 0, StockQuantity: 0, ExpiryDate: '', MinLevel: 5, category: 'أدوية' } as any); setActiveTab('details'); }}
+              onClick={() => { 
+                const newId = db.generateId('PROD');
+                setEditingProduct({ id: newId, ProductID: newId, Name: '', DefaultUnit: 'حبة', LastPurchasePrice: 0, TaxDefault: 15, UnitPrice: 0, CostPrice: 0, StockQuantity: 0, ExpiryDate: '', MinLevel: 5, category: 'أدوية' } as any); 
+                setActiveTab('details'); 
+              }}
               className="flex-1 sm:flex-none h-12 sm:h-14 px-4 sm:px-8 bg-[#1E4D4D] text-white rounded-[16px] sm:rounded-[20px] flex items-center justify-center gap-2 sm:gap-3 text-xs sm:text-sm font-black shadow-xl shadow-emerald-900/20 hover:scale-105 transition-all"
             >
               <Plus size={18} />
@@ -407,7 +411,7 @@ const InventoryModule: React.FC<{ onNavigate?: (view: any) => void }> = ({ onNav
                                {purchaseHistory.map(ph => (
                                  <div key={ph.id} className="flex justify-between items-center">
                                    <span className="text-[10px] font-bold text-slate-400">{ph.date.split('T')[0]}</span>
-                                   <span className="text-sm font-black text-blue-600">{ph.items.find(it => it.product_id === editingProduct.ProductID)?.price} {currency}</span>
+                                   <span className="text-sm font-black text-blue-600">{ph.items.find(it => it.product_id === editingProduct.id)?.price} {currency}</span>
                                  </div>
                                ))}
                              </div>

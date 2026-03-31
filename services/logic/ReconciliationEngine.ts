@@ -101,11 +101,11 @@ export const ReconciliationEngine = {
   /**
    * 4. مطابقة شاملة لمستند (تجمع كافة الوظائف أعلاه)
    */
-  async reconcileDocument(invoiceId: string, partnerId?: string, itemIds?: string[]): Promise<void> {
+  async reconcileDocument(invoiceId: string, partnerId?: string, productIds?: string[]): Promise<void> {
     await this.reconcileInvoicePayments(invoiceId);
     if (partnerId) await this.reconcilePartnerBalance(partnerId);
-    if (itemIds) {
-      for (const id of itemIds) {
+    if (productIds) {
+      for (const id of productIds) {
         await this.reconcileProductStock(id);
       }
     }

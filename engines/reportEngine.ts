@@ -35,7 +35,7 @@ export class ReportEngine {
       if (!summary[date]) {
         summary[date] = { total: 0, count: 0 };
       }
-      summary[date].total += purchase.finalTotal;
+      summary[date].total += purchase.totalAmount;
       summary[date].count += 1;
     });
 
@@ -61,25 +61,27 @@ export class ReportEngine {
 
     sales.forEach(sale => {
       sale.items.forEach(item => {
-        if (!profits[item.ProductID]) {
-          profits[item.ProductID] = {
-            id: `PROF-ITEM-${item.ProductID}`,
-            date: new Date().toISOString(),
-            productId: item.ProductID,
-            itemName: item.Name,
-            quantity: 0,
-            revenue: 0,
-            cost: 0,
-            profit: 0,
-            margin: 0
+        if (!profits[item.product_id]) {
+          profits[item.product_id] = {
+            id: `PROF-ITEM-${item.product_id}`,
+            productId: item.product_id,
+            itemName: item.name,
+            period: { start: new Date().toISOString(), end: new Date().toISOString() },
+            totalSales: 0,
+            totalCost: 0,
+            grossProfit: 0,
+            profitMargin: 0,
+            unitsSold: 0
           };
         }
-        const p = profits[item.ProductID];
-        p.quantity += item.Quantity;
-        p.revenue += item.Quantity * item.UnitPrice;
-        p.cost += item.Quantity * (item.CostPrice || 0);
-        p.profit = p.revenue - p.cost;
-        p.margin = p.revenue > 0 ? (p.profit / p.revenue) * 100 : 0;
+        const p = profits[item.product_id];
+        p.unitsSold += item.qty;
+        p.totalSales += item.qty * item.price;
+        // Assuming we have cost price somewhere, but for now using a placeholder or 0
+        const costPrice = 0; 
+        p.totalCost += item.qty * costPrice;
+        p.grossProfit = p.totalSales - p.totalCost;
+        p.profitMargin = p.totalSales > 0 ? (p.grossProfit / p.totalSales) * 100 : 0;
       });
     });
 

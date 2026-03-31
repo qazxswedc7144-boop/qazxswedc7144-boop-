@@ -198,7 +198,7 @@ export const dataValidator = {
 
       if (item.product_id && (item.product_id.startsWith('NEW_ITM') || item.product_id.startsWith('ITM-NEW'))) continue;
       
-      const product = products.find(p => p.ProductID === item.product_id);
+      const product = products.find(p => p.id === item.product_id);
       if (!product) throw new InventoryError(`الصنف [${item.name}] غير موجود في المستودع.`);
       
       // في حالة البيع العادي فقط نفحص العجز المخزني
@@ -248,7 +248,7 @@ export const dataValidator = {
       
       // في حالة مرتجع المشتريات، يجب التأكد من توفر الكمية المراد إعادتها للمورد
       if (isReturn) {
-        const product = (await db.getProducts()).find(p => p.ProductID === item.product_id);
+        const product = (await db.getProducts()).find(p => p.id === item.product_id);
         if (product && product.StockQuantity < item.qty) {
           throw new ValidationError(`عجز مخزني للمرتجع: لا يمكنك إعادة ${item.qty} من [${item.name}]، الرصيد الحالي بالمخزن هو ${product.StockQuantity} فقط.`);
         }

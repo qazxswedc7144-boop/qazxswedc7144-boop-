@@ -127,7 +127,7 @@ export class ReportEngine {
       const value = (p.StockQuantity || 0) * (p.CostPrice || 0);
       totalValue += value;
       items.push({
-        id: p.ProductID,
+        id: p.id,
         name: p.Name,
         qty: p.StockQuantity,
         avgCost: p.CostPrice,
@@ -185,7 +185,7 @@ export class ReportEngine {
     const topSelling = [...products]
       .sort((a, b) => (b.usageCount || 0) - (a.usageCount || 0))
       .slice(0, 10)
-      .map(p => ({ id: p.ProductID, name: p.Name, count: p.usageCount || 0 }));
+      .map(p => ({ id: p.id, name: p.Name, count: p.usageCount || 0 }));
 
     // Top profit items
     const itemProfits = await db.db.itemProfits.toArray();
@@ -223,7 +223,7 @@ export class ReportEngine {
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
         
         return {
-          productId: b.ProductID,
+          productId: b.productId,
           batchId: b.BatchID,
           expiryDate: b.ExpiryDate,
           quantity: b.Quantity,

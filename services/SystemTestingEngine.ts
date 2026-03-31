@@ -187,10 +187,10 @@ export class SystemTestingEngine {
 
     for (const p of products) {
       const salesItems = await db.db.sales.toArray().then(sales => 
-        sales.flatMap(s => s.items).filter(it => it.product_id === p.ProductID)
+        sales.flatMap(s => s.items).filter(it => it.product_id === p.id)
       );
       const purchaseItems = await db.db.purchases.toArray().then(purchases => 
-        purchases.flatMap(pur => pur.items).filter(it => it.product_id === p.ProductID)
+        purchases.flatMap(pur => pur.items).filter(it => it.product_id === p.id)
       );
 
       const totalPurchased = purchaseItems.reduce((sum, it) => sum + it.qty, 0);
@@ -199,7 +199,7 @@ export class SystemTestingEngine {
 
       if (Math.abs(computedStock - (p.StockQuantity || 0)) > 0.01) {
         mismatches++;
-        details.push({ productId: p.ProductID, computed: computedStock, stored: p.StockQuantity });
+        details.push({ productId: p.id, computed: computedStock, stored: p.StockQuantity });
       }
     }
 

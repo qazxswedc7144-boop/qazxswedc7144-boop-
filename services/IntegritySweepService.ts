@@ -99,7 +99,7 @@ export class IntegritySweepService {
     const products = await db.getProducts();
     let healthy = true;
     for (const p of products) {
-      const transactions = await db.db.inventoryTransactions.where('ItemID').equals(p.ProductID).toArray();
+      const transactions = await db.db.inventoryTransactions.where('productId').equals(p.id).toArray();
       const calculatedStock = transactions.reduce((sum, t) => sum + (t.QuantityChange || 0), 0);
       
       if (Math.abs(calculatedStock - p.StockQuantity) > 0.01) {

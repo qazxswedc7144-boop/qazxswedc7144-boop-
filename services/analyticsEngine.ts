@@ -73,7 +73,7 @@ export const analyticsEngine = {
     });
 
     return products.map(p => {
-      const stats = salesMap.get(p.ProductID) || { qty: 0, rev: 0 };
+      const stats = salesMap.get(p.id) || { qty: 0, rev: 0 };
       
       let velocity: MovementData['velocity'] = 'Dead';
       if (stats.qty >= 50) velocity = 'Fast';       

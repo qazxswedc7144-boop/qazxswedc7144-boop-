@@ -32,7 +32,7 @@ export const alertBotService = {
         if (batch.Quantity > 0) {
           const expiryDate = new Date(batch.ExpiryDate);
           if (expiryDate <= threshold) {
-            const product = products.find(p => p.ProductID === batch.ProductID);
+            const product = products.find(p => p.id === batch.productId);
             const timeDiff = expiryDate.getTime() - today.getTime();
             const daysLeft = Math.ceil(timeDiff / (1000 * 60 * 60 * 24));
             
@@ -63,7 +63,7 @@ export const alertBotService = {
         if (product.StockQuantity <= product.MinLevel) {
           await alertBotService.createOrUpdateAlert({
             type: 'LOW_STOCK',
-            referenceId: product.ProductID,
+            referenceId: product.id,
             title: `نقص في المخزون: ${product.Name}`,
             message: `الرصيد الحالي ${product.StockQuantity} (الحد الأدنى: ${product.MinLevel}). يرجى إعادة الطلب.`,
             severity: product.StockQuantity <= 0 ? 'Critical' : 'Warning'

@@ -25,7 +25,7 @@ export const ReferentialIntegrityGuard = {
     if (hasUsage) return true;
 
     // 4. فحص الحركات المخزنية المركزية
-    const hasInventoryTx = await db.db.inventoryTransactions.where('ItemID').equals(productId).count() > 0;
+    const hasInventoryTx = await db.db.inventoryTransactions.where('productId').equals(productId).count() > 0;
     if (hasInventoryTx) return true;
 
     return false;

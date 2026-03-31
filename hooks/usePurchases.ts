@@ -1,7 +1,7 @@
 
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { db } from '../services/database';
-import { Product, InvoiceStatus, InvoiceItem, Purchase, PaymentStatus } from '../types';
+import { Product, InvoiceStatus, InvoiceItem, Purchase, PaymentStatus, Supplier } from '../types';
 import { useUI, useInventory, useAccounting } from '../store/AppContext';
 import { useAppStore } from '../store/useAppStore';
 import { authService } from '../services/auth.service';
@@ -23,6 +23,10 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
   
   const [items, setItems] = useState<InvoiceItem[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [supplierSearchTerm, setSupplierSearchTerm] = useState('');
+  const [showSupplierDropdown, setShowSupplierDropdown] = useState(false);
+  const [isAddSupplierModalOpen, setIsAddSupplierModalOpen] = useState(false);
+  const [newSupplierName, setNewSupplierName] = useState('');
   const [isSearchOpen, setSearchOpen] = useState(false);
   const [isAutoSaving, setIsAutoSaving] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -139,6 +143,74 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
       p.barcode?.includes(searchTerm)
     ).slice(0, 5);
   }, [searchTerm, products]);
+
+  const filteredSuppliers = useMemo(() => {
+    if (!supplierSearchTerm) return [];
+    return suppliers.filter(s => 
+      s.Supplier_Name.toLowerCase().includes(supplierSearchTerm.toLowerCase())
+    ).slice(0, 5);
+  }, [supplierSearchTerm, suppliers]);
+
+  const handleSupplierSearch = (val: string) => {
+    setSupplierSearchTerm(val);
+    setShowSupplierDropdown(true);
+    
+    // If user typed something and it doesn't match any supplier exactly
+    // we don't trigger the modal yet, only on blur or enter if needed.
+    // But the requirement says "when writing a name not in DB, activate action"
+  };
+
+  const selectSupplier = (s: any) => {
+    setHeader(prev => ({ ...prev, supplier_id: s.id }));
+    setSupplierSearchTerm(s.Supplier_Name);
+    setShowSupplierDropdown(false);
+  };
+
+  const handleSupplierBlur = () => {
+    // Wait a bit for click events on dropdown
+    setTimeout(() => {
+      setShowSupplierDropdown(false);
+      if (supplierSearchTerm && !suppliers.find(s => s.Supplier_Name === supplierSearchTerm)) {
+        setNewSupplierName(supplierSearchTerm);
+        setIsAddSupplierModalOpen(true);
+      }
+    }, 200);
+  };
+
+  const confirmAddSupplier = async () => {
+    try {
+      const { db } = await import('../services/database');
+      const newId = `SUP-${Date.now()}`;
+      const newSup: Supplier = {
+        id: newId,
+        Supplier_ID: newId,
+        Supplier_Name: newSupplierName,
+        Phone: '',
+        Address: '',
+        Balance: 0,
+        openingBalance: 0,
+        Is_Active: true,
+        Created_At: new Date().toISOString()
+      };
+      
+      await db.saveSupplier(newSup);
+      await refreshGlobal();
+      
+      setHeader(prev => ({ ...prev, supplier_id: newId }));
+      setSupplierSearchTerm(newSupplierName);
+      setIsAddSupplierModalOpen(false);
+      addToast(`تم إضافة المورد ${newSupplierName} بنجاح`, "success");
+    } catch (error) {
+      console.error("Failed to add supplier", error);
+      addToast("فشل في إضافة المورد", "error");
+    }
+  };
+
+  const cancelAddSupplier = () => {
+    setIsAddSupplierModalOpen(false);
+    setSupplierSearchTerm('');
+    setHeader(prev => ({ ...prev, supplier_id: '' }));
+  };
 
   const vTotalSum = useMemo(() => {
     const subtotal = items.reduce((sum, item) => sum + (item.qty * item.price), 0);
@@ -293,6 +365,19 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
     isLocked,
     vTotalSum,
     filteredProducts,
+    filteredSuppliers,
+    supplierSearchTerm,
+    setSupplierSearchTerm,
+    showSupplierDropdown,
+    setShowSupplierDropdown,
+    isAddSupplierModalOpen,
+    setIsAddSupplierModalOpen,
+    newSupplierName,
+    handleSupplierSearch,
+    selectSupplier,
+    handleSupplierBlur,
+    confirmAddSupplier,
+    cancelAddSupplier,
     selectProduct,
     finalizeItemAdd,
     handlePost,

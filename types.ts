@@ -235,8 +235,9 @@ export interface SystemBackup extends SyncableEntity {
 
 export interface InventoryTransaction extends SyncableEntity {
   TransactionID: string;
-  ItemID: string;
-  SourceDocumentType: 'SALE' | 'PURCHASE' | 'ADJUSTMENT';
+  productId: string;
+  warehouseId: string;
+  SourceDocumentType: 'SALE' | 'PURCHASE' | 'ADJUSTMENT' | 'TRANSFER' | 'RETURN' | 'INITIAL' | 'MANUAL';
   SourceDocumentID: string;
   QuantityChange: number; // + للمدخلات، - للمخرجات
   before_qty: number;
@@ -337,7 +338,7 @@ export interface Category extends SyncableEntity {
 }
 
 export interface InventoryItem extends SyncableEntity {
-  itemId: string;
+  id: string;
   itemName: string;
   category: string;
   currentQuantity: number;
@@ -351,7 +352,7 @@ export interface InventoryItem extends SyncableEntity {
 
 export interface ItemProfitEntry extends SyncableEntity {
   id: string;
-  itemId: string;
+  productId: string;
   itemName: string;
   period: { start: string; end: string };
   totalSales: number;
@@ -397,7 +398,7 @@ export interface AccountMovement extends SyncableEntity {
 export interface PurchaseByItemEntry extends SyncableEntity {
   id: string;
   purchaseId: string;
-  itemId: string;
+  productId: string;
   supplierId: string;
   quantity: number;
   unitCost: number;
@@ -408,7 +409,7 @@ export interface PurchaseByItemEntry extends SyncableEntity {
 
 export interface ExpiringItemEntry extends SyncableEntity {
   id: string;
-  itemId: string;
+  productId: string;
   itemName: string;
   batchNumber: string;
   quantity: number;
@@ -420,7 +421,6 @@ export interface ExpiringItemEntry extends SyncableEntity {
 
 export interface Product extends SyncableEntity {
   id: string;
-  ProductID: string; 
   Name: string;      
   DefaultUnit: string; 
   LastPurchasePrice: number; 
@@ -700,7 +700,7 @@ export interface InvoiceAdjustment extends SyncableEntity {
 }
 
 export interface AuditItem {
-  itemId: string;
+  id: string;
   name: string;
   bookQty: number;
   actualQty?: number;
@@ -858,7 +858,7 @@ export interface MedicineAlternative {
 export interface MedicineBatch {
   id: string;
   BatchID: string;
-  ProductID: string;
+  productId: string;
   warehouseId: string;
   ExpiryDate: string;
   Quantity: number;

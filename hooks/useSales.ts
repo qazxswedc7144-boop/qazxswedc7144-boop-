@@ -1,7 +1,7 @@
 
 import { useState, useMemo, useEffect, useRef, useCallback, KeyboardEvent } from 'react';
 import { db } from '../services/database';
-import { Product, InvoiceStatus, InvoiceItem, Sale, PaymentStatus } from '../types';
+import { Product, InvoiceStatus, InvoiceItem, Sale, PaymentStatus, Supplier } from '../types';
 import { useUI, useInventory, useAccounting } from '../store/AppContext';
 import { useAppStore } from '../store/useAppStore';
 import { authService } from '../services/auth.service';
@@ -14,7 +14,7 @@ const DRAFT_KEY = 'pharmaflow_sales_draft';
 
 export const useSales = (onNavigate?: (view: any, params?: any) => void) => {
   const { addToast, currency, refreshGlobal } = useUI();
-  const { addInvoice } = useAccounting();
+  const { addInvoice, customers } = useAccounting();
   const { products } = useInventory();
   const setEditingInvoiceId = useAppStore(state => state.setEditingInvoiceId);
   const editingInvoiceId = useAppStore(state => state.editingInvoiceId);
@@ -45,6 +45,12 @@ export const useSales = (onNavigate?: (view: any, params?: any) => void) => {
   const [showSearchDropdown, setShowSearchDropdown] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [isConfirmSaveOpen, setIsConfirmSaveOpen] = useState(false);
+  const [isAdjustmentsOpen, setIsAdjustmentsOpen] = useState(false);
+
+  const [customerSearchTerm, setCustomerSearchTerm] = useState('');
+  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+  const [isAddCustomerModalOpen, setIsAddCustomerModalOpen] = useState(false);
+  const [newCustomerName, setNewCustomerName] = useState('');
 
   const itemNameInputRef = useRef<HTMLInputElement>(null);
   const qtyInputRef = useRef<HTMLInputElement>(null);
@@ -59,6 +65,69 @@ export const useSales = (onNavigate?: (view: any, params?: any) => void) => {
     date: new Date().toISOString().split('T')[0], isReturn: false,
     notes: '', warehouse: ''
   });
+
+  const filteredCustomers = useMemo(() => {
+    if (!customerSearchTerm) return [];
+    return customers.filter(c => 
+      c.Supplier_Name.toLowerCase().includes(customerSearchTerm.toLowerCase())
+    ).slice(0, 5);
+  }, [customerSearchTerm, customers]);
+
+  const handleCustomerSearch = (val: string) => {
+    setCustomerSearchTerm(val);
+    setShowCustomerDropdown(true);
+  };
+
+  const selectCustomer = (c: any) => {
+    setHeader(prev => ({ ...prev, customer_id: c.id }));
+    setCustomerSearchTerm(c.Supplier_Name);
+    setShowCustomerDropdown(false);
+  };
+
+  const handleCustomerBlur = () => {
+    setTimeout(() => {
+      setShowCustomerDropdown(false);
+      if (customerSearchTerm && !customers.find(c => c.Supplier_Name === customerSearchTerm)) {
+        setNewCustomerName(customerSearchTerm);
+        setIsAddCustomerModalOpen(true);
+      }
+    }, 200);
+  };
+
+  const confirmAddCustomer = async () => {
+    try {
+      const { db } = await import('../services/database');
+      const newId = `CUS-${Date.now()}`;
+      const newCus: Supplier = {
+        id: newId,
+        Supplier_ID: newId,
+        Supplier_Name: newCustomerName,
+        Phone: '',
+        Address: '',
+        Balance: 0,
+        openingBalance: 0,
+        Is_Active: true,
+        Created_At: new Date().toISOString()
+      } as any;
+      
+      await db.saveCustomer(newCus);
+      await refreshGlobal();
+      
+      setHeader(prev => ({ ...prev, customer_id: newId }));
+      setCustomerSearchTerm(newCustomerName);
+      setIsAddCustomerModalOpen(false);
+      addToast(`تم إضافة العميل ${newCustomerName} بنجاح`, "success");
+    } catch (error) {
+      console.error("Failed to add customer", error);
+      addToast("فشل في إضافة العميل", "error");
+    }
+  };
+
+  const cancelAddCustomer = () => {
+    setIsAddCustomerModalOpen(false);
+    setCustomerSearchTerm('');
+    setHeader(prev => ({ ...prev, customer_id: '' }));
+  };
 
   const [isPeriodLockedStatus, setIsPeriodLockedStatus] = useState(false);
   
@@ -164,7 +233,7 @@ export const useSales = (onNavigate?: (view: any, params?: any) => void) => {
     return products.filter(p => 
       p.Is_Active !== false && (
         p.Name.toLowerCase().includes(term) || 
-        p.ProductID.toLowerCase().includes(term) ||
+        p.id.toLowerCase().includes(term) ||
         (p.barcode && p.barcode.includes(term))
       )
     ).slice(0, 5);
@@ -174,7 +243,7 @@ export const useSales = (onNavigate?: (view: any, params?: any) => void) => {
     setSelectedProduct(p);
     setManualItemName(p.Name);
     setCategoryName(p.categoryName || '');
-    const suggestion = await priceIntelligenceService.getSuggestedPrice(p.ProductID, 'SALE', header.customer_id);
+    const suggestion = await priceIntelligenceService.getSuggestedPrice(p.id, 'SALE', header.customer_id);
     setTempPrice(suggestion.suggestedPrice || p.UnitPrice);
     setShowSearchDropdown(false);
     setIsDetailModalOpen(true);
@@ -196,7 +265,7 @@ export const useSales = (onNavigate?: (view: any, params?: any) => void) => {
     
     const newItem: InvoiceItem = {
       id: db.generateId('SALE_DET'), parent_id: header.invoice_number,
-      product_id: prod?.ProductID || db.generateId('NEW'),
+      product_id: prod?.id || db.generateId('NEW'),
       name: prod?.Name || name, price: parseFloat(tempPrice as any) || 0, qty: Number(tempQty) || 1,
       sum: (Number(tempQty) || 1) * (parseFloat(tempPrice as any) || 0), row_order: items.length + 1,
       expiryDate: tempExpiry,
@@ -336,6 +405,7 @@ export const useSales = (onNavigate?: (view: any, params?: any) => void) => {
     showSearchDropdown, setShowSearchDropdown,
     isDetailModalOpen, setIsDetailModalOpen,
     isConfirmSaveOpen, setIsConfirmSaveOpen,
+    isAdjustmentsOpen, setIsAdjustmentsOpen,
     itemNameInputRef,
     qtyInputRef,
     priceInputRef,
@@ -361,6 +431,16 @@ export const useSales = (onNavigate?: (view: any, params?: any) => void) => {
     isRecovery,
     getStatusLabel,
     handleExport,
-    printData
+    printData,
+    customerSearchTerm, setCustomerSearchTerm,
+    showCustomerDropdown, setShowCustomerDropdown,
+    isAddCustomerModalOpen, setIsAddCustomerModalOpen,
+    newCustomerName, setNewCustomerName,
+    filteredCustomers,
+    handleCustomerSearch,
+    selectCustomer,
+    handleCustomerBlur,
+    confirmAddCustomer,
+    cancelAddCustomer
   };
 };

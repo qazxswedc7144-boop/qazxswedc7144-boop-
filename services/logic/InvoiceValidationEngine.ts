@@ -48,7 +48,7 @@ export const InvoiceValidationEngine = {
     if (type === 'SALE') {
       const products = await db.getProducts();
       for (const item of invoice.items) {
-        const product = products.find(p => p.ProductID === item.product_id || p.id === item.product_id);
+        const product = products.find(p => p.id === item.product_id);
         if (product && item.qty > product.StockQuantity) {
           throw new Error(`مخزون غير كافٍ للصنف: ${item.name} (المتاح: ${product.StockQuantity})`);
         }

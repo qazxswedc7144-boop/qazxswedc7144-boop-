@@ -1,5 +1,6 @@
 
 import { db } from '../services/database';
+import { InventoryService } from '../services/InventoryService';
 import { Product, InventoryError, InventoryTransaction, PriceHistory, Purchase } from '../types';
 import { ReferentialIntegrityGuard } from '../services/validators/ReferentialIntegrityGuard';
 import { authService } from '../services/auth.service';
@@ -23,7 +24,7 @@ export const ProductRepository = {
   getById: async (id: string): Promise<Product | undefined> => {
     if (!id) return undefined;
     const all = await db.getProducts();
-    return all.find(p => p.ProductID === id || p.id === id);
+    return all.find(p => p.id === id);
   },
 
   getByBarcode: async (barcode: string): Promise<Product | undefined> => {
@@ -40,7 +41,7 @@ export const ProductRepository = {
       .filter(p => 
         p.Is_Active !== false && (
           p.Name.toLowerCase().includes(lowerTerm) || 
-          p.ProductID.toLowerCase().includes(lowerTerm) ||
+          p.id.toLowerCase().includes(lowerTerm) ||
           (p.barcode && p.barcode.includes(term))
         )
       )
@@ -50,55 +51,33 @@ export const ProductRepository = {
   updateStock: async (productId: string, quantityChange: number, sourceDocType: any = 'ADJUSTMENT', sourceDocId: string = 'SYS-ADJ', txType: any = 'ADJUSTMENT') => {
     if (!productId) return;
     const user = authService.getCurrentUser();
-    const now = new Date().toISOString();
     
-    const product = await ProductRepository.getById(productId);
-    if (!product) {
-      throw new InventoryError(`الصنف [${productId}] غير موجود في قاعدة بيانات المخزون.`);
-    }
-
-    // التحقق من العجز المخزني (إلا في حالة المرتجع أو التسوية الإيجابية)
-    if (product.StockQuantity + quantityChange < 0 && txType !== 'RETURN' && txType !== 'INITIAL') {
-      throw new InventoryError(`عجز مخزني في [${product.Name}]: المتاح ${product.StockQuantity}، المطلوب ${Math.abs(quantityChange)}.`);
-    }
-
-    const transaction: InventoryTransaction = {
-      TransactionID: db.generateId('IVT'),
-      ItemID: product.ProductID,
-      SourceDocumentType: sourceDocType,
-      SourceDocumentID: sourceDocId,
-      QuantityChange: quantityChange,
-      before_qty: product.StockQuantity,
-      after_qty: product.StockQuantity + quantityChange,
-      TransactionType: txType,
-      TransactionDate: now,
-      UserID: user?.User_Email || 'SYSTEM',
-      Created_At: now,
-      Created_By: user?.User_Email || 'SYSTEM',
-      lastModified: now
-    };
-
-    await db.db.inventoryTransactions.add(transaction);
-
-    product.StockQuantity += quantityChange;
-    product.lastModified = now;
-    await db.db.products.put(product);
+    // Use InventoryService to record the movement and update stock
+    await InventoryService.recordMovement({
+      type: txType as any,
+      productId: productId,
+      warehouseId: 'WH-MAIN', // Default warehouse
+      quantity: quantityChange,
+      sourceId: sourceDocId,
+      sourceType: sourceDocType,
+      userId: user?.User_Email || 'SYSTEM'
+    });
   },
 
   save: async (product: Product) => {
     if (product.Is_Active === undefined) product.Is_Active = true;
     
     // التحقق من وجود فرق بين الرصيد المدخل والرصيد الحالي لإنشاء حركة تسوية آليا
-    const existing = await ProductRepository.getById(product.ProductID);
+    const existing = await ProductRepository.getById(product.id);
     if (existing) {
       const diff = (product.StockQuantity || 0) - (existing.StockQuantity || 0);
       if (Math.abs(diff) > 0.001) {
-        await ProductRepository.updateStock(product.ProductID, diff, 'ADJUSTMENT', 'MANUAL-EDIT', 'INITIAL');
+        await ProductRepository.updateStock(product.id, diff, 'ADJUSTMENT', 'MANUAL-EDIT', 'INITIAL');
       }
     } else {
       // صنف جديد برصيد افتتاحي
       if (product.StockQuantity > 0) {
-        await ProductRepository.updateStock(product.ProductID, product.StockQuantity, 'ADJUSTMENT', 'INITIAL-SETUP', 'INITIAL');
+        await ProductRepository.updateStock(product.id, product.StockQuantity, 'ADJUSTMENT', 'INITIAL-SETUP', 'INITIAL');
       }
     }
 
@@ -110,7 +89,7 @@ export const ProductRepository = {
     const product = await ProductRepository.getById(id);
     if (!product) return;
 
-    const hasRefs = await ReferentialIntegrityGuard.checkProductReferences(product.ProductID);
+    const hasRefs = await ReferentialIntegrityGuard.checkProductReferences(product.id);
     
     if (hasRefs) {
       product.Is_Active = false as any; // logical delete
@@ -124,7 +103,7 @@ export const ProductRepository = {
   },
 
   calculateCurrentBalance: async (productId: string): Promise<number> => {
-    const txs = await db.db.inventoryTransactions.where('ItemID').equals(productId).toArray();
+    const txs = await db.db.inventoryTransactions.where('productId').equals(productId).toArray();
     return txs.reduce((sum, tx) => sum + (tx.QuantityChange || 0), 0);
   },
 
@@ -141,7 +120,7 @@ export const ProductRepository = {
     if (!product) return null;
 
     const lastPurchase = await db.db.purchasesByItem
-      .where('itemId')
+      .where('productId')
       .equals(productId)
       .reverse()
       .first();
