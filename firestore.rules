@@ -1,0 +1,44 @@
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function getTenantId() {
+      // In a real app, we'd get this from the user's document or custom claims
+      // For this implementation, we assume tenant_id is passed in the document
+      return request.auth.token.tenant_id;
+    }
+
+    function isOwner(data) {
+      return isAuthenticated() && data.tenant_id == request.auth.token.tenant_id;
+    }
+
+    // Generic match for all collections
+    match /{collectionName}/{docId} {
+      // Allow read if tenant_id matches
+      allow read: if isAuthenticated() && resource.data.tenant_id == request.auth.token.tenant_id;
+      
+      // Allow create if tenant_id matches current user's tenant
+      allow create: if isAuthenticated() && request.resource.data.tenant_id == request.auth.token.tenant_id;
+      
+      // Allow update if tenant_id matches and versioning is respected (optional)
+      allow update: if isAuthenticated() && 
+                    resource.data.tenant_id == request.auth.token.tenant_id &&
+                    request.resource.data.tenant_id == request.auth.token.tenant_id;
+                    
+      allow delete: if isAuthenticated() && resource.data.tenant_id == request.auth.token.tenant_id;
+    }
+    
+    // Special case for sync_queue (audit trail)
+    match /sync_queue/{docId} {
+      allow read, write: if isAuthenticated() && 
+                         (resource == null || resource.data.tenant_id == request.auth.token.tenant_id) &&
+                         (request.resource == null || request.resource.data.tenant_id == request.auth.token.tenant_id);
+    }
+  }
+}

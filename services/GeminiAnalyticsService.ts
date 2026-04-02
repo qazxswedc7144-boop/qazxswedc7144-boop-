@@ -1,5 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
-import { ReportEngine } from "./ReportEngine";
+import { ReportEngine } from "../engines/reportEngine";
 
 export class GeminiAnalyticsService {
   private static ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });

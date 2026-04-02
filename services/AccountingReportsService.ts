@@ -1,5 +1,6 @@
+
 import { db } from './database';
-import { ReportEngine } from './ReportEngine';
+import { ReportEngine } from '../engines/reportEngine';
 
 export class AccountingReportsService {
   
@@ -12,22 +13,27 @@ export class AccountingReportsService {
 
   // 2. تحليل الربح على مستوى العميل (Top 10)
   static async getTopProfitableCustomers() {
-    return await ReportEngine.getCustomerProfitability();
+    return await ReportEngine.getCustomerProfit();
   }
 
   // 3. الأصناف القريبة من الانتهاء (خلال 30 يوم)
   static async getExpiringSoonItems() {
-    const report = await ReportEngine.getExpiryReport();
-    return report.filter(r => r.daysRemaining <= 30 && r.daysRemaining > 0);
+    const products = await db.getProducts();
+    const today = new Date();
+    return products.filter(p => {
+      if (!p.ExpiryDate) return false;
+      const expiry = new Date(p.ExpiryDate);
+      const diffDays = Math.ceil((expiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      return diffDays <= 30 && diffDays > 0;
+    });
   }
 
   // 4. حركة الحسابات للفترة الحالية
   static async getRecentAccountMovements(limit = 20) {
-    return await db.db.accountMovements
-      .orderBy('date')
-      .reverse()
-      .limit(limit)
-      .toArray();
+    const entries = await db.getJournalEntries();
+    return entries
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .slice(0, limit);
   }
 
   // New enterprise methods
@@ -40,6 +46,6 @@ export class AccountingReportsService {
   }
 
   static async getInventoryValuation() {
-    return await ReportEngine.getInventoryValuation();
+    return await ReportEngine.getInventoryValue();
   }
 }

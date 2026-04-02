@@ -21,7 +21,7 @@ import { InventoryService } from './InventoryService';
 import { AccountingEngine } from './AccountingEngine';
 import { PeriodLockEngine } from './PeriodLockEngine';
 import { FIFOEngine } from './FIFOEngine';
-import { AIInsightsEngine } from './AIInsightsEngine';
+import { AIInsightsEngine } from '../engines/aiInsightsEngine';
 
 export interface SaleOptions {
   isCash: boolean;

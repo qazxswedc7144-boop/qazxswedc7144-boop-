@@ -109,13 +109,6 @@ const REPORTS = [
     route: 'reports/expiry-items',
     description: 'تنبيهات مبكرة للأصناف القريبة من الانتهاء لتقليل الهالك.'
   },
-  { 
-    id: 'aging-report', 
-    title: 'تعمير الذمم (Aging)', 
-    icon: <Clock size={28} />, 
-    route: 'aging-report',
-    description: 'تحليل مديونيات العملاء والموردين المتأخرة حسب الفترات الزمنية (0-90+ يوم).'
-  },
 ];
 
 const ReportsModule: React.FC<ReportsModuleProps> = ({ onNavigate }) => {

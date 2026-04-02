@@ -17,6 +17,8 @@ import { ReconciliationEngine } from './logic/ReconciliationEngine';
 import { BusinessRulesEngine } from './logic/BusinessRulesEngine';
 import { BackupService } from './backupService';
 
+import { ReportEngine } from '../engines/reportEngine';
+
 export interface AgingBucket {
   current: number;    
   overdue30: number;  
@@ -40,29 +42,15 @@ export const accountingService = {
     if (cached) return cached;
 
     try {
-      const sales = await InvoiceRepository.getAllSales();
-      const cashflow = await CashFlowRepository.getAll();
-      
-      let totalRevenue = 0;
-      let totalCOGS = 0;
-      let expenses = 0;
-
-      sales.forEach(s => {
-        totalRevenue += (s.finalTotal || 0);
-        totalCOGS += (s.totalCost || 0);
-      });
-
-      cashflow.forEach(t => {
-        if (t.type === 'خرج' && !t.notes?.includes('مشتريات')) {
-          expenses += t.amount;
-        }
-      });
-
-      const grossProfit = totalRevenue - totalCOGS;
-      const netProfit = grossProfit - expenses;
-      const margin = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
-      
-      const metrics = { income: totalRevenue, outcome: totalCOGS + expenses, net: netProfit, margin, grossProfit, cogs: totalCOGS };
+      const incomeStatement = await ReportEngine.getIncomeStatement();
+      const metrics = { 
+        income: incomeStatement.revenue, 
+        outcome: incomeStatement.cogs + incomeStatement.expenses, 
+        net: incomeStatement.netProfit, 
+        margin: incomeStatement.margin, 
+        grossProfit: incomeStatement.grossProfit, 
+        cogs: incomeStatement.cogs 
+      };
       reportCache.set(cacheKey, metrics, 30 * 60 * 1000); 
       return metrics;
     } catch (e) { 
@@ -75,25 +63,41 @@ export const accountingService = {
     const cached = reportCache.get<any>(cacheKey);
     if (cached) return cached;
 
-    const sales = await db.getSales();
-    const cashflow = await db.getCashFlow();
+    const today = new Date();
+    const startDate = new Date();
+    startDate.setDate(today.getDate() - days + 1);
+    const startDateStr = startDate.toISOString().split('T')[0];
+
+    const entries = await db.getJournalEntries();
+    const filteredEntries = entries.filter(e => e.date >= startDateStr);
     
     const labels: string[] = [];
     const revenue: number[] = [];
     const expense: number[] = [];
 
-    const today = new Date();
+    const accounts = await db.getAccounts();
+    const revenueAccounts = accounts.filter(a => a.type === 'REVENUE').map(a => a.id);
+    const expenseAccounts = accounts.filter(a => a.type === 'EXPENSE').map(a => a.id);
+
     for (let i = days - 1; i >= 0; i--) {
       const d = new Date();
       d.setDate(today.getDate() - i);
       const dateStr = d.toISOString().split('T')[0];
       labels.push(dateStr);
 
-      const daySales = sales.filter(s => (s.date || "").startsWith(dateStr));
-      revenue.push(daySales.reduce((acc, s) => acc + (s.finalTotal || 0), 0));
+      const dayEntries = filteredEntries.filter(e => e.date.startsWith(dateStr));
+      let dayRev = 0;
+      let dayExp = 0;
 
-      const dayExpenses = cashflow.filter(c => c.type === 'خرج' && c.date.startsWith(dateStr));
-      expense.push(dayExpenses.reduce((acc, c) => acc + c.amount, 0));
+      dayEntries.forEach(e => {
+        e.lines.forEach(l => {
+          if (revenueAccounts.includes(l.accountId)) dayRev += (l.credit - l.debit);
+          if (expenseAccounts.includes(l.accountId)) dayExp += (l.debit - l.credit);
+        });
+      });
+
+      revenue.push(dayRev);
+      expense.push(dayExp);
     }
 
     const result = { labels, revenue, expense };
@@ -102,14 +106,16 @@ export const accountingService = {
   },
 
   getTopProfitableItems: async (limit: number = 100) => {
-    const products = await db.getProducts();
-    return products
-      .filter(p => p.UnitPrice > 0 && p.CostPrice > 0)
-      .sort((a, b) => ((b.UnitPrice - b.CostPrice)) - ((a.UnitPrice - a.CostPrice)))
+    const profits = await ReportEngine.getItemProfit();
+    return profits
+      .sort((a, b) => b.grossProfit - a.grossProfit)
       .slice(0, limit);
   },
 
   getAgingReport: async (type: 'CUSTOMER' | 'SUPPLIER'): Promise<PartnerAging[]> => {
+    // Keep existing aging logic as it's quite specific to unpaid invoices, 
+    // but we could potentially use journal entries if we track sub-ledgers.
+    // For now, let's keep it as is but ensure it's accurate.
     const cacheKey = `aging_report_${type}`;
     const cached = reportCache.get<PartnerAging[]>(cacheKey);
     if (cached) return cached;
@@ -187,42 +193,17 @@ export const accountingService = {
   },
 
   getRealTimeProfitLoss: async () => {
-    const entries = await db.getJournalEntries();
-    const revenueAcc = await AccountingEngine.getCoreAccount('SALES_REVENUE');
-    const cogsAcc = await AccountingEngine.getCoreAccount('COGS');
-    const expenseAcc = await AccountingEngine.getCoreAccount('EXPENSE');
-
-    let revenue = 0;
-    let cogs = 0;
-    let expenses = 0;
-
-    entries.forEach(e => {
-      e.lines.forEach(l => {
-        if (l.accountId === revenueAcc) revenue += (l.credit - l.debit);
-        if (l.accountId === cogsAcc) cogs += (l.debit - l.credit);
-        if (l.accountId === expenseAcc) expenses += (l.debit - l.credit);
-      });
-    });
-
-    const grossProfit = revenue - cogs;
-    const netProfit = grossProfit - expenses;
-
-    return { revenue, cogs, grossProfit, expenses, netProfit };
+    return await ReportEngine.getIncomeStatement();
   },
 
   getTrialBalance: async () => {
-    const accounts = await db.db.accounts.toArray();
-    const result = [];
-    for (const acc of accounts) {
-      const balance = acc.balance || 0;
-      result.push({
-        accountId: acc.id,
-        name: acc.name,
-        debit: balance > 0 ? balance : 0,
-        credit: balance < 0 ? Math.abs(balance) : 0
-      });
-    }
-    return result;
+    const tb = await ReportEngine.getTrialBalance();
+    return tb.accounts.map(acc => ({
+      accountId: acc.accountId,
+      name: acc.account_name,
+      debit: acc.debit,
+      credit: acc.credit
+    }));
   },
 
   getEntries: async (): Promise<AccountingEntry[]> => await AccountRepository.getAllJournalEntries(),

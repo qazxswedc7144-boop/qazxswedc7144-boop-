@@ -3,6 +3,7 @@ import { db } from './database';
 import { SyncQueueItem, SyncAction, ConflictArchive } from '../types';
 import CryptoJS from 'crypto-js';
 import Dexie from 'dexie';
+import { SyncEngine } from './SyncEngine';
 
 // Fix: Define global for libraries that expect it (like some versions of crypto-js)
 if (typeof (window as any).global === 'undefined') {
@@ -34,10 +35,14 @@ export class SyncService {
       };
 
       // Use ignoreTransaction to prevent "Object store not found" errors when called from hooks
-      // that are inside a transaction with a limited scope.
       await Dexie.ignoreTransaction(async () => {
         await db.db.syncQueue.add(syncItem);
       });
+      
+      // Trigger immediate sync if online
+      if (navigator.onLine) {
+        this.processQueue();
+      }
       
       console.log(`[SyncService] Queued ${action} for ${entityType}:${entityId}`);
     } catch (error) {
@@ -51,13 +56,21 @@ export class SyncService {
   static startWorker() {
     if (this.syncInterval) return;
 
-    // Run every 60 seconds
+    // Run every 30 seconds
     this.syncInterval = setInterval(() => {
       this.processQueue();
-    }, 60000);
+    }, 30000);
 
     // Initial run
     this.processQueue();
+
+    // Listen for network changes
+    SyncEngine.initNetworkDetection((online) => {
+      if (online) {
+        console.log('[SyncService] Back online, processing queue...');
+        this.processQueue();
+      }
+    });
   }
 
   /**
@@ -74,16 +87,7 @@ export class SyncService {
    * Process pending items in the sync queue
    */
   private static async processQueue() {
-    if (!navigator.onLine) {
-      console.log('[SyncService] Offline, skipping sync');
-      return;
-    }
-
-    // Hardening: Prevent sync during active transaction
-    if ((db as any).isTransactionActive) {
-      console.log('[SyncService] Transaction active, skipping sync');
-      return;
-    }
+    if (!navigator.onLine) return;
 
     try {
       const pendingItems = await db.db.syncQueue
@@ -93,7 +97,7 @@ export class SyncService {
 
       if (pendingItems.length === 0) return;
 
-      console.log(`[SyncService] Processing ${pendingItems.length} pending items`);
+      console.log(`[SyncService] Syncing ${pendingItems.length} items to Firebase...`);
 
       for (const item of pendingItems) {
         await this.syncItem(item);
@@ -104,77 +108,57 @@ export class SyncService {
   }
 
   /**
-   * Sync a single item to the "cloud" (mocked API)
+   * Sync a single item to Firestore
    */
   private static async syncItem(item: SyncQueueItem) {
     try {
-      // Hardening: Add deviceId and syncVersion to payload
-      const deviceId = await db.getSetting('DEVICE_ID', 'UNKNOWN');
-      
-      // Simulate API call with hardening metadata
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // Simulate random conflict for demonstration (1% chance)
-      const isConflict = Math.random() < 0.01;
-      
-      if (isConflict) {
-        await this.handleConflict(item);
+      const bytes = CryptoJS.AES.decrypt(item.payload, ENCRYPTION_KEY);
+      const data = JSON.parse(bytes.toString(CryptoJS.enc.Utf8));
+
+      // Map entityType to Firestore collection name
+      const collectionMap: Record<string, string> = {
+        'SALE': 'sales',
+        'PURCHASE': 'purchases',
+        'PRODUCT': 'products',
+        'JOURNAL_ENTRY': 'journal_entries',
+        'STOCK_MOVEMENT': 'stock_movements',
+        'INVENTORY_LAYER': 'inventory_layers',
+        'ACCOUNT': 'accounts',
+        'SUPPLIER': 'suppliers',
+        'CUSTOMER': 'customers',
+        'Invoices_Sales': 'sales',
+        'Invoices_Purchases': 'purchases',
+        'Items_Inventory': 'products',
+        'Financial_Transactions': 'financial_transactions',
+        'Voucher_Invoice_Link': 'voucher_invoice_links',
+        'Suppliers': 'suppliers',
+        'Customers': 'customers'
+      };
+
+      const collectionName = collectionMap[item.entityType] || item.entityType.toLowerCase();
+
+      if (item.action === 'DELETE') {
+        // Handle delete (soft delete or hard delete based on requirement)
+        // For now, we'll just mark as deleted in Firestore
+        await SyncEngine.saveDoc(collectionName, item.entityId, { ...data, isDeleted: true });
       } else {
-        await db.db.syncQueue.update(item.id, { syncStatus: 'SYNCED' });
-        console.log(`[SyncService] Successfully synced ${item.entityType}:${item.entityId} from device:${deviceId}`);
+        await SyncEngine.saveDoc(collectionName, item.entityId, data);
       }
+
+      // Also log to Firestore sync_queue for audit
+      await SyncEngine.saveDoc('sync_queue', item.id, {
+        ...item,
+        syncStatus: 'SYNCED',
+        syncedAt: new Date().toISOString()
+      });
+
+      await db.db.syncQueue.update(item.id, { syncStatus: 'SYNCED' });
     } catch (error) {
       console.error(`[SyncService] Failed to sync item ${item.id}:`, error);
       await db.db.syncQueue.update(item.id, { 
         retryCount: (item.retryCount || 0) + 1,
         error: String(error)
       });
-    }
-  }
-
-  /**
-   * Handle sync conflicts using "Latest timestamp wins"
-   */
-  private static async handleConflict(item: SyncQueueItem) {
-    console.warn(`[SyncService] Conflict detected for ${item.entityType}:${item.entityId}`);
-    
-    try {
-      // 1. Decrypt local data
-      const bytes = CryptoJS.AES.decrypt(item.payload, ENCRYPTION_KEY);
-      const localData = JSON.parse(bytes.toString(CryptoJS.enc.Utf8));
-
-      // 2. Fetch "cloud" data (mocked)
-      // In a real app, the API would return the current cloud version
-      const cloudData = { ...localData, lastModified: new Date(Date.now() - 10000).toISOString() }; 
-      
-      const localTime = new Date(item.localTimestamp).getTime();
-      const cloudTime = new Date(cloudData.lastModified || 0).getTime();
-
-      if (localTime >= cloudTime) {
-        // Local wins: Push local to cloud again (in real app, API would handle this)
-        await db.db.syncQueue.update(item.id, { syncStatus: 'SYNCED' });
-        console.log('[SyncService] Conflict resolved: Local version won (newer)');
-      } else {
-        // Cloud wins: Archive local, update local with cloud data
-        const archive: ConflictArchive = {
-          id: `CONF-${Date.now()}`,
-          entityType: item.entityType,
-          entityId: item.entityId,
-          data: JSON.stringify(localData),
-          resolvedAt: new Date().toISOString(),
-          resolution: 'CLOUD_WON'
-        };
-        
-        await db.db.conflictArchive.add(archive);
-        await db.db.syncQueue.update(item.id, { syncStatus: 'CONFLICT' });
-        
-        // Log to AuditTrail
-        await db.addAuditLog('SYSTEM', 'SYSTEM', item.entityId, `Conflict resolved for ${item.entityType}. Cloud version won.`);
-        
-        console.log('[SyncService] Conflict resolved: Cloud version won (newer)');
-      }
-    } catch (error) {
-      console.error('[SyncService] Failed to resolve conflict:', error);
     }
   }
 

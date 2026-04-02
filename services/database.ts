@@ -16,12 +16,12 @@ import {
   Warehouse, WarehouseStock, Currency, ExchangeRate, Category,
   InventoryItem, ItemProfitEntry, CustomerProfitEntry, SupplierProfitEntry,
   AccountMovement, PurchaseByItemEntry, ExpiringItemEntry,
+  InventoryLayer, FIFOConsumptionLog, StockMovement,
   PeriodLockLog, AIInsight
 } from '../types';
 import { authService } from './auth.service';
 import { ErrorManager } from './errorManager';
-import { SyncService } from './SyncService';
-
+import { SyncEngine } from './SyncEngine';
 import { IS_PREVIEW } from '../constants';
 
 class PharmaFlowDB extends Dexie {
@@ -83,6 +83,9 @@ class PharmaFlowDB extends Dexie {
   exchangeRates!: Table<ExchangeRate, string>;
   stockReservations!: Table<any, string>;
   fifoCostLayers!: Table<any, string>;
+  inventory_layers!: Table<InventoryLayer, string>;
+  fifo_consumption_log!: Table<FIFOConsumptionLog, string>;
+  stock_movements!: Table<StockMovement, string>;
   categories!: Table<Category, string>;
   inventory!: Table<InventoryItem, string>;
   itemProfits!: Table<ItemProfitEntry, string>;
@@ -91,12 +94,14 @@ class PharmaFlowDB extends Dexie {
   accountMovements!: Table<AccountMovement, string>;
   purchasesByItem!: Table<PurchaseByItemEntry, string>;
   expiringItems!: Table<ExpiringItemEntry, string>;
+  journal_lines!: Table<any, string>;
 
   constructor() {
     super('PharmaFlowDB');
+    this.initSync();
     
-    // التحديث لإصدار 59 لدعم محرك FIFO وAI Insights وإصلاح الفهرسة وإضافة مستودعات ومعالجة تعارضات المفاتيح الأساسية
-    this.version(59).stores({
+    // التحديث لإصدار 61 لدعم محرك FIFO وAI Insights وإصلاح الفهرسة وإضافة مستودعات ومعالجة تعارضات المفاتيح الأساسية
+    this.version(61).stores({
       users: 'User_Email, User_Name, Role, Is_Active',
       userRoles: 'User_Email, Role_Type', 
       products: 'id, Name, barcode, Is_Active, categoryId, supplierId',
@@ -106,6 +111,7 @@ class PharmaFlowDB extends Dexie {
       journalEntries: 'id, EntryID, date, sourceId, status, hash, [sourceId+status]',
       suppliers: 'id, Supplier_ID, Supplier_Name, phone, Is_Active',
       customers: 'id, Supplier_ID, Supplier_Name, phone, Is_Active',
+      journal_lines: 'id, entryId, accountId',
       audit_log: 'id, user_id, action, target_type, target_id, timestamp, [user_id+timestamp]',
       accounts: 'id, code, name, type, parentId',
       settings: 'key',
@@ -153,6 +159,9 @@ class PharmaFlowDB extends Dexie {
       exchangeRates: 'id, fromCurrency, toCurrency, date',
       stockReservations: 'id, productId, warehouseId, sourceDocId, [warehouseId+productId]',
       fifoCostLayers: 'id, productId, quantityRemaining, purchaseDate, referenceId, isClosed',
+      inventory_layers: 'id, item_id, created_at',
+      fifo_consumption_log: 'id, sale_id, item_id, layer_id',
+      stock_movements: 'id, item_id, type, reference_id, created_at',
       categories: 'id, categoryId, categoryName, isSystem',
       inventory: 'id, itemName, category, status, currentQuantity',
       itemProfits: 'id, productId, itemName, totalSales, grossProfit',
@@ -165,6 +174,31 @@ class PharmaFlowDB extends Dexie {
 
     this.setupOptimizedAuditHooks();
     this.enforceAuditImmutability();
+  }
+
+  async initSync() {
+    const collections = [
+      { name: 'sales', table: this.sales },
+      { name: 'purchases', table: this.purchases },
+      { name: 'stock_movements', table: this.stock_movements },
+      { name: 'journal_entries', table: this.journalEntries },
+      { name: 'journal_lines', table: this.journal_lines },
+      { name: 'inventory_layers', table: this.inventory_layers },
+      { name: 'fifo_consumption_log', table: this.fifo_consumption_log },
+      { name: 'products', table: this.products },
+      { name: 'accounts', table: this.accounts },
+      { name: 'suppliers', table: this.suppliers },
+      { name: 'customers', table: this.customers },
+      { name: 'aiInsights', table: this.aiInsights },
+      { name: 'financialHealthSnapshots', table: this.financialHealthSnapshots }
+    ];
+
+    for (const col of collections) {
+      SyncEngine.subscribe(col.name, async (data) => {
+        // Bulk update Dexie from Firestore
+        await col.table.bulkPut(data);
+      });
+    }
   }
 
   public setupSyncHooks() {
@@ -247,7 +281,9 @@ class PharmaFlowDB extends Dexie {
         this.incrementDataVersion();
         const recordId = String(primaryKey || (obj as any)[pk] || 'NEW');
         this.logAuditEntryAsync(name, recordId, 'ALL', 'NULL', 'Record Created', 'ADD');
-        SyncService.queueSync(name, recordId, 'CREATE', obj);
+        import('./SyncService').then(({ SyncService }) => {
+          SyncService.queueSync(name, recordId, 'CREATE', obj);
+        });
       });
       table.hook('updating', (mods, obj) => {
         this.incrementDataVersion();
@@ -261,13 +297,17 @@ class PharmaFlowDB extends Dexie {
             }
           }
         });
-        SyncService.queueSync(name, recordId, 'UPDATE', { ...(obj as any), ...(mods as any) });
+        import('./SyncService').then(({ SyncService }) => {
+          SyncService.queueSync(name, recordId, 'UPDATE', { ...(obj as any), ...(mods as any) });
+        });
       });
       table.hook('deleting', (primaryKey, obj) => {
         this.incrementDataVersion();
         const recordId = String(primaryKey || (obj as any)[pk] || 'DELETED');
         this.logAuditEntryAsync(name, recordId, 'RECORD', 'Record Deleted', 'DELETED', 'DELETE');
-        SyncService.queueSync(name, recordId, 'DELETE', { id: recordId });
+        import('./SyncService').then(({ SyncService }) => {
+          SyncService.queueSync(name, recordId, 'DELETE', { id: recordId });
+        });
       });
     });
   }

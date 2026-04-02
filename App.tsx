@@ -21,6 +21,7 @@ import NotificationCenter from './components/NotificationCenter';
 import RoleGuard from './components/RoleGuard';
 import { IS_PREVIEW } from './constants';
 import { motion, AnimatePresence } from 'motion/react';
+import { AIInsightsEngine } from './engines/aiInsightsEngine';
 import { 
   Home, Settings, Menu, X, Database, TableProperties, ArrowRight, 
   ShieldCheck, FolderArchive, History, Tag, BarChart3, Fingerprint,
@@ -122,6 +123,7 @@ function MainLayout() {
       });
 
       await FinancialHealthService.refreshHealthMonitor();
+      AIInsightsEngine.runAnalysis();
 
       const syncTimer = setInterval(async () => {
         const status = await SyncService.getSyncStatus();

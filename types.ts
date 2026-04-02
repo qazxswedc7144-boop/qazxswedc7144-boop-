@@ -205,6 +205,8 @@ export type Permission =
 export interface SyncableEntity {
   id?: string;
   lastModified?: string;
+  updated_at?: string; // Alias for lastModified
+  version?: number;    // Alias for syncVersion
   syncStatus?: SyncStatus;
   syncVersion?: number;
   isDeleted?: boolean;
@@ -256,6 +258,38 @@ export interface StockReservation extends SyncableEntity {
   quantity: number;
   sourceDocId: string;
   expiresAt: string;
+}
+
+export interface StockMovement extends SyncableEntity {
+  id: string;
+  item_id: string;
+  type: 'purchase' | 'sale' | 'return' | 'adjustment';
+  quantity_before: number;
+  quantity_change: number;
+  quantity_after: number;
+  unit_cost: number;
+  total_cost: number;
+  reference_id: string;
+  created_at: string;
+}
+
+export interface InventoryLayer extends SyncableEntity {
+  id: string;
+  item_id: string;
+  quantity_remaining: number;
+  unit_cost: number;
+  created_at: string;
+  reference_id: string; // Purchase Invoice ID
+}
+
+export interface FIFOConsumptionLog extends SyncableEntity {
+  id: string;
+  sale_id: string;
+  item_id: string;
+  layer_id: string;
+  quantity_consumed: number;
+  unit_cost: number;
+  consumed_at: string;
 }
 
 export interface FIFOCostLayer extends SyncableEntity {
@@ -568,7 +602,7 @@ export interface AccountingEntry extends SyncableEntity {
   timestamp?: string;
 }
 
-export interface JournalLine {
+export interface JournalLine extends SyncableEntity {
   lineId: string;
   entry_id?: string; // For enterprise alignment
   entryId: string;

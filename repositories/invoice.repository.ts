@@ -7,6 +7,7 @@ import { SharedCalculations } from '../services/logic/SharedCalculations';
 import { InvoiceValidationEngine } from '../services/logic/InvoiceValidationEngine';
 import { InvoiceWorkflowEngine } from '../services/logic/InvoiceWorkflowEngine';
 import { LockService } from '../services/LockService';
+import { PostingEngine } from '../engines/postingEngine';
 
 export const InvoiceRepository = {
   
@@ -151,6 +152,11 @@ export const InvoiceRepository = {
             throw new Error("Invoice is locked (الفاتورة مقفلة ولا يمكن تعديلها)");
           }
 
+          // NEW: Unpost before edit if already posted
+          if (existing.InvoiceStatus === 'POSTED') {
+            await PostingEngine.unpostInvoice(recordId);
+          }
+
           // Phase 8: Financial Link Protection (User Request)
           const paidViaLinks = await VoucherInvoiceLinkRepository.getTotalPaidForInvoice(recordId);
           if (paidViaLinks > 0) {
@@ -171,6 +177,13 @@ export const InvoiceRepository = {
       const hash = await InvoiceValidationEngine.validate(invoiceData, 'SALE');
       
       const result = await db.processSale(cId, items, total, isR, inv, curr, st, pid, invSt, hash, auditScore, riskLevel, totalSaleCost, attachment);
+      
+      // NEW: Automatic Posting
+      const sale = await InvoiceRepository.getSaleById(result.id);
+      if (sale) {
+        await PostingEngine.postInvoice(sale);
+      }
+
       if (recordId) await LockService.releaseLock('sales', recordId);
       return result;
     });
@@ -196,6 +209,11 @@ export const InvoiceRepository = {
             throw new Error("Invoice is locked (الفاتورة مقفلة ولا يمكن تعديلها)");
           }
 
+          // NEW: Unpost before edit if already posted
+          if (existing.invoiceStatus === 'POSTED') {
+            await PostingEngine.unpostInvoice(recordId);
+          }
+
           // Phase 8: Financial Link Protection (User Request)
           const paidViaLinks = await VoucherInvoiceLinkRepository.getTotalPaidForInvoice(recordId);
           if (paidViaLinks > 0) {
@@ -211,6 +229,13 @@ export const InvoiceRepository = {
       const hash = await InvoiceValidationEngine.validate(invoiceData, 'PURCHASE');
 
       const result = await db.processPurchase(sId, items, total, inv, isC, curr, invSt, 'شراء', hash, auditScore, riskLevel, pid, attachment);
+      
+      // NEW: Automatic Posting
+      const purchase = await InvoiceRepository.getPurchaseById(result.id);
+      if (purchase) {
+        await PostingEngine.postInvoice(purchase);
+      }
+
       if (recordId) await LockService.releaseLock('purchases', recordId);
       return result;
     });
@@ -230,6 +255,12 @@ export const InvoiceRepository = {
       if (InvoiceWorkflowEngine.isLocked(sale.InvoiceStatus || 'PENDING')) {
         throw new Error("Invoice is locked (الفاتورة مقفلة ولا يمكن إلغاؤها)");
       }
+      
+      // NEW: Unpost before cancel
+      if (sale.InvoiceStatus === 'POSTED') {
+        await PostingEngine.unpostInvoice(id);
+      }
+
       await LockService.acquireLock('sales', id);
       sale.InvoiceStatus = 'CANCELLED';
       sale.deleted_at = now;
@@ -246,6 +277,12 @@ export const InvoiceRepository = {
       if (InvoiceWorkflowEngine.isLocked(purchase.invoiceStatus || 'PENDING')) {
         throw new Error("Invoice is locked (الفاتورة مقفلة ولا يمكن إلغاؤها)");
       }
+
+      // NEW: Unpost before cancel
+      if (purchase.invoiceStatus === 'POSTED') {
+        await PostingEngine.unpostInvoice(id);
+      }
+
       await LockService.acquireLock('purchases', id);
       purchase.invoiceStatus = 'CANCELLED';
       purchase.deleted_at = now;

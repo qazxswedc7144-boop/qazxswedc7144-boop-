@@ -1,0 +1,279 @@
+
+import { db } from '../services/database';
+import { SyncEngine } from '../services/SyncEngine';
+import { 
+  AIInsight, 
+  FinancialHealthSnapshot, 
+  Product, 
+  Sale, 
+  Purchase,
+  Account,
+  StockMovement,
+  JournalLine
+} from '../types';
+import { ReportEngine } from './reportEngine';
+
+export class AIInsightsEngine {
+  private static isRunning = false;
+
+  /**
+   * Main entry point for the engine
+   */
+  static async runAnalysis() {
+    if (this.isRunning) return;
+    this.isRunning = true;
+
+    try {
+      const tenantId = SyncEngine.getTenantId();
+      
+      // 1. KPI Calculations
+      const kpis = await this.calculateKPIs();
+      
+      // 2. Anomaly Detection
+      const anomalies = await this.detectAnomalies(kpis);
+      
+      // 3. Inventory Analysis
+      const inventoryAlerts = await this.analyzeInventory();
+      
+      // 4. Partner Analysis
+      const partnerInsights = await this.analyzePartners();
+      
+      // 5. Cash Flow Monitor
+      const cashFlow = await this.monitorCashFlow();
+      
+      // 6. Scoring System
+      const healthScore = await this.calculateHealthScore(kpis, inventoryAlerts, cashFlow);
+      
+      // 7. Generate & Store Insights
+      await this.generateAndStoreInsights(kpis, anomalies, inventoryAlerts, partnerInsights, cashFlow, healthScore);
+      
+      // 8. Store Health Snapshot
+      await this.storeHealthSnapshot(healthScore, kpis, cashFlow);
+
+    } catch (error) {
+      console.error("AI Insights Engine Error:", error);
+    } finally {
+      this.isRunning = false;
+    }
+  }
+
+  /**
+   * 3. KPI CALCULATIONS
+   */
+  private static async calculateKPIs() {
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+    
+    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().split('T')[0];
+    const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0).toISOString().split('T')[0];
+
+    const current = await ReportEngine.getIncomeStatement(startOfMonth);
+    const previous = await ReportEngine.getIncomeStatement(lastMonthStart, lastMonthEnd);
+
+    return { current, previous };
+  }
+
+  /**
+   * 4. ANOMALY DETECTION
+   */
+  private static async detectAnomalies(kpis: any) {
+    const anomalies: string[] = [];
+    const { current, previous } = kpis;
+
+    // Sudden drop in sales (e.g., > 30% drop)
+    if (previous.revenue > 0) {
+      const drop = (previous.revenue - current.revenue) / previous.revenue;
+      if (drop > 0.3) {
+        anomalies.push(`انخفاض مفاجئ في المبيعات بنسبة ${(drop * 100).toFixed(1)}% مقارنة بالشهر السابق`);
+      }
+    }
+
+    // Abnormal increase in expense
+    if (previous.expenses > 0) {
+      const increase = (current.expenses - previous.expenses) / previous.expenses;
+      if (increase > 0.5) {
+        anomalies.push(`ارتفاع غير طبيعي في المصاريف بنسبة ${(increase * 100).toFixed(1)}%`);
+      }
+    }
+
+    // Negative profit
+    if (current.netProfit < 0) {
+      anomalies.push(`صافي ربح سالب لهذا الشهر: ${current.netProfit.toLocaleString()}`);
+    }
+
+    // Negative stock (from products)
+    const products = await db.getProducts();
+    const negativeStock = products.filter(p => p.StockQuantity < 0);
+    if (negativeStock.length > 0) {
+      anomalies.push(`يوجد ${negativeStock.length} أصناف برصيد سالب في المخزن`);
+    }
+
+    return anomalies;
+  }
+
+  /**
+   * 5. INVENTORY & 6. EXPIRY ALERTS
+   */
+  private static async analyzeInventory() {
+    const products = await db.getProducts();
+    const alerts: string[] = [];
+    
+    const lowStock = products.filter(p => p.StockQuantity > 0 && p.StockQuantity <= (p.MinLevel || 5));
+    const zeroStock = products.filter(p => p.StockQuantity <= 0);
+    
+    const now = new Date();
+    const nearExpiryDate = new Date();
+    nearExpiryDate.setMonth(now.getMonth() + 3); // 3 months
+    
+    const nearExpiry = products.filter(p => p.ExpiryDate && new Date(p.ExpiryDate) > now && new Date(p.ExpiryDate) <= nearExpiryDate);
+    const expired = products.filter(p => p.ExpiryDate && new Date(p.ExpiryDate) <= now);
+
+    if (lowStock.length > 0) alerts.push(`${lowStock.length} أصناف قاربت على النفاد`);
+    if (zeroStock.length > 0) alerts.push(`${zeroStock.length} أصناف نفدت تماماً`);
+    if (nearExpiry.length > 0) alerts.push(`${nearExpiry.length} أصناف ستنتهي صلاحيتها قريباً`);
+    if (expired.length > 0) alerts.push(`${expired.length} أصناف منتهية الصلاحية`);
+
+    return { alerts, lowStock, zeroStock, nearExpiry, expired };
+  }
+
+  /**
+   * 7. CUSTOMER & 8. SUPPLIER ANALYSIS
+   */
+  private static async analyzePartners() {
+    const customers = await db.getCustomers();
+    const suppliers = await db.getSuppliers();
+    const purchases = await db.getPurchases();
+    
+    const topCustomers = [...customers].sort((a, b) => (b.Balance || 0) - (a.Balance || 0)).slice(0, 5);
+    const highDebtCustomers = customers.filter(c => (c.Balance || 0) > 10000); // Threshold
+    
+    const topSuppliers = [...suppliers].sort((a, b) => (b.Balance || 0) - (a.Balance || 0)).slice(0, 5);
+    const delayedPurchases = purchases.filter(p => p.invoiceStatus === 'PENDING' && (Date.now() - new Date(p.date).getTime()) > 7 * 24 * 60 * 60 * 1000);
+
+    return { topCustomers, highDebtCustomers, topSuppliers, delayedPurchases };
+  }
+
+  /**
+   * 9. CASH FLOW MONITOR
+   */
+  private static async monitorCashFlow() {
+    const cashFlows = await db.db.cashFlow.toArray();
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+    
+    const currentMonthFlows = cashFlows.filter(f => f.date >= startOfMonth);
+    
+    const inflow = currentMonthFlows.filter(f => f.type === 'دخل').reduce((sum, f) => sum + f.amount, 0);
+    const outflow = currentMonthFlows.filter(f => f.type === 'خرج').reduce((sum, f) => sum + f.amount, 0);
+    
+    const cashRisk = inflow < outflow * 0.8; // Warning if inflow is significantly less than outflow
+
+    return { inflow, outflow, cashRisk };
+  }
+
+  /**
+   * 10. SCORING SYSTEM
+   */
+  private static async calculateHealthScore(kpis: any, inventory: any, cashFlow: any) {
+    let score = 70; // Base score
+
+    // Profit impact
+    if (kpis.current.netProfit > 0) score += 10;
+    else score -= 20;
+
+    if (kpis.current.margin > 20) score += 5;
+
+    // Stock impact
+    if (inventory.zeroStock.length > 10) score -= 10;
+    if (inventory.expired.length > 0) score -= 15;
+
+    // Cash flow impact
+    if (cashFlow.cashRisk) score -= 10;
+    if (cashFlow.inflow > cashFlow.outflow) score += 10;
+
+    return Math.max(0, Math.min(100, score));
+  }
+
+  /**
+   * 11. SMART ALERTS & 12. STORAGE
+   */
+  private static async generateAndStoreInsights(kpis: any, anomalies: string[], inventory: any, partners: any, cashFlow: any, score: number) {
+    const tenantId = SyncEngine.getTenantId();
+    const batch: any[] = [];
+
+    // Clear old insights for this tenant (optional, or just add new ones)
+    // For now, we'll just add new ones with high severity if they are critical
+
+    if (score < 40) {
+      batch.push(this.createInsight('RISK', 'تحذير: صحة مالية حرجة', `درجة الصحة المالية للمنشأة منخفضة جداً (${score}/100). يرجى مراجعة المصاريف والتدفقات النقدية.`, 'CRITICAL'));
+    }
+
+    anomalies.forEach(a => {
+      batch.push(this.createInsight('PERFORMANCE', 'تنبيه: نشاط غير طبيعي', a, 'WARNING'));
+    });
+
+    if (inventory.expired.length > 0) {
+      batch.push(this.createInsight('RISK', 'تنبيه: مخزون منتهي الصلاحية', `يوجد ${inventory.expired.length} أصناف منتهية الصلاحية يجب إتلافها أو إرجاعها.`, 'CRITICAL'));
+    }
+
+    if (cashFlow.cashRisk) {
+      batch.push(this.createInsight('COST', 'تنبيه: تدفق نقدي سالب', 'المصاريف تتجاوز الدخل بشكل ملحوظ هذا الشهر. قد تواجه مشكلة في السيولة.', 'WARNING'));
+    }
+
+    // Save to database
+    for (const insight of batch) {
+      await db.db.aiInsights.put(insight);
+      // Also sync to Firestore
+      await SyncEngine.saveDoc('aiInsights', insight.id, insight);
+    }
+  }
+
+  private static createInsight(type: any, title: string, message: string, severity: any): AIInsight {
+    return {
+      id: db.generateId('INS'),
+      type,
+      title,
+      message,
+      severity,
+      timestamp: new Date().toISOString(),
+      tenant_id: SyncEngine.getTenantId(),
+      lastModified: new Date().toISOString()
+    };
+  }
+
+  /**
+   * جلب آخر الرؤى المولدة
+   */
+  static async getLatestInsights(): Promise<AIInsight[]> {
+    return await db.db.aiInsights.orderBy('timestamp').reverse().limit(10).toArray();
+  }
+
+  private static async storeHealthSnapshot(score: number, kpis: any, cashFlow: any) {
+    const snapshot: FinancialHealthSnapshot = {
+      id: db.generateId('FHS'),
+      date: new Date().toISOString().split('T')[0],
+      score,
+      metrics: {
+        cashBalance: cashFlow.inflow - cashFlow.outflow,
+        accountsReceivable: 0, // Need to calculate from partners
+        accountsPayable: 0,    // Need to calculate from partners
+        inventoryValue: await ReportEngine.getInventoryValue(),
+        grossProfit: kpis.current.grossProfit,
+        netProfit: kpis.current.netProfit,
+        collectionRate: 0,
+        supplierPaymentRatio: 0,
+        stockTurnoverRatio: 0
+      },
+      breakdown: {
+        liquidity: cashFlow.inflow > cashFlow.outflow ? 80 : 40,
+        profitability: kpis.current.margin,
+        stockEfficiency: 70,
+        debtManagement: 60
+      },
+      insights: []
+    };
+
+    await db.db.financialHealthSnapshots.put(snapshot);
+    await SyncEngine.saveDoc('financialHealthSnapshots', snapshot.id, snapshot);
+  }
+}
