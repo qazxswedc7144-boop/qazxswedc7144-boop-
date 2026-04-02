@@ -119,7 +119,8 @@ export class InventoryService {
           id: db.generateId('WHS'),
           warehouseId: movement.warehouseId || 'WH-MAIN',
           productId: movement.productId,
-          quantity: movement.quantity
+          quantity: movement.quantity,
+          lastUpdated: new Date().toISOString()
         });
       }
     } catch (error) {

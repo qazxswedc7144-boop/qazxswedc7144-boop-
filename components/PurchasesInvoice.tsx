@@ -15,6 +15,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { usePurchases } from '../hooks/usePurchases';
 import { useUI } from '../store/AppContext';
 import { InvoiceItem } from '../types';
+import { CameraModule } from './CameraModule';
+import { DocumentViewer } from './DocumentViewer';
 
 const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => void }> = ({ onNavigate }) => {
   const { addToast } = useUI();
@@ -31,6 +33,8 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
     isDuplicate,
     hasDependencies,
     isAdjustmentsOpen, setIsAdjustmentsOpen,
+    isCameraOpen, setIsCameraOpen,
+    isViewerOpen, setIsViewerOpen,
     adjData, setAdjData,
     selectedProduct, setSelectedProduct,
     manualItemName, setManualItemName,
@@ -175,54 +179,54 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
     <div className="flex flex-col h-screen bg-white font-['Cairo'] w-full relative overflow-hidden" dir="rtl">
       {/* HEADER SECTION - FLAT & FULL WIDTH */}
       <div className="shrink-0 z-[100] border-b border-slate-100">
-        <div className="p-3 flex items-center justify-between gap-4">
-          {/* Right: Title */}
-          <div className="flex items-center gap-3 min-w-max">
-            <button 
-              onClick={() => onNavigate?.('dashboard')} 
-              className="w-8 h-8 bg-slate-50 border border-slate-100 rounded-lg flex items-center justify-center text-[#1E4D4D] hover:bg-slate-100 transition-all"
-              title="الرجوع للرئيسية"
+        <div className="py-3 px-4 flex items-center justify-between gap-4">
+          {/* Right Group: Title, Print, Return */}
+          <div className="flex items-center gap-6">
+            <div className="flex items-center gap-1">
+              <button 
+                onClick={() => onNavigate?.('dashboard')} 
+                className="w-8 h-8 bg-slate-50 border border-slate-100 rounded-lg flex items-center justify-center text-[#1E4D4D] hover:bg-slate-100 transition-all ml-2"
+                title="الرجوع للرئيسية"
+              >
+                <ArrowRight size={18} />
+              </button>
+              <h2 className="text-lg font-black text-[#1E4D4D] whitespace-nowrap">مشتريات</h2>
+              <div className="mr-1">
+                <PrintMenu data={printData} type="PURCHASE" items={items} />
+              </div>
+            </div>
+
+            <div 
+              className="flex items-center gap-2 cursor-pointer select-none group" 
+              onClick={() => setHeader({...header, isReturn: !header.isReturn})}
             >
-              <ArrowRight size={18} />
-            </button>
-            <h2 className="text-lg font-black text-[#1E4D4D] whitespace-nowrap">مشتريات</h2>
+              <span className="text-xs font-bold text-[#1E4D4D]">مرتجع</span>
+              <div className="w-5 h-5 border-2 border-[#1E4D4D] rounded flex items-center justify-center bg-white transition-all group-hover:bg-slate-50">
+                {header.isReturn && <span className="text-[#1E4D4D] font-bold text-xs">✓</span>}
+              </div>
+            </div>
           </div>
 
-          {/* Left: Controls (Return + Payment Method) */}
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-black text-slate-400">مرتجع؟</span>
-              <button 
-                onClick={() => setHeader({...header, isReturn: !header.isReturn})}
-                className={`w-10 h-5 rounded-full relative transition-colors duration-300 ${header.isReturn ? 'bg-red-500' : 'bg-slate-200'}`}
-              >
-                <motion.div 
-                  animate={{ x: header.isReturn ? -22 : -2 }}
-                  className="absolute top-0.5 right-0.5 w-4 h-4 bg-white rounded-full shadow-sm"
-                />
-              </button>
-            </div>
-
-            <div className="flex bg-slate-100 p-0.5 rounded-lg border border-slate-200 min-w-max">
-              <button 
-                onClick={() => setHeader({...header, payment_method: 'Cash'})}
-                className={`px-4 py-1 rounded-md text-[10px] font-black transition-all relative z-10 ${header.payment_method === 'Cash' ? 'text-white' : 'text-slate-400'}`}
-              >
-                {header.payment_method === 'Cash' && (
-                  <motion.div layoutId="payment-bg-pur" className="absolute inset-0 bg-[#1E4D4D] rounded-md -z-10 shadow-sm" />
-                )}
-                نقداً
-              </button>
-              <button 
-                onClick={() => setHeader({...header, payment_method: 'Credit'})}
-                className={`px-4 py-1 rounded-md text-[10px] font-black transition-all relative z-10 ${header.payment_method === 'Credit' ? 'text-white' : 'text-slate-400'}`}
-              >
-                {header.payment_method === 'Credit' && (
-                  <motion.div layoutId="payment-bg-pur" className="absolute inset-0 bg-[#7f1d1d] rounded-md -z-10 shadow-sm" />
-                )}
-                آجل
-              </button>
-            </div>
+          {/* Left Group: Payment Toggle */}
+          <div className="flex bg-slate-100 p-0.5 rounded-lg border border-slate-200 w-full max-w-[240px]">
+            <button 
+              onClick={() => setHeader({...header, payment_method: 'Cash'})}
+              className={`flex-1 py-2 rounded-md text-[11px] font-black transition-all relative z-10 ${header.payment_method === 'Cash' ? 'text-white' : 'text-slate-400'}`}
+            >
+              {header.payment_method === 'Cash' && (
+                <motion.div layoutId="payment-bg-pur" className="absolute inset-0 bg-[#1E4D4D] rounded-md -z-10 shadow-sm" />
+              )}
+              نقداً
+            </button>
+            <button 
+              onClick={() => setHeader({...header, payment_method: 'Credit'})}
+              className={`flex-1 py-2 rounded-md text-[11px] font-black transition-all relative z-10 ${header.payment_method === 'Credit' ? 'text-white' : 'text-slate-400'}`}
+            >
+              {header.payment_method === 'Credit' && (
+                <motion.div layoutId="payment-bg-pur" className="absolute inset-0 bg-[#7f1d1d] rounded-md -z-10 shadow-sm" />
+              )}
+              آجل
+            </button>
           </div>
         </div>
 
@@ -236,7 +240,7 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
                 onChange={(e) => handleSupplierSearch(e.target.value)}
                 onBlur={handleSupplierBlur}
                 placeholder="اسم المورد..."
-                className="flex-1 h-full bg-transparent text-xs font-bold text-[#1E4D4D] outline-none"
+                className="flex-1 h-full bg-transparent text-xs font-bold text-[#1E4D4D] outline-none border-b border-[#1E4D4D]/30 focus:border-[#1E4D4D] transition-colors"
               />
               <AnimatePresence>
                 {showSupplierDropdown && filteredSuppliers.length > 0 && (
@@ -265,7 +269,7 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
                 type="date"
                 value={header.date}
                 onChange={(e) => setHeader({...header, date: e.target.value})}
-                className="flex-1 h-full bg-transparent text-xs font-bold text-[#1E4D4D] outline-none"
+                className="flex-1 h-full bg-transparent text-xs font-bold text-[#1E4D4D] outline-none border-b border-[#1E4D4D]/30 focus:border-[#1E4D4D] transition-colors"
               />
             </div>
           </div>
@@ -274,12 +278,13 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
             <div className="w-[30%] flex items-center h-10 px-3 border-l border-slate-50">
               <LayoutList className="text-slate-300 ml-2" size={14} />
               <input 
-                type="number"
+                type="text"
                 inputMode="numeric"
+                ref={invNumInputRef}
                 value={header.invoice_number}
                 onChange={(e) => setHeader({...header, invoice_number: e.target.value})}
                 placeholder="رقم الفاتورة..."
-                className="flex-1 h-full bg-transparent text-xs font-bold text-[#1E4D4D] outline-none"
+                className="flex-1 h-full bg-transparent text-xs font-bold text-[#1E4D4D] outline-none border-b border-[#1E4D4D]/30 focus:border-[#1E4D4D] transition-colors"
               />
             </div>
             <div className="w-[70%] flex items-center h-10 px-3 relative">
@@ -288,15 +293,43 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
                 value={header.notes || ''}
                 onChange={(e) => setHeader({...header, notes: e.target.value})}
                 placeholder="ملاحظات الفاتورة..."
-                className="flex-1 h-full bg-transparent text-xs font-bold text-[#1E4D4D] outline-none pr-8"
+                className="flex-1 h-full bg-transparent text-xs font-bold text-[#1E4D4D] outline-none pr-8 border-b border-[#1E4D4D]/30 focus:border-[#1E4D4D] transition-colors"
               />
-              <button className="absolute left-3 text-slate-300 hover:text-[#1E4D4D] transition-colors">
-                <Camera size={16} />
-              </button>
+              <div className="absolute left-3 flex items-center gap-2">
+                {header.attachment && (
+                  <button 
+                    onClick={() => setIsViewerOpen(true)}
+                    className="w-6 h-6 rounded-md overflow-hidden border border-[#1E4D4D]/20 shadow-sm active:scale-95 transition-transform"
+                  >
+                    <img src={header.attachment} className="w-full h-full object-cover" alt="Thumbnail" />
+                  </button>
+                )}
+                <button 
+                  onClick={() => setIsCameraOpen(true)}
+                  className="text-slate-300 hover:text-[#1E4D4D] transition-colors"
+                >
+                  <Camera size={16} />
+                </button>
+              </div>
             </div>
           </div>
         </div>
       </div>
+
+      <CameraModule 
+        isOpen={isCameraOpen} 
+        onClose={() => setIsCameraOpen(false)} 
+        onCapture={(base64) => setHeader({ ...header, attachment: base64 })}
+      />
+
+      {header.attachment && (
+        <DocumentViewer 
+          isOpen={isViewerOpen} 
+          onClose={() => setIsViewerOpen(false)} 
+          image={header.attachment} 
+          onDelete={() => setHeader({ ...header, attachment: '' })}
+        />
+      )}
 
       {/* SEARCH BAR SECTION - CENTRAL */}
       <div className="shrink-0 p-3 bg-white border-b border-slate-100">
@@ -430,7 +463,10 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
             onClick={() => setIsAdjustmentsOpen(true)}
             className="flex-1 h-12 bg-slate-100 text-[#1E4D4D] rounded-xl font-black text-sm flex items-center justify-center gap-2"
           >
-            <Tag size={18} />
+            <div className="flex items-center -space-x-1 rtl:space-x-reverse text-emerald-600">
+              <Percent size={16} />
+              <Plus size={12} className="mb-1" />
+            </div>
             التسويات
           </button>
           <button 

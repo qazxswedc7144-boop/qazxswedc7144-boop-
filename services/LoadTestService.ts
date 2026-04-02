@@ -160,6 +160,7 @@ export class LoadTestService {
         return {
           TransactionID: `STK-LOAD-${i}`,
           productId: 'P1',
+          warehouseId: 'WH-MAIN',
           SourceDocumentType: i % 2 === 0 ? 'PURCHASE' : 'SALE',
           SourceDocumentID: `DOC-${i}`,
           TransactionType: i % 2 === 0 ? 'PURCHASE' : 'SALE',

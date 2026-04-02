@@ -92,7 +92,7 @@ export const InvoiceRepository = {
 
   getSafeUniqueNumber: async (type: 'SALE' | 'PURCHASE', isReturn: boolean = false): Promise<string> => {
     const counterKey = type === 'SALE' ? 'Sales' : 'Purchase';
-    const prefix = type === 'SALE' ? 'A' : 'P';
+    const prefix = type === 'SALE' ? 'INV-' : 'P';
     const nextSeq = await InvoiceCounterRepository.getNextNumber(counterKey as any, 1000);
     return `${prefix}${isReturn ? 'R' : ''}${nextSeq}`;
   },
@@ -130,9 +130,9 @@ export const InvoiceRepository = {
 
   getAllSales: async (): Promise<Sale[]> => await db.getSales(),
   getSaleById: async (id: string) => await db.db.sales.where('SaleID').equals(id).first() || await db.db.sales.get(id),
-  saveSale: async (cId: string, items: any[], total: number, isR: boolean, inv: string, curr: string, st: string, invSt: InvoiceStatus = 'PENDING', auditScore?: number, riskLevel?: 'LOW' | 'MEDIUM' | 'HIGH', totalSaleCost?: number) => {
+  saveSale: async (cId: string, items: any[], total: number, isR: boolean, inv: string, curr: string, st: string, invSt: InvoiceStatus = 'PENDING', auditScore?: number, riskLevel?: 'LOW' | 'MEDIUM' | 'HIGH', totalSaleCost?: number, pid?: string, attachment?: string) => {
     return await db.runTransaction(async () => {
-      const invoiceData = { id: inv, customerId: cId, items, finalTotal: total, date: new Date().toISOString() };
+      const invoiceData = { id: pid || inv, customerId: cId, items, finalTotal: total, date: new Date().toISOString(), attachment };
       
       // Phase 7: Day Lock System (تم استبداله بـ PeriodLockEngine في المنسق)
       // if (await db.isDateLocked(invoiceData.date)) {
@@ -140,18 +140,19 @@ export const InvoiceRepository = {
       // }
 
       // Phase 1: State Engine Validation
-      if (inv) {
-        if (await LockService.isLockedByOther('sales', inv)) {
+      const recordId = pid || inv;
+      if (recordId) {
+        if (await LockService.isLockedByOther('sales', recordId)) {
           throw new Error("هذا السجل مقفل حالياً بواسطة مستخدم آخر 🔒");
         }
-        const existing = await InvoiceRepository.getSaleById(inv);
+        const existing = await InvoiceRepository.getSaleById(recordId);
         if (existing) {
           if (InvoiceWorkflowEngine.isLocked(existing.InvoiceStatus || 'PENDING')) {
             throw new Error("Invoice is locked (الفاتورة مقفلة ولا يمكن تعديلها)");
           }
 
           // Phase 8: Financial Link Protection (User Request)
-          const paidViaLinks = await VoucherInvoiceLinkRepository.getTotalPaidForInvoice(inv);
+          const paidViaLinks = await VoucherInvoiceLinkRepository.getTotalPaidForInvoice(recordId);
           if (paidViaLinks > 0) {
             // If total or items changed, block it. 
             // We can compare the incoming total with existing total.
@@ -163,20 +164,20 @@ export const InvoiceRepository = {
             // The user specifically said "يمنع تعديل الإجمالي -> يسمح فقط بالملاحظات"
           }
         }
-        await LockService.acquireLock('sales', inv);
+        await LockService.acquireLock('sales', recordId);
       }
 
       // Phase 2 & 3: Validation & Hashing
       const hash = await InvoiceValidationEngine.validate(invoiceData, 'SALE');
       
-      const result = await db.processSale(cId, items, total, isR, inv, curr, st, undefined, invSt, hash, auditScore, riskLevel, totalSaleCost);
-      if (inv) await LockService.releaseLock('sales', inv);
+      const result = await db.processSale(cId, items, total, isR, inv, curr, st, pid, invSt, hash, auditScore, riskLevel, totalSaleCost, attachment);
+      if (recordId) await LockService.releaseLock('sales', recordId);
       return result;
     });
   },
-  savePurchase: async (sId: string, items: any[], total: number, inv: string, isC: boolean, curr: string = 'USD', invSt: InvoiceStatus = 'PENDING', auditScore?: number, riskLevel?: 'LOW' | 'MEDIUM' | 'HIGH') => {
+  savePurchase: async (sId: string, items: any[], total: number, inv: string, isC: boolean, curr: string = 'USD', invSt: InvoiceStatus = 'PENDING', auditScore?: number, riskLevel?: 'LOW' | 'MEDIUM' | 'HIGH', pid?: string, attachment?: string) => {
     return await db.runTransaction(async () => {
-      const invoiceData = { id: inv, partnerId: sId, items, totalAmount: total, date: new Date().toISOString() };
+      const invoiceData = { id: pid || inv, partnerId: sId, items, totalAmount: total, date: new Date().toISOString(), attachment };
       
       // Phase 7: Day Lock System (تم استبداله بـ PeriodLockEngine في المنسق)
       // if (await db.isDateLocked(invoiceData.date)) {
@@ -184,18 +185,18 @@ export const InvoiceRepository = {
       // }
 
       // Phase 1: State Engine Validation
-      if (inv) {
-        if (await LockService.isLockedByOther('purchases', inv)) {
+      const recordId = pid || inv;
+      if (recordId) {
+        if (await LockService.isLockedByOther('purchases', recordId)) {
           throw new Error("هذا السجل مقفل حالياً بواسطة مستخدم آخر 🔒");
         }
-        const existing = await InvoiceRepository.getPurchaseById(inv);
+        const existing = await InvoiceRepository.getPurchaseById(recordId);
         if (existing) {
           if (InvoiceWorkflowEngine.isLocked(existing.invoiceStatus || 'PENDING')) {
             throw new Error("Invoice is locked (الفاتورة مقفلة ولا يمكن تعديلها)");
           }
 
           // Phase 8: Financial Link Protection (User Request)
-          const recordId = existing.invoiceId || existing.purchase_id || existing.id;
           const paidViaLinks = await VoucherInvoiceLinkRepository.getTotalPaidForInvoice(recordId);
           if (paidViaLinks > 0) {
             if (existing.totalAmount !== total) {
@@ -203,14 +204,14 @@ export const InvoiceRepository = {
             }
           }
         }
-        await LockService.acquireLock('purchases', inv);
+        await LockService.acquireLock('purchases', recordId);
       }
 
       // Phase 2 & 3: Validation & Hashing
       const hash = await InvoiceValidationEngine.validate(invoiceData, 'PURCHASE');
 
-      const result = await db.processPurchase(sId, items, total, inv, isC, curr, invSt, 'شراء', hash, auditScore, riskLevel);
-      if (inv) await LockService.releaseLock('purchases', inv);
+      const result = await db.processPurchase(sId, items, total, inv, isC, curr, invSt, 'شراء', hash, auditScore, riskLevel, pid, attachment);
+      if (recordId) await LockService.releaseLock('purchases', recordId);
       return result;
     });
   },

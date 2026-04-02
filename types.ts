@@ -215,7 +215,7 @@ export interface SyncableEntity {
 
 // --- محرك حركات المخزون المركزي (Central Inventory Engine) ---
 
-export type InventoryTransactionType = 'SALE' | 'PURCHASE' | 'RETURN' | 'ADJUSTMENT' | 'INITIAL';
+export type InventoryTransactionType = 'SALE' | 'PURCHASE' | 'RETURN' | 'ADJUSTMENT' | 'INITIAL' | 'TRANSFER';
 
 export interface SystemBackup extends SyncableEntity {
   id: string;
@@ -485,6 +485,7 @@ export interface Sale extends SyncableEntity {
   originalProvisionalId?: string;
   isProvisional?: boolean;
   notes?: string;
+  attachment?: string;
   lockedBy?: string;
   lockedAt?: string;
   auditScore?: number;
@@ -518,6 +519,7 @@ export interface Purchase extends SyncableEntity {
   items: InvoiceItem[];
   paidAmount?: number; 
   notes?: string;
+  attachment?: string;
   lockedBy?: string;
   lockedAt?: string;
   auditScore?: number;
@@ -563,6 +565,7 @@ export interface AccountingEntry extends SyncableEntity {
   lines: JournalLine[];
   hash?: string;
   created_at?: string;
+  timestamp?: string;
 }
 
 export interface JournalLine {

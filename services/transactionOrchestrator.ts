@@ -44,6 +44,7 @@ export interface InvoiceRequest {
     id?: string; 
     date?: string;
     notes?: string;
+    attachment?: string;
   };
   options?: SaleOptions | { isCash: boolean; isReturn: boolean; invoiceStatus?: InvoiceStatus; date?: string; originalInvoiceId?: string };
 }
@@ -164,26 +165,30 @@ export const transactionOrchestrator = {
             invoice.payload.items, 
             invoice.payload.total, 
             { ...(invoice.options as SaleOptions), invoiceStatus: finalStatus, date: invoiceDate }, 
-            invoiceId,
+            invoice.payload.invoiceId,
             auditResult.auditScore,
-            auditResult.riskLevel
+            auditResult.riskLevel,
+            invoice.payload.id,
+            invoice.payload.attachment
           );
         } else {
           result = await this.executePurchaseBot(
             invoice.payload.supplierId!, 
             invoice.payload.items, 
             invoice.payload.total, 
-            invoiceId, 
+            invoice.payload.invoiceId, 
             (invoice.options as any)?.isCash || false, 
             finalStatus, 
             invoiceDate, 
             isReturn,
             auditResult.auditScore,
-            auditResult.riskLevel
+            auditResult.riskLevel,
+            invoice.payload.id,
+            invoice.payload.attachment
           );
         }
 
-        const refId = invoiceId || (result as any)?.sale_id || (result as any)?.purchase_id;
+        const refId = (result as any)?.id || invoice.payload.id || invoice.payload.invoiceId || (result as any)?.sale_id || (result as any)?.purchase_id;
         
         if (isPostingAction) {
           setTimeout(() => AIInsightsEngine.runAnalysis(), 1000);
@@ -273,16 +278,16 @@ export const transactionOrchestrator = {
     }
   },
 
-  async executeSaleBot(customerId: string, items: InvoiceItem[], total: number, options: SaleOptions, invoiceId?: string, auditScore?: number, riskLevel?: 'LOW' | 'MEDIUM' | 'HIGH') {
+  async executeSaleBot(customerId: string, items: InvoiceItem[], total: number, options: SaleOptions, invoiceId?: string, auditScore?: number, riskLevel?: 'LOW' | 'MEDIUM' | 'HIGH', pid?: string, attachment?: string) {
     const isReturn = !!options.isReturn;
-    const docId = invoiceId || 'NEW_SALE';
+    const docId = pid || invoiceId || 'NEW_SALE';
     const isPosting = options.invoiceStatus === 'POSTED' || options.invoiceStatus === 'LOCKED';
     
-    if (invoiceId) {
-      const old = await InvoiceRepository.getSaleById(invoiceId);
+    if (pid || invoiceId) {
+      const old = await InvoiceRepository.getSaleById(pid || invoiceId!);
       if (old && (old.InvoiceStatus === 'POSTED' || old.InvoiceStatus === 'LOCKED')) {
         await SharedAutomationActions.applyInventoryMovement(old.items, 'SALE', !(old.isReturn), docId);
-        await AccountRepository.deleteEntriesBySource(invoiceId);
+        await AccountRepository.deleteEntriesBySource(pid || invoiceId!);
       }
     }
 
@@ -304,27 +309,30 @@ export const transactionOrchestrator = {
       }
     }
 
-    const { sale_id } = await InvoiceRepository.saveSale(
-      customerId, items, total, isReturn, invoiceId || '', options.currency, options.paymentStatus, options.invoiceStatus, auditScore, riskLevel, totalSaleCost
+    const result = await InvoiceRepository.saveSale(
+      customerId, items, total, isReturn, invoiceId || '', options.currency, options.paymentStatus, options.invoiceStatus, auditScore, riskLevel, totalSaleCost, pid, attachment
     );
+
+    const sale_id = result.sale_id;
+    const finalId = result.id;
 
     if (isPosting) {
       // استخدام BRE لإنشاء القيود المحاسبية
-      const journals = BusinessRulesEngine.accounting.generateEntries('SALE', { id: sale_id, total, cost: totalSaleCost, paymentStatus: options.paymentStatus, isReturn });
+      const journals = BusinessRulesEngine.accounting.generateEntries('SALE', { id: finalId, total, cost: totalSaleCost, paymentStatus: options.paymentStatus, isReturn });
       for (const entry of journals) {
         await AccountRepository.addEntry(await integrityVerifier.signEntry(entry));
       }
-      await db.addAuditLog('POST', 'SALE', sale_id, `Sale ${sale_id} posted to ledger`);
+      await db.addAuditLog('POST', 'SALE', finalId, `Sale ${sale_id} posted to ledger`);
     }
-    return { sale_id };
+    return { sale_id, id: finalId };
   },
 
-  async executePurchaseBot(supplierId: string, items: InvoiceItem[], total: number, invoiceId?: string, isCash: boolean = false, status: InvoiceStatus = 'PENDING', date?: string, isReturn: boolean = false, auditScore?: number, riskLevel?: 'LOW' | 'MEDIUM' | 'HIGH') {
-    const purchaseRef = invoiceId || db.generateId('PUR');
+  async executePurchaseBot(supplierId: string, items: InvoiceItem[], total: number, invoiceId?: string, isCash: boolean = false, status: InvoiceStatus = 'PENDING', date?: string, isReturn: boolean = false, auditScore?: number, riskLevel?: 'LOW' | 'MEDIUM' | 'HIGH', pid?: string, attachment?: string) {
+    const purchaseRef = pid || invoiceId || db.generateId('PUR');
     const isPosting = status === 'POSTED' || status === 'LOCKED';
     
-    if (invoiceId) {
-      const old = await InvoiceRepository.getPurchaseById(invoiceId);
+    if (pid || invoiceId) {
+      const old = await InvoiceRepository.getPurchaseById(pid || invoiceId!);
       if (old && (old.invoiceStatus === 'POSTED' || old.invoiceStatus === 'LOCKED')) {
         await SharedAutomationActions.applyInventoryMovement(old.items, 'PURCHASE', !(old.invoiceType === 'مرتجع'), purchaseRef);
         await AccountRepository.deleteEntriesBySource(purchaseRef);
@@ -342,21 +350,24 @@ export const transactionOrchestrator = {
       }
     }
 
-    const { purchase_id } = await InvoiceRepository.savePurchase(
-      supplierId, items, total, purchaseRef, isCash, 
+    const result = await InvoiceRepository.savePurchase(
+      supplierId, items, total, invoiceId || '', isCash, 
       (window as any).currentSystemCurrency || 'USD', 
-      status, auditScore, riskLevel
+      status, auditScore, riskLevel, pid, attachment
     );
+
+    const purchase_id = result.purchase_id;
+    const finalId = result.id;
 
     if (isPosting) {
       // استخدام BRE لإنشاء القيود المحاسبية
-      const journals = BusinessRulesEngine.accounting.generateEntries('PURCHASE', { id: purchase_id, total, isCash, isReturn });
+      const journals = BusinessRulesEngine.accounting.generateEntries('PURCHASE', { id: finalId, total, isCash, isReturn });
       for (const entry of journals) {
         await AccountRepository.addEntry(await integrityVerifier.signEntry(entry));
       }
-      await db.addAuditLog('POST', 'PURCHASE', purchase_id, `Purchase ${purchase_id} posted to ledger`);
+      await db.addAuditLog('POST', 'PURCHASE', finalId, `Purchase ${purchase_id} posted to ledger`);
     }
-    return { purchase_id };
+    return { purchase_id, id: finalId };
   },
 
   async unpostInvoice(invoiceId: string, type: 'SALE' | 'PURCHASE'): Promise<{ success: boolean }> {

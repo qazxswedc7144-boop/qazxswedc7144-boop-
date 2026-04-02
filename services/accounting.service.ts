@@ -29,6 +29,7 @@ export interface PartnerAging {
   partnerId: string;
   partnerName: string;
   buckets: AgingBucket;
+  oldestInvoiceDate?: string;
 }
 
 export const accountingService = {
@@ -123,10 +124,13 @@ export const accountingService = {
       customers.forEach(c => {
         const buckets: AgingBucket = { current: 0, overdue30: 0, overdue60: 0, overdue90: 0, total: 0 };
         const partnerInvoices = unpaidSales.filter(s => s.customerId === c.Supplier_ID);
+        let oldestDate: Date | null = null;
         
         partnerInvoices.forEach(inv => {
           const unpaid = inv.finalTotal - (inv.paidAmount || 0);
-          const diffDays = Math.floor((today.getTime() - new Date(inv.date).getTime()) / (1000 * 3600 * 24));
+          const invDate = new Date(inv.date);
+          if (!oldestDate || invDate < oldestDate) oldestDate = invDate;
+          const diffDays = Math.floor((today.getTime() - invDate.getTime()) / (1000 * 3600 * 24));
           
           if (diffDays <= 30) buckets.current += unpaid;
           else if (diffDays <= 60) buckets.overdue30 += unpaid;
@@ -136,7 +140,12 @@ export const accountingService = {
         });
 
         if (buckets.total > 0) {
-          result.push({ partnerId: c.Supplier_ID, partnerName: c.Supplier_Name, buckets });
+          result.push({ 
+            partnerId: c.Supplier_ID, 
+            partnerName: c.Supplier_Name, 
+            buckets,
+            oldestInvoiceDate: oldestDate?.toISOString()
+          });
         }
       });
     } else {
@@ -146,10 +155,13 @@ export const accountingService = {
       suppliers.forEach(s => {
         const buckets: AgingBucket = { current: 0, overdue30: 0, overdue60: 0, overdue90: 0, total: 0 };
         const partnerInvoices = unpaidPurchases.filter(p => p.partnerId === s.Supplier_ID);
+        let oldestDate: Date | null = null;
         
         partnerInvoices.forEach(inv => {
           const unpaid = inv.totalAmount - (inv.paidAmount || 0);
-          const diffDays = Math.floor((today.getTime() - new Date(inv.date).getTime()) / (1000 * 3600 * 24));
+          const invDate = new Date(inv.date);
+          if (!oldestDate || invDate < oldestDate) oldestDate = invDate;
+          const diffDays = Math.floor((today.getTime() - invDate.getTime()) / (1000 * 3600 * 24));
           
           if (diffDays <= 30) buckets.current += unpaid;
           else if (diffDays <= 60) buckets.overdue30 += unpaid;
@@ -159,7 +171,12 @@ export const accountingService = {
         });
 
         if (buckets.total > 0) {
-          result.push({ partnerId: s.Supplier_ID, partnerName: s.Supplier_Name, buckets });
+          result.push({ 
+            partnerId: s.Supplier_ID, 
+            partnerName: s.Supplier_Name, 
+            buckets,
+            oldestInvoiceDate: oldestDate?.toISOString()
+          });
         }
       });
     }

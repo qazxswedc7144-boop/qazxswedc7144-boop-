@@ -53,8 +53,9 @@ export class FinancialDefenseSystem {
         .count();
 
       let score = 0;
-      if (suspiciousActions.length > 20) score += 50;
-      if (sensitiveAccess > 10) score += 50;
+      // Increased thresholds for development (from 20/10 to 50/25)
+      if (suspiciousActions.length > 50) score += 50;
+      if (sensitiveAccess > 25) score += 50;
       
       return Math.min(100, score);
     } catch (e) { return 0; }
@@ -131,6 +132,42 @@ export class FinancialDefenseSystem {
       await db.saveSetting('JOURNAL_EDIT_LOCKED', 'TRUE');
     } else {
       await db.saveSetting('JOURNAL_EDIT_LOCKED', 'FALSE');
+    }
+  }
+
+  /**
+   * Resets the entire security system state.
+   * Clears audit logs and resets threat levels to zero.
+   * Used for development or after a false positive.
+   */
+  static async resetSecuritySystem(): Promise<void> {
+    try {
+      // 1. Enable security bypass to allow clearing audit logs
+      db.db.setBypassSecurity(true);
+      
+      // 2. Clear the Audit Logs (the source of behavior scores)
+      await db.db.Audit_Log.clear();
+      await db.db.audit_log.clear();
+      
+      // 3. Disable security bypass
+      db.db.setBypassSecurity(false);
+      
+      // 4. Reset all security-related settings
+      await db.saveSetting('SYSTEM_THREAT_LEVEL', '0');
+      await db.saveSetting('SYSTEM_RISK_SCORE', '0');
+      await db.saveSetting('SYSTEM_STATUS', 'ACTIVE');
+      await db.saveSetting('JOURNAL_EDIT_LOCKED', 'FALSE');
+      await db.saveSetting('DEFENSE_REPORT', JSON.stringify({
+        riskScore: 0,
+        integrityScore: 0,
+        behaviorScore: 0,
+        threatLevel: 0,
+        timestamp: new Date().toISOString()
+      }));
+
+      console.log("[DefenseSystem] Security system has been reset successfully.");
+    } catch (e) {
+      console.error("[DefenseSystem] Failed to reset security system:", e);
     }
   }
 

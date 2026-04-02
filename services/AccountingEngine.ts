@@ -78,14 +78,15 @@ export class AccountingEngine {
       entry_id: entryId,
       date: sale.date,
       reference_id: sale.SaleID,
-      description: `فاتورة مبيعات رقم ${sale.SaleID} (Rate: ${rate})`,
+      description: `فاتورة مبيعات رقم ${sale.SaleID}`,
       TotalAmount: baseAmount,
       status: 'Posted',
       sourceId: sale.id,
       sourceType: 'SALE',
       lines,
       created_at: new Date().toISOString(),
-      lastModified: new Date().toISOString()
+      lastModified: new Date().toISOString(),
+      timestamp: new Date().toISOString() // Precise timestamp for auditing
     };
   }
 
@@ -118,14 +119,15 @@ export class AccountingEngine {
       entry_id: entryId,
       date: purchase.date,
       reference_id: purchase.invoiceId,
-      description: `فاتورة مشتريات رقم ${purchase.invoiceId} (Rate: ${rate})`,
+      description: `فاتورة مشتريات رقم ${purchase.invoiceId}`,
       TotalAmount: baseAmount,
       status: 'Posted',
       sourceId: purchase.id,
       sourceType: 'PURCHASE',
       lines,
       created_at: new Date().toISOString(),
-      lastModified: new Date().toISOString()
+      lastModified: new Date().toISOString(),
+      timestamp: new Date().toISOString() // Precise timestamp for auditing
     };
   }
 

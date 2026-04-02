@@ -34,6 +34,8 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
   const [hasDependencies, setHasDependencies] = useState(false);
   
   const [isAdjustmentsOpen, setIsAdjustmentsOpen] = useState(false);
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const [isViewerOpen, setIsViewerOpen] = useState(false);
   const [adjData, setAdjData] = useState({
     discountPercent: 0,
     otherFees: 0,
@@ -67,7 +69,8 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
     payment_status: 'Unpaid' as PaymentStatus,
     date: new Date().toISOString().split('T')[0],
     notes: '',
-    isReturn: false
+    isReturn: false,
+    attachment: ''
   });
 
   const [isDateLockedStatus, setIsDateLockedStatus] = useState(false);
@@ -99,6 +102,7 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
             payment_status: inv.payment_status || 'Unpaid',
             date: inv.date,
             notes: inv.notes || '',
+            attachment: (inv as any).attachment || '',
             isReturn: inv.invoiceType === 'مرتجع'
           });
           setItems(inv.items);
@@ -127,6 +131,16 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
     };
     fetchEditingInvoice();
   }, [editingInvoiceId]);
+
+  useEffect(() => {
+    if (isLocked && editingInvoiceId) {
+      const timer = setTimeout(async () => {
+        await db.updatePurchaseNotes(editingInvoiceId, header.notes);
+        await db.updatePurchaseAttachment(editingInvoiceId, header.attachment || '');
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [header.notes, header.attachment, isLocked, editingInvoiceId]);
 
   useEffect(() => {
     if (isLocked || isSaving) return;
@@ -296,10 +310,10 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
       if (editingInvoiceId) {
         // Update logic if needed, but PurchaseRepository doesn't have update.
         // We can use InvoiceRepository.savePurchase if it handles updates.
-        await InvoiceRepository.savePurchase(header.supplier_id, items, vTotalSum, editingInvoiceId, header.payment_method === 'Cash', currency, 'POSTED');
+        await InvoiceRepository.savePurchase(header.supplier_id, items, vTotalSum, editingInvoiceId, header.payment_method === 'Cash', currency, 'POSTED', undefined, undefined, undefined, header.attachment);
         addToast("تم تحديث الفاتورة بنجاح", "success");
       } else {
-        await InvoiceRepository.savePurchase(header.supplier_id, items, vTotalSum, header.invoice_number, header.payment_method === 'Cash', currency, 'POSTED');
+        await InvoiceRepository.savePurchase(header.supplier_id, items, vTotalSum, header.invoice_number, header.payment_method === 'Cash', currency, 'POSTED', undefined, undefined, undefined, header.attachment);
         addToast("تم حفظ وترحيل الفاتورة", "success");
         localStorage.removeItem(DRAFT_KEY);
       }
@@ -343,6 +357,8 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
     isDuplicate,
     hasDependencies,
     isAdjustmentsOpen, setIsAdjustmentsOpen,
+    isCameraOpen, setIsCameraOpen,
+    isViewerOpen, setIsViewerOpen,
     adjData, setAdjData,
     selectedProduct, setSelectedProduct,
     manualItemName, setManualItemName,

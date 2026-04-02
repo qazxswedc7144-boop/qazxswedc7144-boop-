@@ -37,19 +37,48 @@ const AccountingModule: React.FC<AccountingModuleProps> = ({ onNavigate }) => {
     return () => window.removeEventListener('resize', updateHeight);
   }, []);
 
-  const filteredEntries = useMemo<AccountingEntry[]>(() => {
-    let baseData = (deferredSearch.trim() || showFullArchive) ? journalEntries : journalEntries.slice(0, 200);
+  const flattenedLines = useMemo(() => {
+    const lines: any[] = [];
+    let runningBalance = 0;
+    
+    // Sort entries by date
+    const sortedEntries = [...journalEntries].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    
+    sortedEntries.forEach(entry => {
+      entry.lines.forEach(line => {
+        // Simple balance calculation: Debit increases, Credit decreases (or vice versa depending on account type)
+        // For a general ledger view, we'll just show the net impact or a simple running total
+        runningBalance += (line.debit - line.credit);
+        
+        lines.push({
+          ...line,
+          date: entry.date,
+          description: entry.description,
+          sourceId: entry.sourceId,
+          sourceType: entry.sourceType,
+          status: entry.status,
+          runningBalance
+        });
+      });
+    });
+    
+    // Reverse for display (newest first)
+    return lines.reverse();
+  }, [journalEntries]);
+
+  const filteredLines = useMemo(() => {
+    let baseData = (deferredSearch.trim() || showFullArchive) ? flattenedLines : flattenedLines.slice(0, 500);
     
     if (!deferredSearch.trim()) return baseData;
     
     const term = deferredSearch.toLowerCase();
-    return journalEntries.filter(e => 
-      e.sourceType.toLowerCase().includes(term) ||
-      e.sourceId.toLowerCase().includes(term) ||
-      e.description?.toLowerCase().includes(term) ||
-      e.lines.some(l => l.accountName.toLowerCase().includes(term))
+    return flattenedLines.filter(l => 
+      l.accountName.toLowerCase().includes(term) ||
+      l.description?.toLowerCase().includes(term) ||
+      l.sourceId.toLowerCase().includes(term) ||
+      l.accountId.toLowerCase().includes(term)
     );
-  }, [journalEntries, deferredSearch, showFullArchive]);
+  }, [flattenedLines, deferredSearch, showFullArchive]);
 
   const stats = useMemo(() => ({
     totalVolume: journalEntries.reduce((acc, e) => acc + (e.lines.reduce((s, l) => s + l.debit, 0)), 0),
@@ -58,7 +87,7 @@ const AccountingModule: React.FC<AccountingModuleProps> = ({ onNavigate }) => {
 
   useEffect(() => {
     const checkLocks = async () => {
-      const dates: string[] = Array.from(new Set(filteredEntries.map(e => e.date)));
+      const dates: string[] = Array.from(new Set(filteredLines.map(l => l.date)));
       const locks: Record<string, boolean> = {};
       for (const d of dates) {
         locks[d] = await db.isDateLocked(d);
@@ -66,60 +95,62 @@ const AccountingModule: React.FC<AccountingModuleProps> = ({ onNavigate }) => {
       setLockedDates(locks);
     };
     checkLocks();
-  }, [filteredEntries]);
+  }, [filteredLines]);
 
   const Row = ({ index, style }: { index: number; style: React.CSSProperties }) => {
-    const entry = filteredEntries[index];
-    if (!entry) return null;
-    const isLocked = entry.status === 'Posted' || lockedDates[entry.date];
+    const line = filteredLines[index];
+    if (!line) return null;
+    
+    // Find original entry for modal
+    const findEntry = () => {
+      const entry = journalEntries.find(e => e.id === line.entryId || e.entry_id === line.entryId);
+      if (entry) setSelectedEntry(entry);
+    };
     
     return (
       <div 
         style={style} 
-        className="px-10 py-3"
+        className="px-0"
       >
         <motion.div 
-          initial={{ opacity: 0, y: 10 }}
+          initial={{ opacity: 0, y: 5 }}
           animate={{ opacity: 1, y: 0 }}
-          className={`bg-white border rounded-[40px] h-full flex items-center justify-between px-10 shadow-sm hover:shadow-xl hover:border-[#1E4D4D]/20 transition-all cursor-pointer group border-slate-100 ${isLocked ? 'bg-slate-50/30' : ''}`}
-          onClick={() => setSelectedEntry(entry)}
+          className="bg-white border-b border-slate-100 h-full flex items-center px-3 hover:bg-slate-50/80 transition-all group cursor-pointer"
+          onClick={findEntry}
         >
-           <div className="w-1/4 min-w-0 flex items-center gap-6">
-              <div className="w-12 h-12 bg-slate-50 text-slate-400 rounded-2xl flex items-center justify-center group-hover:bg-[#1E4D4D] group-hover:text-white transition-all">
-                <Hash size={20} />
-              </div>
-              <div>
-                <p className="text-xs font-black text-[#1E4D4D]">{new Date(entry.date).toLocaleDateString('ar-SA')}</p>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">REF: {entry.sourceId}</p>
-              </div>
-           </div>
-           
-           <div className="flex-1 px-10 space-y-2 hidden lg:block border-r border-slate-50">
-              {entry.lines.slice(0, 2).map((l, i) => (
-                <div key={i} className="flex items-center gap-4 text-[11px] font-bold">
-                   <div className={`w-2 h-2 rounded-full ${l.debit > 0 ? 'bg-red-500' : 'bg-emerald-500'}`}></div>
-                   <span className="text-slate-600 truncate max-w-[180px]">{l.accountName}</span>
-                   <span className={`ml-auto font-black ${l.debit > 0 ? 'text-red-500' : 'text-emerald-600'}`}>
-                    { (l.debit || l.credit).toLocaleString() } {currency}
-                   </span>
-                </div>
-              ))}
-           </div>
+          <div className="w-[12%] px-3">
+            <p className="text-[11px] font-black text-[#1E4D4D]">{new Date(line.date).toLocaleDateString('ar-SA')}</p>
+            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">REF: {line.sourceId}</p>
+          </div>
 
-           <div className="w-1/3 text-left flex items-center justify-end gap-8">
-              <div className="text-right">
-                <p className="text-sm font-black text-[#1E4D4D] truncate max-w-[200px]">{entry.description}</p>
-                <div className="flex items-center justify-end gap-2 mt-1">
-                  <Badge variant={entry.status === 'Posted' ? 'success' : 'neutral'} className="!rounded-full px-3 py-0.5 text-[9px] font-black uppercase tracking-widest">
-                    {entry.status === 'Posted' ? 'مرحّل نهائياً' : 'مسودة'}
-                  </Badge>
-                  {isLocked && <Lock size={12} className="text-slate-300" />}
-                </div>
+          <div className="w-[20%] px-3">
+            <p className="text-[11px] font-black text-[#1E4D4D] truncate">{line.accountName}</p>
+            <p className="text-[9px] font-bold text-slate-300 uppercase tracking-widest mt-0.5">ACC: {line.accountId}</p>
+          </div>
+
+          <div className="flex-1 px-3">
+            <p className="text-[11px] font-bold text-slate-500 truncate">{line.description}</p>
+          </div>
+
+          <div className="w-[15%] px-3 text-center">
+            {line.credit > 0 ? (
+              <div className="flex items-center justify-center gap-1 text-emerald-600">
+                <span className="text-[12px] font-black">{line.credit.toLocaleString()}</span>
+                <ArrowUpRight size={14} className="stroke-[3px]" />
               </div>
-              <div className="w-10 h-10 bg-slate-50 text-slate-300 rounded-xl flex items-center justify-center group-hover:bg-[#1E4D4D] group-hover:text-white transition-all">
-                <ChevronRight size={20} />
+            ) : (
+              <div className="flex items-center justify-center gap-1 text-red-500">
+                <span className="text-[12px] font-black">{line.debit.toLocaleString()}</span>
+                <ArrowDownLeft size={14} className="stroke-[3px]" />
               </div>
-           </div>
+            )}
+          </div>
+
+          <div className="w-[15%] px-3 text-left">
+            <p className={`text-[12px] font-black ${line.runningBalance >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+              {line.runningBalance.toLocaleString()} <span className="text-[9px] opacity-40">{currency}</span>
+            </p>
+          </div>
         </motion.div>
       </div>
     );
@@ -127,64 +158,68 @@ const AccountingModule: React.FC<AccountingModuleProps> = ({ onNavigate }) => {
 
   return (
     <div className="flex flex-col h-full bg-[#F8FAFA] font-['Cairo'] overflow-hidden" dir="rtl">
-      {/* Modern Header */}
-      <header className="p-10 pb-6 shrink-0 bg-white border-b border-slate-100 z-20">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-8 mb-10">
-          <div className="flex items-center gap-8">
-            <div className="w-20 h-20 bg-[#1E4D4D] text-white rounded-[32px] flex items-center justify-center shadow-2xl shadow-emerald-900/40">
-              <BookOpen size={36} />
-            </div>
-            <div>
-              <h2 className="text-4xl font-black text-[#1E4D4D] tracking-tighter leading-none">دفتر الأستاذ العام</h2>
-              <p className="text-xs text-slate-400 font-bold uppercase tracking-[4px] mt-3 opacity-60">General Ledger & Journal Entries</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="bg-slate-50 px-8 py-4 rounded-[24px] border border-slate-100 flex flex-col items-center justify-center">
-              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">إجمالي حجم العمليات</p>
-              <p className="text-xl font-black text-[#1E4D4D]">{stats.totalVolume.toLocaleString()} <span className="text-xs opacity-40">{currency}</span></p>
-            </div>
+      {/* Modern Header - Row 1 & 2 */}
+      <header className="shrink-0 bg-white border-b border-slate-100 z-20">
+        {/* Row 1: Back Button & Centered Titles */}
+        <div className="px-6 py-4 flex items-center relative border-b border-slate-50">
+          <div className="absolute right-6">
             <button 
               onClick={() => onNavigate?.('dashboard')}
-              className="w-14 h-14 bg-slate-50 text-slate-400 rounded-[20px] flex items-center justify-center hover:bg-slate-100 transition-all"
+              className="w-10 h-10 bg-slate-50 text-[#1E4D4D] rounded-xl flex items-center justify-center border border-slate-100 hover:bg-slate-100 transition-all"
+              title="العودة"
             >
-              <ArrowRight size={24} />
+              <ArrowRight size={20} />
             </button>
+          </div>
+          
+          <div className="flex-1 flex flex-col items-center justify-center text-center">
+            <h2 className="text-2xl font-black text-[#1E4D4D] tracking-tighter leading-tight">دفتر الأستاذ العام</h2>
+            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-[2px] mt-1 opacity-60">GENERAL LEDGER & JOURNAL ENTRIES</p>
           </div>
         </div>
 
-        <div className="flex flex-col md:flex-row gap-6">
+        {/* Row 2: Search & Filters */}
+        <div className="px-6 py-4 flex flex-col md:flex-row gap-4">
           <div className="relative flex-1">
-            <Search className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-300" size={24} />
+            <Search className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-300" size={20} />
             <input 
-              className="w-full h-16 bg-slate-50 border border-slate-100 rounded-[24px] pr-16 pl-6 text-sm font-black focus:bg-white focus:border-[#1E4D4D] outline-none shadow-inner transition-all" 
+              className="w-full h-12 bg-slate-50 border border-slate-100 rounded-[16px] pr-14 pl-6 text-sm font-black focus:bg-white focus:border-[#1E4D4D] outline-none shadow-inner transition-all" 
               placeholder="ابحث في القيود، الحسابات، المراجع، أو الأوصاف..."
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
             />
           </div>
           
-          <div className="flex items-center gap-3 bg-slate-50 p-2 rounded-[24px] border border-slate-100">
+          <div className="flex items-center gap-2 bg-slate-50 p-1.5 rounded-[16px] border border-slate-100">
             <button 
               onClick={() => setShowFullArchive(!showFullArchive)}
-              className={`px-8 h-12 rounded-[18px] text-[11px] font-black transition-all flex items-center gap-3 ${showFullArchive ? 'bg-amber-500 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'}`}
+              className={`px-6 h-9 rounded-[12px] text-[10px] font-black transition-all flex items-center gap-2 ${showFullArchive ? 'bg-amber-500 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'}`}
             >
-              <Layers size={14} /> {showFullArchive ? 'الأرشيف الكامل' : 'آخر 200 قيد'}
+              <Layers size={12} /> {showFullArchive ? 'الأرشيف الكامل' : 'آخر 200 قيد'}
             </button>
-            <button className="w-12 h-12 bg-white text-slate-400 rounded-[18px] flex items-center justify-center hover:text-[#1E4D4D] shadow-sm">
-              <Filter size={18} />
+            <button className="w-9 h-9 bg-white text-slate-400 rounded-[12px] flex items-center justify-center hover:text-[#1E4D4D] shadow-sm">
+              <Filter size={16} />
             </button>
           </div>
         </div>
       </header>
 
-      {/* Journal List */}
-      <div className="flex-1 min-h-0 bg-[#F8FAFA] pt-6" ref={containerRef}>
-        {filteredEntries.length > 0 ? (
+      {/* Row 3: Table Header - Sticky */}
+      <div className="px-0 bg-white border-b border-slate-200 flex items-center text-[10px] font-black text-slate-400 uppercase tracking-widest shrink-0 sticky top-0 z-10">
+        <div className="w-[12%] px-6 py-4">التاريخ</div>
+        <div className="w-[20%] px-6 py-4">اسم الحساب</div>
+        <div className="flex-1 px-6 py-4">البيان / الوصف</div>
+        <div className="w-[15%] px-6 py-4 text-center">(دائن/مدين)</div>
+        <div className="w-[15%] px-6 py-4 text-left">الرصيد</div>
+      </div>
+
+      {/* Journal List - Full Width & Full Height */}
+      <div className="flex-1 min-h-0 bg-white border-x border-slate-100" ref={containerRef}>
+        {filteredLines.length > 0 ? (
           <List
             height={listHeight}
-            itemCount={filteredEntries.length}
-            itemSize={100}
+            itemCount={filteredLines.length}
+            itemSize={64}
             width="100%"
             className="custom-scrollbar"
           >
@@ -198,6 +233,18 @@ const AccountingModule: React.FC<AccountingModuleProps> = ({ onNavigate }) => {
              <p className="text-lg font-black uppercase tracking-[4px] opacity-20">لا توجد قيود مسجلة حالياً</p>
           </div>
         )}
+      </div>
+
+      {/* Stats Card - Bottom Left */}
+      <div className="fixed bottom-10 left-10 z-50">
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="bg-[#1E4D4D] text-white p-6 rounded-[32px] shadow-2xl shadow-emerald-900/40 border border-white/10 flex flex-col items-center min-w-[200px]"
+        >
+          <p className="text-[10px] font-black text-emerald-200/60 uppercase tracking-widest mb-2">إجمالي حجم العمليات</p>
+          <p className="text-2xl font-black">{stats.totalVolume.toLocaleString()} <span className="text-xs opacity-40">{currency}</span></p>
+        </motion.div>
       </div>
 
       {/* Entry Detail Modal */}

@@ -46,6 +46,8 @@ export const useSales = (onNavigate?: (view: any, params?: any) => void) => {
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [isConfirmSaveOpen, setIsConfirmSaveOpen] = useState(false);
   const [isAdjustmentsOpen, setIsAdjustmentsOpen] = useState(false);
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const [isViewerOpen, setIsViewerOpen] = useState(false);
 
   const [customerSearchTerm, setCustomerSearchTerm] = useState('');
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
@@ -63,7 +65,7 @@ export const useSales = (onNavigate?: (view: any, params?: any) => void) => {
     invoice_number: '', customer_id: '', payment_method: 'Cash',
     status: 'DRAFT' as InvoiceStatus, payment_status: 'Unpaid' as PaymentStatus,
     date: new Date().toISOString().split('T')[0], isReturn: false,
-    notes: '', warehouse: ''
+    notes: '', warehouse: '', attachment: ''
   });
 
   const filteredCustomers = useMemo(() => {
@@ -147,37 +149,44 @@ export const useSales = (onNavigate?: (view: any, params?: any) => void) => {
 
   useEffect(() => {
     const init = async () => {
+      let loadedHeader = { ...header };
+      
       if (editingInvoiceId) {
         const inv = await InvoiceRepository.getUnifiedInvoice(editingInvoiceId);
         const deps = await InvoiceRepository.checkHasDependencies(editingInvoiceId, 'SALE');
         setHasDependencies(deps);
 
         if (inv) {
-          setHeader({
+          const h = {
             invoice_number: inv.invoiceNumber, customer_id: inv.partnerId,
             payment_method: inv.paymentStatus, status: inv.documentStatus,
             payment_status: inv.financialStatus, date: inv.date.split('T')[0],
             isReturn: inv.isReturn,
             notes: (inv as any).notes || '',
+            attachment: (inv as any).attachment || '',
             warehouse: (inv as any).warehouse || ''
-          });
+          };
+          setHeader(h);
           setItems(inv.items);
           return;
         }
       }
+
       const draft = localStorage.getItem(DRAFT_KEY);
       if (draft) { 
         const parsed = JSON.parse(draft);
-        setHeader(parsed.header); 
+        loadedHeader = parsed.header;
+        setHeader(loadedHeader); 
         setItems(parsed.items); 
       }
-      if (!header.invoice_number) {
-        const next = await InvoiceRepository.getSafeUniqueNumber('SALE', header.isReturn);
+
+      if (!loadedHeader.invoice_number) {
+        const next = await InvoiceRepository.getSafeUniqueNumber('SALE', loadedHeader.isReturn);
         setHeader(h => ({ ...h, invoice_number: next }));
       }
     };
     init();
-  }, [editingInvoiceId]);
+  }, [editingInvoiceId, header.isReturn]);
 
   useEffect(() => {
     if (header.invoice_number) {
@@ -199,6 +208,7 @@ export const useSales = (onNavigate?: (view: any, params?: any) => void) => {
     if (isLocked) {
       if (editingInvoiceId) {
         await db.updateSaleNotes(editingInvoiceId, header.notes);
+        await db.updateSaleAttachment(editingInvoiceId, header.attachment || '');
       }
     } else if (header.status === 'DRAFT' || header.status === 'DRAFT_EDIT') {
       if (items.length > 0) {
@@ -210,7 +220,8 @@ export const useSales = (onNavigate?: (view: any, params?: any) => void) => {
             total: vTotalSum, 
             invoiceId: header.invoice_number,
             id: editingInvoiceId,
-            notes: header.notes
+            notes: header.notes,
+            attachment: header.attachment
           },
           options: { 
             isCash: header.payment_method === 'Cash', 
@@ -340,7 +351,8 @@ export const useSales = (onNavigate?: (view: any, params?: any) => void) => {
           items, 
           total: vTotalSum, 
           invoiceId: header.invoice_number,
-          id: editingInvoiceId 
+          id: editingInvoiceId,
+          attachment: header.attachment
         },
         options: { 
           isCash: header.payment_method === 'Cash', 
@@ -406,6 +418,8 @@ export const useSales = (onNavigate?: (view: any, params?: any) => void) => {
     isDetailModalOpen, setIsDetailModalOpen,
     isConfirmSaveOpen, setIsConfirmSaveOpen,
     isAdjustmentsOpen, setIsAdjustmentsOpen,
+    isCameraOpen, setIsCameraOpen,
+    isViewerOpen, setIsViewerOpen,
     itemNameInputRef,
     qtyInputRef,
     priceInputRef,

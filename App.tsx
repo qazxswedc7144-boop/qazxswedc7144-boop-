@@ -64,20 +64,10 @@ const ExpiryItemsReport = lazy(() => import('./components/reports/ExpiryItemsRep
 
 const MODULES: {id: any, label: string, icon: any, group: string, permission?: Permission}[] = [
   { id: 'dashboard', label: 'الرئيسية', icon: <Home size={20} />, group: 'core' },
-  { id: 'sales', label: 'المبيعات', icon: <ShoppingBag size={20} />, group: 'sales_purchases', permission: 'POS_ACCESS' },
-  { id: 'purchases', label: 'المشتريات', icon: <PackageIcon size={20} />, group: 'sales_purchases', permission: 'PURCHASE_ACCESS' },
-  { id: 'inventory', label: 'المخزون', icon: <PackageIcon size={20} />, group: 'sales_purchases', permission: 'INVENTORY_VIEW' },
-  { id: 'partners', label: 'العملاء والموردين', icon: <Users size={20} />, group: 'sales_purchases', permission: 'MANAGE_PARTNERS' },
-  { id: 'accounting', label: 'المحاسبة', icon: <TableProperties size={20} />, group: 'sales_purchases', permission: 'FINANCIAL_ACCESS' },
-  { id: 'aging-report', label: 'تعمير الذمم', icon: <Clock size={20} />, group: 'sales_purchases', permission: 'VIEW_REPORTS' },
-  { id: 'audit-history', label: 'التدقيق', icon: <ShieldCheck size={20} />, group: 'sales_purchases', permission: 'MANAGE_SYSTEM' },
-  { id: 'invoices-archive', label: 'الأرشيف', icon: <FolderArchive size={20} />, group: 'sales_purchases', permission: 'VIEW_REPORTS' },
-  { id: 'adjustments-registry', label: 'الرسوم والخصومات', icon: <Tag size={20} />, group: 'admin', permission: 'FINANCIAL_ACCESS' },
-  { id: 'system-health', label: 'صحة النظام', icon: <ShieldCheck size={20} />, group: 'admin', permission: 'MANAGE_SYSTEM' },
-  { id: 'logs', label: 'سجل الرقابة', icon: <Database size={20} />, group: 'admin', permission: 'MANAGE_SYSTEM' },
-  { id: 'settings', label: 'الإعدادات', icon: <Settings size={20} />, group: 'settings', permission: 'MANAGE_SYSTEM' },
   { id: 'reports', label: 'التقارير', icon: <BarChart3 size={20} />, group: 'admin', permission: 'VIEW_REPORTS' },
-  { id: 'advanced-reports', label: 'تحليلات Gemini الذكية', icon: <AutoAwesome size={20} />, group: 'admin', permission: 'VIEW_REPORTS' },
+  { id: 'advanced-reports', label: 'Gemini AI Insights', icon: <AutoAwesome size={20} />, group: 'admin', permission: 'VIEW_REPORTS' },
+  { id: 'system-health', label: 'صحة النظام', icon: <ShieldCheck size={20} />, group: 'admin', permission: 'MANAGE_SYSTEM' },
+  { id: 'settings', label: 'إعدادات النظام', icon: <Settings size={20} />, group: 'settings', permission: 'MANAGE_SYSTEM' },
 ];
 
 function MainLayout() {
@@ -121,6 +111,10 @@ function MainLayout() {
       heartbeatService.start(); 
       backupService.startAutoTimer();
       SyncService.startWorker();
+      
+      // Reset security system for development as requested
+      await FinancialDefenseSystem.resetSecuritySystem();
+      
       FinancialDefenseSystem.startBackgroundScanner();
       
       stopCurrencyObserver = CurrencyService.startCurrencyObserver((code) => {
@@ -198,10 +192,11 @@ function MainLayout() {
     if (currentView === 'supplier-payment') return 'سداد موردين';
     if (currentView === 'customer-receipt') return 'سند قبض عميل';
     if (currentView === 'aging-report') return 'تقرير تعمير الذمم';
+    if (currentView === 'accounting') return 'دفتر الأستاذ العام';
     return 'العملية';
   };
 
-  const isOperationalView = ['sales', 'purchases', 'invoice-registry', 'sales-archive', 'invoices-archive', 'invoice-history', 'adjustments-registry', 'supplier-payment', 'customer-receipt', 'aging-report', 'partners', 'inventory', 'audit-history'].includes(currentView);
+  const isOperationalView = ['sales', 'purchases', 'invoice-registry', 'sales-archive', 'invoices-archive', 'invoice-history', 'adjustments-registry', 'supplier-payment', 'customer-receipt', 'aging-report', 'partners', 'inventory', 'audit-history', 'accounting'].includes(currentView);
 
   const visibleModules = MODULES.filter(m => !m.permission || authService.hasPermission(m.permission));
 

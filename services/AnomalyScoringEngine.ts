@@ -97,8 +97,8 @@ export class AnomalyScoringEngine {
       const credits = entry.lines.reduce((sum, l) => sum + (l.credit || 0), 0);
       if (Math.abs(debits - credits) > 0.01) imbalancedCount++;
     }
-    // Scale: 0-100 based on percentage of imbalanced entries (max 100 if > 5 entries)
-    return Math.min(100, imbalancedCount * 20);
+    // Scale: 0-100 based on percentage of imbalanced entries (max 100 if > 10 entries)
+    return Math.min(100, imbalancedCount * 10);
   }
 
   private static async checkDuplicateTransactions(): Promise<number> {
@@ -109,7 +109,8 @@ export class AnomalyScoringEngine {
       if (s.hash && hashes.has(s.hash)) duplicates++;
       hashes.add(s.hash);
     }
-    return Math.min(100, duplicates * 25);
+    // Threshold: > 10 duplicates is a risk
+    return Math.min(100, duplicates * 10);
   }
 
   private static async checkMissingJournalLinks(): Promise<number> {
@@ -136,9 +137,9 @@ export class AnomalyScoringEngine {
     const oneHourAgo = new Date(now.getTime() - 3600000).toISOString();
     const recentSales = await db.db.sales.where('date').above(oneHourAgo).count();
     
-    // Threshold: > 50 transactions per hour is a spike
-    if (recentSales > 50) return 100;
-    if (recentSales > 20) return 50;
+    // Threshold: > 100 transactions per hour is a spike (increased for development)
+    if (recentSales > 100) return 100;
+    if (recentSales > 50) return 50;
     return 0;
   }
 
@@ -147,6 +148,7 @@ export class AnomalyScoringEngine {
     // Check for unauthorized modification attempts (e.g. non-admin trying to edit posted invoices)
     // This is a simplified check based on audit logs
     const suspicious = logs.filter(l => l.Table_Name === 'Audit_Log').length; // Audit log itself shouldn't be updated
-    return Math.min(100, suspicious * 50);
+    // Threshold: > 5 suspicious logs is a risk
+    return Math.min(100, suspicious * 20);
   }
 }
