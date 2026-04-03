@@ -13,7 +13,8 @@ import { useUI } from '../store/AppContext';
 import { authService } from '../services/auth.service';
 import { ProductionCleanupService } from '../services/ProductionCleanupService';
 
-import { Cloud, CloudOff, RefreshCw } from 'lucide-react';
+import { Cloud, CloudOff, RefreshCw, Upload } from 'lucide-react';
+import { GoogleDriveService } from '../services/GoogleDriveService';
 
 const BackupManagement: React.FC = () => {
   const [backups, setBackups] = useState<SystemBackup[]>([]);
@@ -27,14 +28,41 @@ const BackupManagement: React.FC = () => {
 
   useEffect(() => {
     loadBackups();
+    // Initialize Google Drive Service
+    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+    if (clientId) {
+      GoogleDriveService.init(clientId).catch(console.error);
+    }
   }, []);
 
   const handleGoogleConnect = async () => {
-    addToast('خدمة Google Drive غير متوفرة حالياً في هذا الإصدار.', 'info');
+    try {
+      setLoading(true);
+      await GoogleDriveService.authenticate();
+      setIsGoogleConnected(true);
+      addToast('تم ربط حساب Google Drive بنجاح ✅', 'success');
+    } catch (error: any) {
+      addToast(`فشل الربط: ${error.message}`, 'error');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleGoogleSync = async () => {
-    addToast('خدمة المزامنة السحابية غير متوفرة حالياً.', 'info');
+    try {
+      setLoading(true);
+      const password = window.prompt('يرجى إدخال كلمة مرور التشفير للنسخة الاحتياطية:');
+      if (!password) return;
+
+      const blob = await BackupService.exportBackupToFile(password);
+      const fileName = `PharmaFlow_Backup_${new Date().toISOString().split('T')[0]}.enc`;
+      await GoogleDriveService.uploadFile(blob, fileName);
+      addToast('تم رفع النسخة الاحتياطية إلى Google Drive بنجاح ✅', 'success');
+    } catch (error: any) {
+      addToast(`فشل المزامنة: ${error.message}`, 'error');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const loadBackups = async () => {
@@ -43,10 +71,11 @@ const BackupManagement: React.FC = () => {
   };
 
   const handleManualBackup = async () => {
+    const password = window.prompt('يرجى إدخال كلمة مرور لتشفير هذه النسخة (اختياري، اترك فارغاً للاستخدام الداخلي):');
     setLoading(true);
     try {
-      await BackupService.createBackup('Manual Backup', 'MANUAL', false);
-      addToast('تم إنشاء نسخة احتياطية كاملة بنجاح ✅', 'success');
+      await BackupService.createBackup('Manual Backup', 'MANUAL', false, password || undefined);
+      addToast('تم إنشاء نسخة احتياطية مشفرة بنجاح ✅', 'success');
       await loadBackups();
     } catch (error) {
       addToast('فشل إنشاء النسخة الاحتياطية ❌', 'error');
@@ -55,7 +84,8 @@ const BackupManagement: React.FC = () => {
     }
   };
 
-  const handleDownload = (backup: SystemBackup) => {
+  const handleDownload = async (backup: SystemBackup) => {
+    // If it's an old backup or we want a raw export of the record
     const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -63,11 +93,52 @@ const BackupManagement: React.FC = () => {
     a.click();
   };
 
+  const handleExportEncrypted = async () => {
+    const password = window.prompt('يرجى تعيين كلمة مرور لتشفير ملف النسخة الاحتياطية (.enc):');
+    if (!password) return;
+
+    setLoading(true);
+    try {
+      const blob = await BackupService.exportBackupToFile(password);
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `backup_${new Date().toISOString().split('T')[0]}.enc`;
+      a.click();
+      addToast('تم تصدير ملف النسخة المشفرة بنجاح ✅', 'success');
+    } catch (error: any) {
+      addToast(`فشل التصدير: ${error.message}`, 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleImportEncrypted = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const password = window.prompt('يرجى إدخال كلمة مرور فك تشفير الملف:');
+    if (!password) return;
+
+    setLoading(true);
+    try {
+      await BackupService.importBackupFromFile(file, password);
+      addToast('تم استيراد البيانات وفك التشفير بنجاح 🚀', 'success');
+      refreshGlobal();
+    } catch (error: any) {
+      addToast(`فشل الاستيراد: ${error.message}`, 'error');
+    } finally {
+      setLoading(false);
+      event.target.value = '';
+    }
+  };
+
   const handleRestore = async (backupId: string) => {
     if (user?.Role !== 'Admin') {
       addToast('عذراً، هذه العملية تتطلب صلاحيات مدير النظام 🔒', 'error');
       return;
     }
+
+    const password = window.prompt('يرجى إدخال كلمة مرور فك التشفير (اترك فارغاً إذا كانت نسخة داخلية):');
 
     const confirmRestore = window.confirm(
       "تحذير هام: أنت على وشك استعادة النظام من نسخة احتياطية. سيؤدي هذا إلى مسح كافة البيانات الحالية واستبدالها ببيانات النسخة المختارة. هل أنت متأكد؟"
@@ -77,7 +148,7 @@ const BackupManagement: React.FC = () => {
 
     setLoading(true);
     try {
-      await BackupService.restoreFromBackup(backupId);
+      await BackupService.restoreFromBackup(backupId, password || undefined);
       addToast('تمت استعادة النظام بنجاح 🚀 سيتم تحديث البيانات الآن.', 'success');
       refreshGlobal();
       await loadBackups();
@@ -122,24 +193,40 @@ const BackupManagement: React.FC = () => {
       {/* Action Header */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card className="md:col-span-2 !p-6 bg-gradient-to-br from-slate-900 to-slate-800 text-white border-none shadow-xl relative overflow-hidden">
-          <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-6">
-            <div className="space-y-2 text-center md:text-right">
-              <h3 className="text-xl font-black flex items-center gap-2 justify-center md:justify-start">
-                <Shield className="text-emerald-400" /> نظام النسخ الاحتياطي المتقدم
-              </h3>
-              <p className="text-slate-400 text-xs font-bold">
-                حماية بياناتك هي أولويتنا. يتم تشفير كافة النسخ باستخدام AES-256.
-              </p>
+            <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-6">
+              <div className="space-y-2 text-center md:text-right">
+                <h3 className="text-xl font-black flex items-center gap-2 justify-center md:justify-start">
+                  <Shield className="text-emerald-400" /> نظام النسخ الاحتياطي المتقدم
+                </h3>
+                <p className="text-slate-400 text-xs font-bold">
+                  حماية بياناتك هي أولويتنا. يتم تشفير كافة النسخ باستخدام AES-GCM (Web Crypto).
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-3 justify-center">
+                <Button 
+                  variant="approve" 
+                  className="h-14 px-8 !rounded-2xl shadow-emerald-500/20 shadow-2xl hover:scale-105 transition-all"
+                  onClick={handleManualBackup}
+                  isLoading={loading}
+                >
+                  <Database className="ml-2" size={20} /> إنشاء نسخة
+                </Button>
+                <Button 
+                  variant="secondary" 
+                  className="h-14 px-6 !rounded-2xl bg-slate-700 text-white border-none hover:bg-slate-600"
+                  onClick={handleExportEncrypted}
+                  isLoading={loading}
+                >
+                  <Download className="ml-2" size={20} /> تصدير .enc
+                </Button>
+                <label className="cursor-pointer">
+                  <input type="file" accept=".enc" className="hidden" onChange={handleImportEncrypted} />
+                  <div className="h-14 px-6 !rounded-2xl bg-blue-600 text-white flex items-center justify-center font-bold hover:bg-blue-500 transition-all shadow-lg">
+                    <Upload className="ml-2" size={20} /> استيراد .enc
+                  </div>
+                </label>
+              </div>
             </div>
-            <Button 
-              variant="approve" 
-              className="h-14 px-8 !rounded-2xl shadow-emerald-500/20 shadow-2xl hover:scale-105 transition-all"
-              onClick={handleManualBackup}
-              isLoading={loading}
-            >
-              <Database className="ml-2" size={20} /> إنشاء نسخة الآن
-            </Button>
-          </div>
           <div className="absolute -right-10 -bottom-10 w-40 h-40 bg-emerald-500/10 rounded-full blur-3xl"></div>
         </Card>
 

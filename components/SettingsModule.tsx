@@ -4,7 +4,8 @@ import { db } from '../services/database';
 import { 
   Settings, Database, Sliders, CloudLightning, CheckCircle2, 
   Upload, FileJson, Smartphone, Save, FileText, Layout, 
-  Type, MapPin, Phone, Info, Clock, Calendar, Lock, Unlock, Plus
+  Type, MapPin, Phone, Info, Clock, Calendar, Lock, Unlock, Plus,
+  Users, ShieldCheck
 } from 'lucide-react';
 import { Card, Button, Badge, Input } from './SharedUI';
 import { useUI } from '../store/AppContext';
@@ -24,7 +25,7 @@ interface InvoiceConfig {
 }
 
 const SettingsModule: React.FC<{ onNavigate?: (view: any) => void }> = ({ onNavigate }) => {
-  const [activeTab, setActiveTab] = useState<'ux' | 'invoice' | 'periods' | 'backup'>('ux');
+  const [activeTab, setActiveTab] = useState<'ux' | 'invoice' | 'periods' | 'backup' | 'security'>('ux');
   const [uxSettings, setUxSettings] = useState({ delayedSync: false });
   const [invoiceConfig, setInvoiceConfig] = useState<InvoiceConfig>({
     pharmacyName: 'صيدلية فارما فلو',
@@ -138,6 +139,7 @@ const SettingsModule: React.FC<{ onNavigate?: (view: any) => void }> = ({ onNavi
           { id: 'ux', label: 'تثبيت الجوال', icon: <Smartphone size={14} /> },
           { id: 'invoice', label: 'تخصيص الفواتير', icon: <FileText size={14} /> },
           { id: 'periods', label: 'الفترات المحاسبية', icon: <Clock size={14} /> },
+          { id: 'security', label: 'أمان التطبيق', icon: <Lock size={14} /> },
           { id: 'backup', label: 'البيانات والنسخ', icon: <Database size={14} /> },
         ].map(tab => (
           <button 
@@ -294,6 +296,137 @@ const SettingsModule: React.FC<{ onNavigate?: (view: any) => void }> = ({ onNavi
         {activeTab === 'backup' && (
           <BackupManagement />
         )}
+
+        {activeTab === 'security' && (
+          <SecuritySettingsTab />
+        )}
+      </div>
+    </div>
+  );
+};
+
+const SecuritySettingsTab: React.FC = () => {
+  const [settings, setSettings] = useState<any>(null);
+  const [form, setForm] = useState({ username: '', password: '', confirm: '', mode: '5m' as any });
+  const { addToast, refreshGlobal } = useUI();
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const load = async () => {
+      const { appLockService } = await import('../services/AppLockService');
+      const s = await appLockService.getSettings();
+      setSettings(s);
+      if (s) {
+        setForm(f => ({ ...f, username: s.username, mode: s.lock_mode }));
+      }
+    };
+    load();
+  }, []);
+
+  const handleEnable = async () => {
+    if (!form.username || !form.password) {
+      addToast("يرجى إدخال اسم المستخدم وكلمة المرور", "warning");
+      return;
+    }
+    if (form.password !== form.confirm) {
+      addToast("كلمات المرور غير متطابقة", "error");
+      return;
+    }
+    setLoading(true);
+    try {
+      const { appLockService } = await import('../services/AppLockService');
+      await appLockService.enableSecurity(form.username, form.password, form.mode);
+      addToast("تم تفعيل أمان التطبيق بنجاح ✅", "success");
+      const s = await appLockService.getSettings();
+      setSettings(s);
+      refreshGlobal();
+    } catch (e) {
+      addToast("فشل تفعيل الأمان", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDisable = async () => {
+    setLoading(true);
+    try {
+      const { appLockService } = await import('../services/AppLockService');
+      await appLockService.disableSecurity();
+      addToast("تم تعطيل أمان التطبيق", "info");
+      const s = await appLockService.getSettings();
+      setSettings(s);
+      refreshGlobal();
+    } catch (e) {
+      addToast("فشل تعطيل الأمان", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+      <div className="lg:col-span-4 space-y-6">
+        <Card className="!p-8 space-y-6">
+          <h3 className="text-lg font-black text-[#1E4D4D] flex items-center gap-2 border-b border-slate-50 pb-4">
+            <Lock size={20} className="text-blue-500" /> {settings?.is_enabled ? 'تعديل الأمان' : 'تفعيل قفل التطبيق'}
+          </h3>
+          <div className="space-y-4">
+            <Input label="اسم المستخدم" value={form.username} onChange={e => setForm({...form, username: e.target.value})} icon={<Users size={14}/>} />
+            <Input label="كلمة المرور" type="password" value={form.password} onChange={e => setForm({...form, password: e.target.value})} icon={<Lock size={14}/>} />
+            <Input label="تأكيد كلمة المرور" type="password" value={form.confirm} onChange={e => setForm({...form, confirm: e.target.value})} icon={<Lock size={14}/>} />
+            
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-black text-slate-400 uppercase">وضع القفل التلقائي</label>
+              <select 
+                className="w-full h-12 bg-slate-50 border-2 border-slate-100 rounded-xl px-4 font-black text-xs outline-none focus:border-blue-500 transition-all"
+                value={form.mode}
+                onChange={e => setForm({...form, mode: e.target.value as any})}
+              >
+                <option value="instant">فوري (عند الخروج)</option>
+                <option value="5m">بعد 5 دقائق خمول</option>
+                <option value="10m">بعد 10 دقائق خمول</option>
+                <option value="20m">بعد 20 دقيقة خمول</option>
+                <option value="30m">بعد 30 دقيقة خمول</option>
+              </select>
+            </div>
+
+            <Button 
+              variant="primary" 
+              className="w-full h-14 !rounded-xl shadow-lg" 
+              onClick={handleEnable}
+              disabled={loading}
+            >
+              {settings?.is_enabled ? 'تحديث الإعدادات' : 'تفعيل الآن'}
+            </Button>
+
+            {settings?.is_enabled && (
+              <Button 
+                variant="danger" 
+                className="w-full h-12 !rounded-xl" 
+                onClick={handleDisable}
+                disabled={loading}
+              >
+                تعطيل الأمان
+              </Button>
+            )}
+          </div>
+        </Card>
+      </div>
+
+      <div className="lg:col-span-8">
+        <Card className="bg-blue-50 border-blue-100 flex gap-4 p-8">
+          <ShieldCheck className="text-blue-600 shrink-0" size={32} />
+          <div className="space-y-2">
+            <h4 className="font-black text-blue-900 text-sm">نظام حماية التطبيق المحلي</h4>
+            <p className="text-[11px] font-bold text-blue-800 leading-relaxed">
+              هذا النظام يوفر طبقة حماية إضافية لبياناتك المحلية. عند تفعيله، سيطلب التطبيق كلمة المرور بعد فترة من الخمول أو عند إعادة فتح التطبيق.
+              <br/><br/>
+              • يتم تشفير كلمة المرور محلياً ولا يتم إرسالها لأي خادم.
+              <br/>
+              • في حال نسيان كلمة المرور، ستحتاج لمسح بيانات المتصفح (مما قد يؤدي لفقدان البيانات غير المزامنة).
+            </p>
+          </div>
+        </Card>
       </div>
     </div>
   );

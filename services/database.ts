@@ -17,7 +17,7 @@ import {
   InventoryItem, ItemProfitEntry, CustomerProfitEntry, SupplierProfitEntry,
   AccountMovement, PurchaseByItemEntry, ExpiringItemEntry,
   InventoryLayer, FIFOConsumptionLog, StockMovement,
-  PeriodLockLog, AIInsight
+  PeriodLockLog, AIInsight, SecuritySettings
 } from '../types';
 import { authService } from './auth.service';
 import { ErrorManager } from './errorManager';
@@ -32,8 +32,11 @@ class PharmaFlowDB extends Dexie {
   products!: Table<Product, string>;
   sales!: Table<Sale, string>;
   purchases!: Table<Purchase, string>;
+  invoices!: Table<any, string>;
+  invoice_items!: Table<any, string>;
   cashFlow!: Table<CashFlow, string>;
   journalEntries!: Table<AccountingEntry, string>;
+  journal_entries!: Table<any, string>;
   suppliers!: Table<Supplier, string>;
   customers!: Table<Supplier, string>;
   audit_log!: Table<AuditLogEntry, string>;
@@ -77,6 +80,7 @@ class PharmaFlowDB extends Dexie {
   userBehavior!: Table<UserBehavior, [string, string]>;
   historicalMetrics!: Table<HistoricalMetric, string>;
   profitHealth!: Table<ProfitHealth, string>;
+  security_settings!: Table<SecuritySettings, string>;
   warehouses!: Table<Warehouse, string>;
   warehouseStock!: Table<WarehouseStock, string>;
   currencies!: Table<Currency, string>;
@@ -98,23 +102,25 @@ class PharmaFlowDB extends Dexie {
 
   constructor() {
     super('PharmaFlowDB');
-    this.initSync();
     
-    // التحديث لإصدار 61 لدعم محرك FIFO وAI Insights وإصلاح الفهرسة وإضافة مستودعات ومعالجة تعارضات المفاتيح الأساسية
-    this.version(61).stores({
-      users: 'User_Email, User_Name, Role, Is_Active',
+    // التحديث لإصدار 63 لدعم محرك FIFO وAI Insights وإصلاح الفهرسة وإضافة مستودعات ومعالجة تعارضات المفاتيح الأساسية
+    this.version(63).stores({
+      users: 'id, username, User_Email, User_Name, Role, Is_Active',
       userRoles: 'User_Email, Role_Type', 
-      products: 'id, Name, barcode, Is_Active, categoryId, supplierId',
+      products: 'id, name, Name, barcode, Is_Active, categoryId, supplierId',
       sales: 'id, SaleID, date, customerId, InvoiceStatus, hash, deleted_at, [customerId+date], [InvoiceStatus+date], riskLevel',
       purchases: 'id, purchase_id, invoiceId, date, partnerId, invoiceStatus, hash, deleted_at, [partnerId+date], [invoiceStatus+date], riskLevel',
+      invoices: 'id, date, customerId, type',
+      invoice_items: 'id, invoiceId, productId',
       cashFlow: 'transaction_id, date, type, category, [type+date]',
       journalEntries: 'id, EntryID, date, sourceId, status, hash, [sourceId+status]',
+      journal_entries: 'id, date, sourceId',
       suppliers: 'id, Supplier_ID, Supplier_Name, phone, Is_Active',
       customers: 'id, Supplier_ID, Supplier_Name, phone, Is_Active',
       journal_lines: 'id, entryId, accountId',
       audit_log: 'id, user_id, action, target_type, target_id, timestamp, [user_id+timestamp]',
-      accounts: 'id, code, name, type, parentId',
-      settings: 'key',
+      accounts: 'id, name, code, type, parentId',
+      settings: 'id, key',
       validationRules: 'id, entityType',
       invoiceHistory: '++id, invoiceId, timestamp',
       Invoice_Adjustments: 'AdjustmentID, InvoiceID, Type',
@@ -153,15 +159,16 @@ class PharmaFlowDB extends Dexie {
       userBehavior: '[userId+date], userId, date',
       historicalMetrics: 'id, month, type',
       profitHealth: 'id, date',
+      security_settings: 'id, is_enabled',
       warehouses: 'id, name, isDefault',
       warehouseStock: 'id, warehouseId, productId, [warehouseId+productId]',
       currencies: 'id, code, isBase',
       exchangeRates: 'id, fromCurrency, toCurrency, date',
       stockReservations: 'id, productId, warehouseId, sourceDocId, [warehouseId+productId]',
       fifoCostLayers: 'id, productId, quantityRemaining, purchaseDate, referenceId, isClosed',
-      inventory_layers: 'id, item_id, created_at',
+      inventory_layers: 'id, productId, remainingQty, item_id, created_at',
       fifo_consumption_log: 'id, sale_id, item_id, layer_id',
-      stock_movements: 'id, item_id, type, reference_id, created_at',
+      stock_movements: 'id, productId, type, date, item_id, reference_id, created_at',
       categories: 'id, categoryId, categoryName, isSystem',
       inventory: 'id, itemName, category, status, currentQuantity',
       itemProfits: 'id, productId, itemName, totalSales, grossProfit',
@@ -176,63 +183,8 @@ class PharmaFlowDB extends Dexie {
     this.enforceAuditImmutability();
   }
 
-  async initSync() {
-    const collections = [
-      { name: 'sales', table: this.sales },
-      { name: 'purchases', table: this.purchases },
-      { name: 'stock_movements', table: this.stock_movements },
-      { name: 'journal_entries', table: this.journalEntries },
-      { name: 'journal_lines', table: this.journal_lines },
-      { name: 'inventory_layers', table: this.inventory_layers },
-      { name: 'fifo_consumption_log', table: this.fifo_consumption_log },
-      { name: 'products', table: this.products },
-      { name: 'accounts', table: this.accounts },
-      { name: 'suppliers', table: this.suppliers },
-      { name: 'customers', table: this.customers },
-      { name: 'aiInsights', table: this.aiInsights },
-      { name: 'financialHealthSnapshots', table: this.financialHealthSnapshots }
-    ];
-
-    for (const col of collections) {
-      SyncEngine.subscribe(col.name, async (data) => {
-        // Bulk update Dexie from Firestore
-        await col.table.bulkPut(data);
-      });
-    }
-  }
-
-  public setupSyncHooks() {
-    const syncableTables = [
-      { name: 'PRODUCT', table: this.products, pk: 'id' },
-      { name: 'SALE', table: this.sales, pk: 'id' },
-      { name: 'PURCHASE', table: this.purchases, pk: 'id' },
-      { name: 'CASH_FLOW', table: this.cashFlow, pk: 'transaction_id' },
-      { name: 'JOURNAL_ENTRY', table: this.journalEntries, pk: 'id' },
-      { name: 'SUPPLIER', table: this.suppliers, pk: 'id' },
-      { name: 'CUSTOMER', table: this.customers, pk: 'id' },
-      { name: 'ACCOUNT', table: this.accounts, pk: 'id' },
-      { name: 'SETTLEMENT', table: this.settlements, pk: 'id' }
-    ];
-
-    syncableTables.forEach(({ name, table, pk }) => {
-      table.hook('creating', (primaryKey, obj) => {
-        import('./SyncService').then(({ SyncService }) => {
-          SyncService.queueSync(name, String(primaryKey || (obj as any)[pk]), 'CREATE', obj);
-        });
-      });
-      table.hook('updating', (mods, obj) => {
-        const updatedObj = { ...(obj as any), ...(mods as any) };
-        import('./SyncService').then(({ SyncService }) => {
-          SyncService.queueSync(name, String((obj as any)[pk]), 'UPDATE', updatedObj);
-        });
-      });
-      table.hook('deleting', (primaryKey, obj) => {
-        this.incrementDataVersion();
-        import('./SyncService').then(({ SyncService }) => {
-          SyncService.queueSync(name, String(primaryKey || (obj as any)[pk]), 'DELETE', { id: primaryKey });
-        });
-      });
-    });
+  async init() {
+    await this.open();
   }
 
   private enforceAuditImmutability() {
@@ -281,9 +233,6 @@ class PharmaFlowDB extends Dexie {
         this.incrementDataVersion();
         const recordId = String(primaryKey || (obj as any)[pk] || 'NEW');
         this.logAuditEntryAsync(name, recordId, 'ALL', 'NULL', 'Record Created', 'ADD');
-        import('./SyncService').then(({ SyncService }) => {
-          SyncService.queueSync(name, recordId, 'CREATE', obj);
-        });
       });
       table.hook('updating', (mods, obj) => {
         this.incrementDataVersion();
@@ -297,17 +246,11 @@ class PharmaFlowDB extends Dexie {
             }
           }
         });
-        import('./SyncService').then(({ SyncService }) => {
-          SyncService.queueSync(name, recordId, 'UPDATE', { ...(obj as any), ...(mods as any) });
-        });
       });
       table.hook('deleting', (primaryKey, obj) => {
         this.incrementDataVersion();
         const recordId = String(primaryKey || (obj as any)[pk] || 'DELETED');
         this.logAuditEntryAsync(name, recordId, 'RECORD', 'Record Deleted', 'DELETED', 'DELETE');
-        import('./SyncService').then(({ SyncService }) => {
-          SyncService.queueSync(name, recordId, 'DELETE', { id: recordId });
-        });
       });
     });
   }
@@ -470,11 +413,17 @@ class LocalDatabase {
   private cache: any = {};
   private version: number = 1;
 
+  private isInitializing = false;
+  private initPromise: Promise<void> | null = null;
+
   get products() { return this.db.products; }
   get sales() { return this.db.sales; }
   get purchases() { return this.db.purchases; }
+  get invoices() { return this.db.invoices; }
+  get invoice_items() { return this.db.invoice_items; }
   get cashFlow() { return this.db.cashFlow; }
   get journalEntries() { return this.db.journalEntries; }
+  get journal_entries() { return this.db.journal_entries; }
   get suppliers() { return this.db.suppliers; }
   get customers() { return this.db.customers; }
   get inventory() { return this.db.inventory; }
@@ -484,37 +433,56 @@ class LocalDatabase {
   get warehouseStock() { return this.db.warehouseStock; }
   get settlements() { return this.db.settlements; }
   get accounts() { return this.db.accounts; }
+  get users() { return this.db.users; }
+  get Accounting_Periods() { return this.db.Accounting_Periods; }
+  get periodLockLogs() { return this.db.periodLockLogs; }
+  get security_settings() { return this.db.security_settings; }
 
   constructor() {
     this.db = new PharmaFlowDB();
-    this.init();
+    this.initPromise = this.init();
   }
 
   async init() {
-    try {
-      if (!this.db.isOpen()) {
-        await this.db.open().catch(async (err) => {
-          console.error("Database open failed, attempting recovery:", err);
-          if (err.name === 'UpgradeError' || err.name === 'VersionError' || err.name === 'SchemaError') {
-            console.warn("Schema conflict detected. Resetting database to prevent primary key conflicts.");
-            await Dexie.delete('PharmaFlowDB');
-            this.db = new PharmaFlowDB();
-            await this.db.open();
-          } else {
-            throw err;
-          }
-        });
+    if (this.initPromise && this.isInitializing) return this.initPromise;
+    this.isInitializing = true;
+    this.initPromise = (async () => {
+      try {
+        if (!this.db.isOpen()) {
+          await this.db.open().catch(async (err) => {
+            console.error("Database open failed, attempting recovery:", err);
+            if (err.name === 'UpgradeError' || err.name === 'VersionError' || err.name === 'SchemaError') {
+              console.warn("Schema conflict detected. Resetting database to prevent primary key conflicts.");
+              await Dexie.delete('PharmaFlowDB');
+              this.db = new PharmaFlowDB();
+              await this.db.open();
+            } else {
+              throw err;
+            }
+          });
+        }
+        await this.refreshCache();
+        await this.seedCategories();
+        await this.seedMockData();
+        this.version++;
+      } catch (e) {
+        console.error("Database initialization failed:", e);
+      } finally {
+        this.isInitializing = false;
       }
-      const metaTableNames = ['users', 'suppliers', 'customers', 'accounts', 'journalRules', 'itemUnits', 'paymentGateways', 'categories'];
-      for (const name of metaTableNames) {
+    })();
+    return this.initPromise;
+  }
+
+  async refreshCache() {
+    const metaTableNames = ['users', 'suppliers', 'customers', 'accounts', 'journalRules', 'itemUnits', 'paymentGateways', 'categories'];
+    for (const name of metaTableNames) {
+      try {
         const data = await (this.db as any)[name].toArray() || [];
         this.cache[name] = data;
+      } catch (e) {
+        console.warn(`Failed to cache table ${name}:`, e);
       }
-      await this.seedCategories();
-      await this.seedMockData();
-      this.version++;
-    } catch (e) {
-      console.error("Database initialization failed:", e);
     }
   }
 
@@ -574,7 +542,7 @@ class LocalDatabase {
     ];
 
     await this.db.sales.bulkPut(mockSales);
-    await this.init(); 
+    await this.refreshCache(); 
   }
 
   private async seedCategories() {
@@ -599,14 +567,16 @@ class LocalDatabase {
   }
 
   async ensureOpen() {
+    if (this.initPromise) await this.initPromise;
     if (!this.db.isOpen()) {
       try {
         await this.db.open();
       } catch (err: any) {
-        if (err.name === 'DatabaseClosedError') {
-          // Force re-open if closed
+        if (err.name === 'DatabaseClosedError' || err.name === 'VersionError' || err.name === 'SchemaError') {
+          // Force re-open if closed or schema mismatch
           this.db = new PharmaFlowDB();
           await this.db.open();
+          await this.refreshCache();
         } else {
           throw err;
         }
@@ -620,7 +590,12 @@ class LocalDatabase {
   incrementDataVersion() { this.db.incrementDataVersion(); }
   getCurrentBranchId() { return 'MAIN'; }
 
-  async runTransaction<T>(fn: () => Promise<T>): Promise<T> {
+  async runTransaction<T>(fn: () => Promise<T>, retryCount = 0): Promise<T> {
+    if (retryCount > 3) {
+      console.error("TRANSACTION_ABORT: Too many retries due to schema mismatch. Running without transaction.");
+      return await fn();
+    }
+
     await this.ensureOpen();
     const status = await this.getSetting('SYSTEM_STATUS', 'ACTIVE');
     if (status === 'RECOVERY_MODE') {
@@ -631,24 +606,50 @@ class LocalDatabase {
       }
     }
 
-    // Level 2 Protection: Disable Journal Editing
-    const isJournalLocked = await this.getSetting('JOURNAL_EDIT_LOCKED', 'FALSE');
-    if (isJournalLocked === 'TRUE') {
-      // We need to be careful not to block ALL transactions, only those that might "edit" journals.
-      // However, since we don't easily know what 'fn' does inside runTransaction without executing it,
-      // we might need a different approach or just block all transactions if they are not "safe".
-      // For now, let's assume if it's locked, we block transactions that are likely to be edits.
-      // A better way is to check inside the specific methods.
-    }
-
     try {
-      return await (this.db as any).transaction('rw', (this.db as any).tables, async () => { 
+      // Use the actual table names from the database to avoid "Object store not found" errors
+      // if the schema is partially loaded or in transition.
+      let idbdb = (this.db as any).idbdb;
+      if (!idbdb || !this.db.isOpen()) {
+        await this.ensureOpen();
+        idbdb = (this.db as any).idbdb;
+      }
+      
+      let availableTables = idbdb ? Array.from(idbdb.objectStoreNames) as string[] : [];
+      
+      // If availableTables is still empty, try to open again to be sure
+      if (availableTables.length === 0) {
+        await this.db.open();
+        idbdb = (this.db as any).idbdb;
+        availableTables = idbdb ? Array.from(idbdb.objectStoreNames) as string[] : [];
+      }
+
+      const tableNames = this.db.tables
+        .map(t => t.name)
+        .filter(name => availableTables.includes(name));
+      
+      if (tableNames.length === 0) {
+        // If we still have no tables, we can't start a transaction.
+        // This might happen if the database is truly empty.
+        // In that case, we just run the function without a transaction or throw.
+        console.warn("No available tables for transaction. Running function directly.");
+        return await fn();
+      }
+      
+      return await this.db.transaction('rw', tableNames as any, async () => { 
         return await fn(); 
       });
     } catch (error: any) {
+      if (error.name === 'NotFoundError' || error.message?.includes('object stores was not found')) {
+        console.warn(`Transaction failed with NotFoundError (attempt ${retryCount + 1}). Re-syncing schema...`);
+        await this.db.close();
+        await this.db.open();
+        return this.runTransaction(fn, retryCount + 1);
+      }
+
       if (error.name === 'DatabaseClosedError') {
         await this.ensureOpen();
-        return this.runTransaction(fn);
+        return this.runTransaction(fn, retryCount);
       }
       console.error("TRANSACTION_FAILURE: Rolling back operations.", error);
       await this.db.systemPerformanceLog.add({
@@ -714,7 +715,10 @@ class LocalDatabase {
     const s = await this.db.settings.get(key);
     return s ? s.value : defaultValue;
   }
-  async saveSetting(key: string, value: any) { await this.ensureOpen(); await this.db.settings.put({ key, value }); }
+  async saveSetting(key: string, value: any) { 
+    await this.ensureOpen(); 
+    await this.db.settings.put({ id: key, key, value }); 
+  }
   async saveProduct(p: Product) { 
     await this.ensureOpen();
     if (!p.id) p.id = this.generateId('PRD');
@@ -739,6 +743,11 @@ class LocalDatabase {
   async addJournalEntry(entry: AccountingEntry) { 
     await this.ensureOpen();
     if (!entry.id) entry.id = this.generateId('ENT');
+    
+    // 8. PROTECT DATA: Block journal edits if period is locked
+    const { PeriodLockEngine } = await import('./PeriodLockEngine');
+    await PeriodLockEngine.validateOperation(entry.date, 'تعديل القيود');
+
     const isLocked = await this.getSetting('JOURNAL_EDIT_LOCKED', 'FALSE');
     if (isLocked === 'TRUE') {
       throw new Error("تعديل القيود المحاسبية معطل حالياً بسبب ارتفاع مستوى المخاطر 🛡️");
@@ -857,7 +866,10 @@ class LocalDatabase {
     return { purchase_id: purchase.id, id: purchase.id };
   }
   async persist(table: string, data: any[]) { if ((this.db as any)[table]) await (this.db as any)[table].bulkPut(data); }
-  async saveSettlement(s: InvoiceSettlement) { await this.db.settlements.put(s); }
+  async saveSettlement(s: InvoiceSettlement) { 
+    if (!s.id) s.id = this.generateId('SET');
+    await this.db.settlements.put(s); 
+  }
   async getPendingOperations() { return await this.db.pendingOperations.toArray(); }
   async getInvoiceHistory(invoiceId: string) { 
     if (!invoiceId) return [];
@@ -875,14 +887,20 @@ class LocalDatabase {
   // --- New Integrated Accounting & Inventory Methods ---
 
   async getCurrencies() { return await this.db.currencies.toArray(); }
-  async saveCurrency(c: Currency) { await this.db.currencies.put(c); }
+  async saveCurrency(c: Currency) { 
+    if (!c.id) c.id = this.generateId('CUR');
+    await this.db.currencies.put(c); 
+  }
   async deleteCurrency(id: string) { await this.db.currencies.delete(id); }
   
   async getExchangeRates(date?: string) { 
     const targetDate = date || new Date().toISOString().split('T')[0];
     return await this.db.exchangeRates.where('date').equals(targetDate).toArray(); 
   }
-  async saveExchangeRate(rate: ExchangeRate) { await this.db.exchangeRates.put(rate); }
+  async saveExchangeRate(rate: ExchangeRate) { 
+    if (!rate.id) rate.id = this.generateId('EXR');
+    await this.db.exchangeRates.put(rate); 
+  }
 
   async updateCustomerBalance(customerId: string, amount: number) {
     const customer = await this.db.customers.get(customerId);
@@ -1004,6 +1022,3 @@ class LocalDatabase {
 
 const dbInstance = new LocalDatabase();
 export { dbInstance as db };
-
-// Initialize hooks after export to ensure db is available to imported services
-dbInstance.db.setupSyncHooks();

@@ -35,7 +35,7 @@ export class SecurityError extends AppError {
   }
 }
 
-export type UserRole = 'Admin' | 'Accountant' | 'Employee' | 'DataEntry';
+export type UserRole = 'Admin' | 'Accountant' | 'Clerk';
 export type SubscriptionPlan = 'Free' | 'Basic' | 'Pro';
 export type TenantStatus = 'Active' | 'Suspended' | 'Expired';
 
@@ -91,6 +91,16 @@ export interface ConflictArchive {
   data: string; // JSON of the older version
   resolvedAt: string;
   resolution: string;
+}
+
+export interface SecuritySettings {
+  id: string;
+  is_enabled: boolean;
+  username: string;
+  password_hash: string;
+  salt: string;
+  lock_mode: 'instant' | '5m' | '10m' | '20m' | '30m';
+  last_active_at: number;
 }
 
 export interface FinancialHealthSnapshot {
@@ -176,7 +186,9 @@ export interface User extends SyncableEntity {
   Is_Active: boolean;
   tenant_id: string;
   lastLogin?: string;
-  password?: string;
+  password_hash?: string;
+  salt?: string;
+  created_at?: string;
 }
 
 export interface UserRoleEntry extends SyncableEntity {
@@ -201,6 +213,16 @@ export type Permission =
   | 'MANAGE_PARTNERS'
   | 'AUDIT_VIEW'
   | 'ARCHIVE_VIEW';
+
+export interface SecuritySettings {
+  id: string;
+  is_enabled: boolean;
+  username: string;
+  password_hash: string;
+  salt: string;
+  lock_mode: 'instant' | '5m' | '10m' | '20m' | '30m';
+  last_active_at: number;
+}
 
 export interface SyncableEntity {
   id?: string;

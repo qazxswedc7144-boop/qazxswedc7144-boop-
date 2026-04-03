@@ -535,6 +535,10 @@ export const transactionOrchestrator = {
       
       if (!invoice) throw new ValidationError("Invoice not found.");
 
+      // 4. Accounting Period Lock Check
+      const invoiceDate = (invoice as any).date || new Date().toISOString();
+      await PeriodLockEngine.validateOperation(invoiceDate, 'حذف');
+
       // 2. Safe Delete: Check dependencies before delete
       const hasDeps = await InvoiceRepository.checkHasDependencies(invoiceId, type);
       if (hasDeps) {

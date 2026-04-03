@@ -60,7 +60,9 @@ const Dashboard: React.FC<{ lang?: 'ar', onNavigate?: (view: any, params?: any) 
     stockValue: 0,
     salesTrend: [] as any[],
     categoryData: [] as any[],
-    recentTransactions: [] as any[]
+    recentTransactions: [] as any[],
+    riskScore: 'LOW' as 'LOW' | 'MEDIUM' | 'HIGH',
+    alertsCount: 0
   });
   const [health, setHealth] = useState<FinancialHealthSnapshot | null>(null);
   
@@ -92,6 +94,9 @@ const Dashboard: React.FC<{ lang?: 'ar', onNavigate?: (view: any, params?: any) 
 
   useEffect(() => {
     const fetchStats = async () => {
+      const { AIDashboardEngine } = await import('../services/AIDashboardEngine');
+      const metrics = await AIDashboardEngine.getMetrics(true);
+      
       const today = new Date().toISOString().split('T')[0];
       const transactions = await AccountingRepository.getTransactions();
       const products = await db.getProducts();
@@ -121,14 +126,16 @@ const Dashboard: React.FC<{ lang?: 'ar', onNavigate?: (view: any, params?: any) 
       })).slice(0, 5);
 
       setStats({
-        todaySalesTotal: todaySales.reduce((acc, s) => acc + s.amount, 0),
+        todaySalesTotal: metrics.todaySummary.sales,
         todayInvoicesCount: todaySales.length,
         activeInvoicesCount: activeSales.length,
-        monthSalesTotal: transactions.filter(t => t.type === 'sale').reduce((acc, s) => acc + s.amount, 0),
-        stockValue: products.reduce((acc, p) => acc + (p.StockQuantity * (p.CostPrice || 0)), 0),
+        monthSalesTotal: metrics.netProfit, // Use netProfit for the "Total Profit" card
+        stockValue: metrics.totalPurchases - metrics.cogs, // Estimated stock value
         salesTrend,
         categoryData,
-        recentTransactions: transactions.slice(-5).reverse()
+        recentTransactions: transactions.slice(-5).reverse(),
+        riskScore: metrics.riskScore,
+        alertsCount: metrics.lowStockAlerts.length + metrics.expiryAlerts.length + metrics.anomalies.length
       });
 
       const healthData = await FinancialHealthService.getLatestSnapshot();
@@ -149,9 +156,21 @@ const Dashboard: React.FC<{ lang?: 'ar', onNavigate?: (view: any, params?: any) 
           <NotificationCenter />
           <div>
             <h2 className="text-2xl font-black text-[#1E4D4D] tracking-tight leading-none mb-2">أهلاً بك، {user?.User_Name}</h2>
-            <div className="flex items-center gap-1.5 px-3 py-1 bg-slate-50 rounded-full border border-slate-100 w-fit">
-              <Calendar size={12} className="text-slate-400" />
-              <span className="text-[10px] font-bold text-slate-500">{new Date().toLocaleDateString('ar-SA', { weekday: 'long', day: 'numeric', month: 'long' })}</span>
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 px-3 py-1 bg-slate-50 rounded-full border border-slate-100 w-fit">
+                <Calendar size={12} className="text-slate-400" />
+                <span className="text-[10px] font-bold text-slate-500">{new Date().toLocaleDateString('ar-SA', { weekday: 'long', day: 'numeric', month: 'long' })}</span>
+              </div>
+              {stats.riskScore && (
+                <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full border w-fit ${
+                  stats.riskScore === 'LOW' ? 'bg-emerald-50 border-emerald-100 text-emerald-600' :
+                  stats.riskScore === 'MEDIUM' ? 'bg-amber-50 border-amber-100 text-amber-600' :
+                  'bg-red-50 border-red-100 text-red-600'
+                }`}>
+                  <ShieldCheck size={12} />
+                  <span className="text-[10px] font-bold">مستوى المخاطرة: {stats.riskScore === 'LOW' ? 'منخفض' : stats.riskScore === 'MEDIUM' ? 'متوسط' : 'مرتفع'}</span>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -216,7 +235,7 @@ const Dashboard: React.FC<{ lang?: 'ar', onNavigate?: (view: any, params?: any) 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <StatMiniCard label="فواتير نشطة" value={stats.activeInvoicesCount} icon={<Clock size={24} />} color="border-amber-500" unit="مسودة" />
           <StatMiniCard label="قيمة المخزون" value={stats.stockValue} icon={<PackageCheck size={24} />} color="border-blue-500" unit={currency} />
-          <StatMiniCard label="مبيعات الشهر" value={stats.monthSalesTotal} icon={<Activity size={24} />} color="border-purple-500" unit={currency} />
+          <StatMiniCard label="إجمالي الأرباح" value={stats.monthSalesTotal} icon={<Activity size={24} />} color="border-purple-500" unit={currency} />
         </div>
 
         {/* Bento Grid Layout - Distribution and AI */}

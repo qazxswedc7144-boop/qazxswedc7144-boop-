@@ -1,25 +1,71 @@
 
 import { User, UserRole, Permission } from '../types';
+import { db } from './database';
+import CryptoJS from 'crypto-js';
 
 const SESSION_KEY = 'pharmaflow_session_v4_secure';
+const SECRET_KEY = 'pharmaflow_local_secret_key_123'; // In a real app this would be more secure
 
 /**
  * Auth Service - محرك التحكم في الوصول (RBAC Guard)
  */
 export const authService = {
   
-  // للحصول على تجربة المحاكاة، يمكن تغيير الدور هنا يدوياً لاختبار الأدوار المختلفة
-  // الخيارات: 'Admin', 'Accountant', 'DataEntry'
-  getCurrentUser: (): User => {
-    const session = localStorage.getItem(SESSION_KEY);
-    if (session) {
-      try {
-        return JSON.parse(session);
-      } catch (e) {
+  hashPassword: (password: string, salt: string): string => {
+    return CryptoJS.SHA256(password + salt).toString();
+  },
+
+  generateSalt: (): string => {
+    return CryptoJS.lib.WordArray.random(16).toString();
+  },
+
+  generateToken: (user: User): string => {
+    const payload = {
+      user_id: user.user_id,
+      email: user.User_Email,
+      name: user.User_Name,
+      role: user.Role,
+      tenant_id: user.tenant_id,
+      expiry: Date.now() + 24 * 60 * 60 * 1000 // 24 hours
+    };
+    return CryptoJS.AES.encrypt(JSON.stringify(payload), SECRET_KEY).toString();
+  },
+
+  validateSession: (): User | null => {
+    const token = localStorage.getItem(SESSION_KEY);
+    if (!token) return null;
+
+    try {
+      const bytes = CryptoJS.AES.decrypt(token, SECRET_KEY);
+      const decryptedData = bytes.toString(CryptoJS.enc.Utf8);
+      if (!decryptedData) return null;
+      
+      const payload = JSON.parse(decryptedData);
+      
+      if (payload.expiry < Date.now()) {
         localStorage.removeItem(SESSION_KEY);
+        return null;
       }
+      
+      return {
+        user_id: payload.user_id,
+        User_Email: payload.email,
+        User_Name: payload.name,
+        Role: payload.role,
+        Is_Active: true,
+        tenant_id: payload.tenant_id
+      } as User;
+    } catch (e) {
+      localStorage.removeItem(SESSION_KEY);
+      return null;
     }
-    // Default mock user for development if no session
+  },
+
+  getCurrentUser: (): User => {
+    const validatedUser = authService.validateSession();
+    if (validatedUser) return validatedUser;
+
+    // Default mock user for development if no session (only for initial setup)
     return {
       user_id: 'USR-DEV-001',
       User_Email: 'admin@pharmaflow.local',
@@ -31,20 +77,40 @@ export const authService = {
     };
   },
 
-  login: async (email: string, password?: string, tenantId?: string): Promise<boolean> => {
-    // In a real SaaS, this would call Firebase Auth or a backend API
-    // For now, we simulate a successful login and store the tenant info
-    const mockUser: User = {
+  register: async (email: string, username: string, password: string, role: UserRole, tenantId: string): Promise<boolean> => {
+    const salt = authService.generateSalt();
+    const password_hash = authService.hashPassword(password, salt);
+    
+    const newUser: User = {
       user_id: `USR-${Date.now()}`,
       User_Email: email,
-      User_Name: email.split('@')[0],
-      Role: 'Admin',
+      User_Name: username,
+      Role: role,
       Is_Active: true,
-      tenant_id: tenantId || 'TEN-DEV-001',
-      lastLogin: new Date().toISOString()
+      tenant_id: tenantId,
+      password_hash,
+      salt,
+      created_at: new Date().toISOString()
     };
-    localStorage.setItem(SESSION_KEY, JSON.stringify(mockUser));
+
+    await db.users.put(newUser);
     return true;
+  },
+
+  login: async (email: string, password: string): Promise<boolean> => {
+    const user = await db.users.get(email);
+    if (!user || !user.password_hash || !user.salt) return false;
+
+    const inputHash = authService.hashPassword(password, user.salt);
+    if (inputHash === user.password_hash) {
+      const token = authService.generateToken(user);
+      localStorage.setItem(SESSION_KEY, token);
+      
+      // Update last login
+      await db.users.update(email, { lastLogin: new Date().toISOString() });
+      return true;
+    }
+    return false;
   },
 
   /**
@@ -57,19 +123,25 @@ export const authService = {
     // 1. Admin له صلاحية مطلقة دائماً (Full Access)
     if (role === 'Admin') return true;
 
-    // 2. Accountant (المحاسب) - صلاحيات مالية شاملة بدون إدارة النظام
+    // 2. Accountant (المحاسب) - صلاحيات مالية شاملة
     if (role === 'Accountant') {
       const allowed: Permission[] = [
         'CREATE_INVOICE', 'EDIT_INVOICE', 
         'CREATE_VOUCHER', 'EDIT_VOUCHER', 
-        'VIEW_REPORTS', 'FINANCIAL_ACCESS'
+        'VIEW_REPORTS', 'FINANCIAL_ACCESS',
+        'MANAGE_PARTNERS', 'ARCHIVE_VIEW',
+        'INVENTORY_VIEW'
       ];
       return allowed.includes(permission);
     }
 
-    // 3. DataEntry (مدخل البيانات) - صلاحية الإنشاء فقط
-    if (role === 'DataEntry') {
-      const allowed: Permission[] = ['CREATE_INVOICE'];
+    // 3. Clerk (موظف مبيعات) - صلاحيات البيع فقط
+    if (role === 'Clerk') {
+      const allowed: Permission[] = [
+        'CREATE_INVOICE', 
+        'POS_ACCESS', 
+        'INVENTORY_VIEW'
+      ];
       return allowed.includes(permission);
     }
 

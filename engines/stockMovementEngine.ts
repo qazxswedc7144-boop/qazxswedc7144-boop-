@@ -2,6 +2,7 @@
 import { db } from '../services/database';
 import { StockMovement } from '../types';
 import { SyncEngine } from '../services/SyncEngine';
+import { PeriodLockEngine } from '../services/PeriodLockEngine';
 
 export class StockMovementEngine {
 
@@ -9,6 +10,10 @@ export class StockMovementEngine {
    * CREATE STOCK MOVEMENT
    */
   static async createStockMovement(data: Omit<StockMovement, 'id' | 'created_at' | 'lastModified'>, batch?: any): Promise<void> {
+    // 8. PROTECT DATA: Block stock changes if period is locked
+    const date = (data as any).date || new Date().toISOString();
+    await PeriodLockEngine.validateOperation(date, 'تعديل المخزون');
+
     // Check if item exists
     const product = await db.db.products.get(data.item_id);
     if (!product) {
@@ -98,6 +103,12 @@ export class StockMovementEngine {
       .where('reference_id')
       .equals(reference_id)
       .toArray();
+
+    if (movements.length > 0) {
+      // 8. PROTECT DATA: Block stock changes if period is locked
+      const date = (movements[0] as any).date || movements[0].created_at || new Date().toISOString();
+      await PeriodLockEngine.validateOperation(date, 'إلغاء حركات المخزون');
+    }
 
     for (const movement of movements) {
       // To reverse, we add a counter-movement or just delete and update product?

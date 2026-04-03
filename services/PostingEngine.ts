@@ -6,6 +6,7 @@ import { InventoryService } from './InventoryService';
 import { InvoiceRepository } from '../repositories/invoice.repository';
 import { AccountRepository } from '../repositories/account.repository';
 import { integrityVerifier } from './integrityVerifier';
+import { PeriodLockEngine } from './PeriodLockEngine';
 
 export class PostingEngine {
   private static isMaintenanceMode = false;
@@ -17,12 +18,15 @@ export class PostingEngine {
   static async postSale(saleId: string): Promise<void> {
     if (this.isMaintenanceMode) throw new Error("PostingEngine is in maintenance mode");
     
-    // Ensure accounts are seeded
-    await AccountingEngine.seedAccounts();
-
     const sale = await InvoiceRepository.getSaleById(saleId);
     if (!sale) throw new Error("Sale not found");
     if (sale.InvoiceStatus === 'POSTED') return;
+
+    // 4. Accounting Period Lock Check
+    await PeriodLockEngine.validateOperation(sale.date, 'ترحيل');
+
+    // Ensure accounts are seeded
+    await AccountingEngine.seedAccounts();
 
     const userId = sale.Created_By || 'SYSTEM';
     const warehouseId = 'WH-MAIN'; // Default for now
@@ -67,6 +71,9 @@ export class PostingEngine {
   static async unpostSale(saleId: string): Promise<void> {
     const sale = await InvoiceRepository.getSaleById(saleId);
     if (!sale || sale.InvoiceStatus !== 'POSTED') return;
+
+    // 4. Accounting Period Lock Check
+    await PeriodLockEngine.validateOperation(sale.date, 'إلغاء ترحيل');
 
     const userId = 'SYSTEM';
     const warehouseId = 'WH-MAIN';
@@ -114,6 +121,9 @@ export class PostingEngine {
     if (!purchase) throw new Error("Purchase not found");
     if (purchase.invoiceStatus === 'POSTED') return;
 
+    // 4. Accounting Period Lock Check
+    await PeriodLockEngine.validateOperation(purchase.date, 'ترحيل');
+
     const userId = purchase.Created_By || 'SYSTEM';
     const warehouseId = 'WH-MAIN';
 
@@ -155,6 +165,9 @@ export class PostingEngine {
   static async unpostPurchase(purchaseId: string): Promise<void> {
     const purchase = await InvoiceRepository.getPurchaseById(purchaseId);
     if (!purchase || purchase.invoiceStatus !== 'POSTED') return;
+
+    // 4. Accounting Period Lock Check
+    await PeriodLockEngine.validateOperation(purchase.date, 'إلغاء ترحيل');
 
     const userId = 'SYSTEM';
     const warehouseId = 'WH-MAIN';
@@ -200,6 +213,9 @@ export class PostingEngine {
 
     const voucher = await db.db.cashFlow.get(voucherId);
     if (!voucher) throw new Error("Voucher not found");
+    
+    // 4. Accounting Period Lock Check
+    await PeriodLockEngine.validateOperation(voucher.date, 'ترحيل');
     
     // Logic to generate accounting entry for voucher
     const entry = await AccountingEngine.generateVoucherEntry({

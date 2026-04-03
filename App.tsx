@@ -86,6 +86,93 @@ function MainLayout() {
   const setCurrency = useAppStore(state => state.setCurrency);
   const addToast = useAppStore(state => state.addToast);
   const [riskScore, setRiskScore] = useState<number>(0);
+  const [isLocked, setIsLocked] = useState(false);
+
+  // 1. Session Tracking
+  useEffect(() => {
+    const handleActivity = () => {
+      import('./services/AppLockService').then(({ appLockService }) => {
+        appLockService.updateActivity();
+      });
+    };
+
+    window.addEventListener('click', handleActivity);
+    window.addEventListener('keydown', handleActivity);
+    window.addEventListener('mousemove', handleActivity);
+    window.addEventListener('touchstart', handleActivity);
+
+    return () => {
+      window.removeEventListener('click', handleActivity);
+      window.removeEventListener('keydown', handleActivity);
+      window.removeEventListener('mousemove', handleActivity);
+      window.removeEventListener('touchstart', handleActivity);
+    };
+  }, []);
+
+  // 2. Lock Logic (Interval & Visibility)
+  useEffect(() => {
+    const checkLock = async () => {
+      const { appLockService } = await import('./services/AppLockService');
+      const settings = await appLockService.getSettings();
+      if (settings?.is_enabled && settings.lock_mode !== 'instant') {
+        const shouldLock = await appLockService.shouldLock();
+        if (shouldLock) setIsLocked(true);
+      }
+    };
+
+    const handleVisibilityChange = async () => {
+      const { appLockService } = await import('./services/AppLockService');
+      const settings = await appLockService.getSettings();
+      
+      if (document.visibilityState === 'hidden') {
+        if (settings?.is_enabled && settings.lock_mode === 'instant') {
+          setIsLocked(true);
+        }
+      } else if (document.visibilityState === 'visible') {
+        if (settings?.is_enabled) {
+          if (settings.lock_mode === 'instant') {
+            setIsLocked(true);
+          } else {
+            const shouldLock = await appLockService.shouldLock();
+            if (shouldLock) setIsLocked(true);
+          }
+        }
+      }
+    };
+
+    const interval = setInterval(checkLock, 30000); // 30s as requested
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', checkLock);
+    window.addEventListener('blur', () => {
+       import('./services/AppLockService').then(async ({ appLockService }) => {
+         const settings = await appLockService.getSettings();
+         if (settings?.is_enabled && settings.lock_mode === 'instant') {
+           setIsLocked(true);
+         }
+       });
+    });
+
+    // Initial check on mount (App Resume)
+    const initialCheck = async () => {
+      const { appLockService } = await import('./services/AppLockService');
+      const settings = await appLockService.getSettings();
+      if (settings?.is_enabled) {
+        if (settings.lock_mode === 'instant') {
+          setIsLocked(true);
+        } else {
+          const shouldLock = await appLockService.shouldLock();
+          if (shouldLock) setIsLocked(true);
+        }
+      }
+    };
+    initialCheck();
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', checkLock);
+    };
+  }, []);
 
   const parseRoute = useCallback(() => {
     const hash = window.location.hash.replace('#/', '');
@@ -108,10 +195,20 @@ function MainLayout() {
     const init = async () => { 
       await db.init();
       const { AccountingEngine } = await import('./services/AccountingEngine');
+      const { PeriodLockEngine } = await import('./services/PeriodLockEngine');
+      const { authService } = await import('./services/auth.service');
+      
       await AccountingEngine.seedAccounts();
+      await PeriodLockEngine.seedDefaultPeriod();
+      
+      // Seed default admin if no users exist
+      const userCount = await db.users.count();
+      if (userCount === 0) {
+        await authService.register('admin@pharmaflow.local', 'مدير النظام', 'admin123', 'Admin', 'TEN-DEV-001');
+      }
+
       heartbeatService.start(); 
       backupService.startAutoTimer();
-      SyncService.startWorker();
       
       // Reset security system for development as requested
       await FinancialDefenseSystem.resetSecuritySystem();
@@ -126,8 +223,6 @@ function MainLayout() {
       AIInsightsEngine.runAnalysis();
 
       const syncTimer = setInterval(async () => {
-        const status = await SyncService.getSyncStatus();
-        setSyncStatus(status);
         const threat = await db.getSetting('SYSTEM_THREAT_LEVEL', '0');
         setRiskScore(parseInt(threat));
       }, 5000);
@@ -204,6 +299,9 @@ function MainLayout() {
 
   return (
     <div className="flex h-screen bg-[#F8FAFA] overflow-hidden font-sans relative text-slate-900" dir="rtl">
+      <AnimatePresence>
+        {isLocked && <LockScreen onUnlock={() => setIsLocked(false)} />}
+      </AnimatePresence>
       <AnimatePresence>
         {isSidebarOpen && (
           <motion.div 
@@ -419,5 +517,85 @@ function MainLayout() {
 }
 
 export default function App() {
-  return <MainLayout />;
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[#F8FAFA] flex items-center justify-center font-black text-[#1E4D4D] animate-pulse">جاري تحميل النظام السيادي...</div>}>
+      <MainLayout />
+    </Suspense>
+  );
 }
+
+const LockScreen: React.FC<{ onUnlock: () => void }> = ({ onUnlock }) => {
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const handleUnlock = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!password) return;
+    setLoading(true);
+    try {
+      const { appLockService } = await import('./services/AppLockService');
+      const valid = await appLockService.verifyPassword(password);
+      if (valid) {
+        await appLockService.updateActivity();
+        onUnlock();
+      } else {
+        setError(true);
+        setPassword('');
+        setTimeout(() => setError(false), 2000);
+      }
+    } catch (err) {
+      console.error("Unlock error:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[9999] bg-[#1E4D4D]/95 backdrop-blur-xl flex items-center justify-center p-6 text-right" 
+      dir="rtl"
+    >
+      <motion.div 
+        initial={{ scale: 0.9, y: 20, opacity: 0 }}
+        animate={{ scale: 1, y: 0, opacity: 1 }}
+        className="w-full max-w-md bg-white rounded-[40px] p-10 shadow-2xl space-y-8"
+      >
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-20 h-20 bg-blue-50 text-blue-600 rounded-3xl flex items-center justify-center shadow-inner">
+            <Fingerprint size={40} />
+          </div>
+          <div className="text-center">
+            <h2 className="text-2xl font-black text-[#1E4D4D]">التطبيق مقفل</h2>
+            <p className="text-slate-400 font-bold text-xs mt-1">يرجى إدخال كلمة المرور للمتابعة</p>
+          </div>
+        </div>
+
+        <form onSubmit={handleUnlock} className="space-y-6">
+          <div className="space-y-2">
+            <input 
+              type="password" 
+              autoFocus
+              placeholder="كلمة المرور"
+              className={`w-full h-16 bg-slate-50 border-2 rounded-2xl px-6 text-center text-xl font-black outline-none transition-all ${error ? 'border-red-500 bg-red-50 animate-bounce' : 'border-transparent focus:border-blue-500'}`}
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+            />
+            {error && <p className="text-red-500 text-[10px] font-black text-center">كلمة المرور غير صحيحة</p>}
+          </div>
+
+          <button 
+            type="submit"
+            disabled={loading}
+            className="w-full h-16 bg-[#1E4D4D] text-white rounded-2xl font-black text-lg shadow-lg active:scale-95 transition-all flex items-center justify-center gap-3"
+          >
+            {loading ? 'جاري التحقق...' : <>فتح القفل <ArrowRight size={20} /></>}
+          </button>
+        </form>
+      </motion.div>
+    </motion.div>
+  );
+};
