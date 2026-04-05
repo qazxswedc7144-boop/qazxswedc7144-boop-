@@ -72,6 +72,26 @@ export const useSales = (onNavigate?: (view: any, params?: any) => void) => {
     notes: '', warehouse: '', attachment: ''
   });
 
+  const resetInvoiceState = useCallback(async () => {
+    const nextNum = await InvoiceRepository.generateInvoiceNumber();
+    setHeader({
+      invoice_number: nextNum,
+      customer_id: '',
+      payment_method: 'Cash',
+      status: 'DRAFT',
+      payment_status: 'Unpaid',
+      date: new Date().toISOString().split('T')[0],
+      isReturn: false,
+      notes: '',
+      warehouse: '',
+      attachment: ''
+    });
+    setItems([]);
+    setAdjData({ discountPercent: 0, otherFees: 0, tax: 0 });
+    setCustomerSearchTerm('');
+    setEditingInvoiceId(null);
+  }, [setEditingInvoiceId]);
+
   // Smart Prediction for Products
   useEffect(() => {
     const timer = setTimeout(async () => {
@@ -176,8 +196,6 @@ export const useSales = (onNavigate?: (view: any, params?: any) => void) => {
 
   useEffect(() => {
     const init = async () => {
-      let loadedHeader = { ...header };
-      
       if (editingInvoiceId) {
         const inv = await InvoiceRepository.getUnifiedInvoice(editingInvoiceId);
         const deps = await InvoiceRepository.checkHasDependencies(editingInvoiceId, 'SALE');
@@ -197,23 +215,13 @@ export const useSales = (onNavigate?: (view: any, params?: any) => void) => {
           setItems(inv.items);
           return;
         }
-      }
-
-      const draft = localStorage.getItem(DRAFT_KEY);
-      if (draft) { 
-        const parsed = JSON.parse(draft);
-        loadedHeader = parsed.header;
-        setHeader(loadedHeader); 
-        setItems(parsed.items); 
-      }
-
-      if (!loadedHeader.invoice_number) {
-        const next = await InvoiceRepository.getSafeUniqueNumber('SALE', loadedHeader.isReturn);
-        setHeader(h => ({ ...h, invoice_number: next }));
+      } else {
+        // RULE: everything empty, ONLY invoice_number is auto-filled
+        await resetInvoiceState();
       }
     };
     init();
-  }, [editingInvoiceId, header.isReturn]);
+  }, [editingInvoiceId, resetInvoiceState]);
 
   useEffect(() => {
     if (header.invoice_number) {

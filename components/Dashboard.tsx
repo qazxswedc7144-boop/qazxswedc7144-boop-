@@ -15,7 +15,7 @@ import { UI_CONFIG } from '../constants';
 import RoleGuard from './RoleGuard';
 import { AISummaryPanel } from './AISummaryPanel';
 import { ProfitHealthAnalyzer } from '../services/ProfitHealthAnalyzer';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { 
   PackagePlus, FileText, DollarSign, PackageCheck, Sparkles as AutoAwesome,
   Users, Home, ShieldCheck, RefreshCw, Plus, ArrowUpRight, LayoutList, ShoppingCart,
@@ -218,7 +218,16 @@ const Dashboard: React.FC<{ lang?: 'ar', onNavigate?: (view: any, params?: any) 
         {/* Quick Access Grid */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
           <QuickActionBtn icon={<PackageIcon size={24} />} label="المخزون" onClick={() => onNavigate?.('inventory')} color="bg-purple-500" />
-          <QuickActionBtn icon={<Users size={24} />} label="العملاء" onClick={() => onNavigate?.('partners')} color="bg-blue-500" />
+          
+          <div className="relative h-full">
+            <QuickActionBtn 
+              icon={<CreditCard size={24} />} 
+              label="قبض - صرف" 
+              onClick={() => onNavigate?.('vouchers')} 
+              color="bg-blue-500" 
+            />
+          </div>
+
           <QuickActionBtn icon={<Wallet2 size={24} />} label="المحاسبة" onClick={() => onNavigate?.('accounting')} color="bg-amber-500" />
           <QuickActionBtn icon={<Clock size={24} />} label="تعمير الذمم" onClick={() => onNavigate?.('aging-report')} color="bg-red-500" />
           <QuickActionBtn icon={<ShieldCheck size={24} />} label="التدقيق" onClick={() => onNavigate?.('audit-history')} color="bg-emerald-600" />
@@ -392,12 +401,12 @@ const QuickActionBtn = ({ icon, label, onClick, color }: { icon: React.ReactNode
     whileHover={{ scale: 1.02, y: -2 }}
     whileTap={{ scale: 0.98 }}
     onClick={onClick}
-    className="flex flex-col items-center gap-2 p-4 bg-white border border-slate-100 rounded-[24px] shadow-sm hover:shadow-md transition-all group"
+    className="flex flex-col items-center justify-center gap-2 p-4 bg-white border border-slate-100 rounded-[24px] shadow-sm hover:shadow-md transition-all group h-full w-full"
   >
     <div className={`w-12 h-12 ${color} text-white rounded-2xl flex items-center justify-center shadow-md group-hover:rotate-3 transition-transform`}>
       {icon}
     </div>
-    <span className="text-[10px] font-black text-[#1E4D4D] uppercase tracking-widest">{label}</span>
+    <span className="text-[10px] font-black text-[#1E4D4D] uppercase tracking-widest text-center">{label}</span>
   </motion.button>
 );
 

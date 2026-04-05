@@ -5,12 +5,13 @@ import { CurrencyService } from './CurrencyService';
 
 export class AccountingEngine {
   
-  static async getCoreAccount(type: 'CASH' | 'RECEIVABLE' | 'PAYABLE' | 'INVENTORY' | 'SALES_REVENUE' | 'COGS' | 'EXPENSE'): Promise<string> {
+  static async getCoreAccount(type: 'CASH' | 'BANK' | 'RECEIVABLE' | 'PAYABLE' | 'INVENTORY' | 'SALES_REVENUE' | 'COGS' | 'EXPENSE'): Promise<string> {
     const setting = await db.getSetting(`ACCOUNT_${type}`, '');
     if (!setting) {
       // Fallback to defaults if not configured
       const defaults: Record<string, string> = {
         CASH: 'ACC-CASH-001',
+        BANK: 'ACC-BANK-001',
         RECEIVABLE: 'ACC-AR-001',
         PAYABLE: 'ACC-AP-001',
         INVENTORY: 'ACC-INV-001',
@@ -29,6 +30,7 @@ export class AccountingEngine {
 
     const initialAccounts: any[] = [
       { id: 'ACC-CASH-001', code: '1101', name: 'الصندوق (نقدي)', type: 'ASSET', balance_type: 'DEBIT', isSystem: true, isActive: true, balance: 0 },
+      { id: 'ACC-BANK-001', code: '1104', name: 'البنك (تحويلات)', type: 'ASSET', balance_type: 'DEBIT', isSystem: true, isActive: true, balance: 0 },
       { id: 'ACC-AR-001', code: '1102', name: 'ذمم مدينة (عملاء)', type: 'ASSET', balance_type: 'DEBIT', isSystem: true, isActive: true, balance: 0 },
       { id: 'ACC-INV-001', code: '1103', name: 'المخزون السلعي', type: 'ASSET', balance_type: 'DEBIT', isSystem: true, isActive: true, balance: 0 },
       { id: 'ACC-AP-001', code: '2101', name: 'ذمم دائنة (موردين)', type: 'LIABILITY', balance_type: 'CREDIT', isSystem: true, isActive: true, balance: 0 },
@@ -145,6 +147,7 @@ export class AccountingEngine {
     const { baseAmount, rate } = await CurrencyService.convertToBase(sale.finalTotal, currencyCode, sale.date);
 
     // Reverse Revenue: Debit Revenue, Credit Cash/AR
+    // Note: In some systems, we use a "Sales Returns" account. Here we debit the revenue account directly.
     lines.push(this.createLine(entryId, revenueAcc, baseAmount, 0));
     if (sale.paymentStatus === 'Cash') {
       lines.push(this.createLine(entryId, cashAcc, 0, baseAmount));
@@ -168,11 +171,48 @@ export class AccountingEngine {
       entry_id: entryId,
       date: sale.date,
       reference_id: sale.SaleID,
-      description: `مرتجع مبيعات فاتورة رقم ${sale.SaleID} (Rate: ${rate})`,
+      description: `مرتجع مبيعات فاتورة رقم ${sale.SaleID}`,
       TotalAmount: baseAmount,
       status: 'Posted',
       sourceId: sale.id,
       sourceType: 'RETURN',
+      lines,
+      created_at: new Date().toISOString(),
+      lastModified: new Date().toISOString()
+    };
+  }
+
+  static async generatePurchaseReturnEntry(purchase: Purchase): Promise<AccountingEntry> {
+    const cashAcc = await this.getCoreAccount('CASH');
+    const apAcc = await this.getCoreAccount('PAYABLE');
+    const invAcc = await this.getCoreAccount('INVENTORY');
+
+    const lines: JournalLine[] = [];
+    const entryId = db.generateId('JE');
+
+    const currencyCode = (purchase as any).currencyCode || 'USD';
+    const { baseAmount } = await CurrencyService.convertToBase(purchase.totalAmount, currencyCode, purchase.date);
+
+    // Debit Cash or Payable, Credit Inventory
+    if (purchase.status === 'PAID') {
+      lines.push(this.createLine(entryId, cashAcc, baseAmount, 0));
+    } else {
+      lines.push(this.createLine(entryId, apAcc, baseAmount, 0));
+    }
+    lines.push(this.createLine(entryId, invAcc, 0, baseAmount));
+
+    this.validateEntryBalance(lines);
+
+    return {
+      id: entryId,
+      entry_id: entryId,
+      date: purchase.date,
+      reference_id: purchase.invoiceId,
+      description: `مرتجع مشتريات فاتورة رقم ${purchase.invoiceId}`,
+      TotalAmount: baseAmount,
+      status: 'Posted',
+      sourceId: purchase.id,
+      sourceType: 'PURCHASE_RETURN',
       lines,
       created_at: new Date().toISOString(),
       lastModified: new Date().toISOString()
@@ -186,22 +226,26 @@ export class AccountingEngine {
     date: string;
     refId: string;
     notes?: string;
+    paymentMethod?: 'CASH' | 'TRANSFER';
   }): Promise<AccountingEntry> {
     const cashAcc = await this.getCoreAccount('CASH');
+    const bankAcc = await this.getCoreAccount('BANK');
     const arAcc = await this.getCoreAccount('RECEIVABLE');
     const apAcc = await this.getCoreAccount('PAYABLE');
 
     const lines: JournalLine[] = [];
     const entryId = db.generateId('JE');
 
+    const fundAcc = params.paymentMethod === 'TRANSFER' ? bankAcc : cashAcc;
+
     if (params.type === 'RECEIPT') {
-      // Receipt: Debit Cash, Credit Customer (AR)
-      lines.push(this.createLine(entryId, cashAcc, params.amount, 0));
+      // Receipt: Debit Cash/Bank, Credit Customer (AR)
+      lines.push(this.createLine(entryId, fundAcc, params.amount, 0));
       lines.push(this.createLine(entryId, arAcc, 0, params.amount));
     } else {
-      // Payment: Debit Supplier (AP), Credit Cash
+      // Payment: Debit Supplier (AP), Credit Cash/Bank
       lines.push(this.createLine(entryId, apAcc, params.amount, 0));
-      lines.push(this.createLine(entryId, cashAcc, 0, params.amount));
+      lines.push(this.createLine(entryId, fundAcc, 0, params.amount));
     }
 
     this.validateEntryBalance(lines);

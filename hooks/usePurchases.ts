@@ -41,6 +41,9 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
   const [isAdjustmentsOpen, setIsAdjustmentsOpen] = useState(false);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [isViewerOpen, setIsViewerOpen] = useState(false);
+  const [isAIProcessing, setIsAIProcessing] = useState(false);
+  const [showAIConfirmModal, setShowAIConfirmModal] = useState(false);
+  const [aiParsedData, setAIParsedData] = useState<any>(null);
   const [adjData, setAdjData] = useState({
     discountPercent: 0,
     otherFees: 0,
@@ -78,6 +81,26 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
     isReturn: false,
     attachment: ''
   });
+
+  const resetInvoiceState = useCallback(() => {
+    setHeader({
+      invoice_number: '',
+      supplier_id: '',
+      payment_method: 'Cash',
+      status: 'DRAFT',
+      payment_status: 'Unpaid',
+      date: new Date().toISOString().split('T')[0],
+      notes: '',
+      isReturn: false,
+      attachment: ''
+    });
+    setItems([]);
+    setAdjData({ discountPercent: 0, otherFees: 0, tax: 0 });
+    setSupplierSearchTerm('');
+    setEditingInvoiceId(null);
+    setAIParsedData(null);
+    setShowAIConfirmModal(false);
+  }, [setEditingInvoiceId]);
 
   const [isDateLockedStatus, setIsDateLockedStatus] = useState(false);
 
@@ -148,21 +171,11 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
           setHasDependencies(deps);
         }
       } else {
-        const draft = localStorage.getItem(DRAFT_KEY);
-        if (draft) {
-          try {
-            const parsed = JSON.parse(draft);
-            setHeader(prev => ({ ...prev, ...parsed.header }));
-            setItems(parsed.items || []);
-            setAdjData(parsed.adjData || { discountPercent: 0, otherFees: 0, tax: 0 });
-          } catch (e) {
-            console.error("Failed to load draft", e);
-          }
-        }
+        resetInvoiceState();
       }
     };
     fetchEditingInvoice();
-  }, [editingInvoiceId]);
+  }, [editingInvoiceId, resetInvoiceState]);
 
   useEffect(() => {
     if (isLocked && editingInvoiceId) {
@@ -185,10 +198,6 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
   const handleSupplierSearch = (val: string) => {
     setSupplierSearchTerm(val);
     setShowSupplierDropdown(true);
-    
-    // If user typed something and it doesn't match any supplier exactly
-    // we don't trigger the modal yet, only on blur or enter if needed.
-    // But the requirement says "when writing a name not in DB, activate action"
   };
 
   const selectSupplier = (s: any) => {
@@ -207,6 +216,20 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
     setTimeout(() => {
       setShowSupplierDropdown(false);
       if (supplierSearchTerm && !suppliers.find(s => s.Supplier_Name === supplierSearchTerm)) {
+        // Check for similarity
+        const similarSupplier = suppliers.find(s => {
+          const sName = s.Supplier_Name.toLowerCase();
+          const tName = supplierSearchTerm.toLowerCase();
+          return sName.includes(tName) || tName.includes(sName);
+        });
+
+        if (similarSupplier) {
+          if (window.confirm(`هل تقصد [${similarSupplier.Supplier_Name}]؟`)) {
+            selectSupplier(similarSupplier);
+            return;
+          }
+        }
+
         setNewSupplierName(supplierSearchTerm);
         setIsAddSupplierModalOpen(true);
       }
@@ -246,6 +269,99 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
     setIsAddSupplierModalOpen(false);
     setSupplierSearchTerm('');
     setHeader(prev => ({ ...prev, supplier_id: '' }));
+  };
+
+  const handleAIImport = async (file: File | string) => {
+    setIsAIProcessing(true);
+    try {
+      let base64 = '';
+      let mimeType = '';
+      if (typeof file === 'string') {
+        base64 = file.split(',')[1];
+        mimeType = file.split(',')[0].split(':')[1].split(';')[0];
+      } else {
+        const reader = new FileReader();
+        base64 = await new Promise((resolve) => {
+          reader.onload = () => resolve((reader.result as string).split(',')[1]);
+          reader.readAsDataURL(file);
+        });
+        mimeType = file.type;
+      }
+
+      const { aiDocumentService } = await import('../services/aiDocumentService');
+      const parsed = await aiDocumentService.parseInvoice(base64, mimeType);
+
+      if (parsed) {
+        setAIParsedData(parsed);
+        setShowAIConfirmModal(true);
+        setHeader(prev => ({ ...prev, attachment: typeof file === 'string' ? file : `data:${mimeType};base64,${base64}` }));
+      } else {
+        addToast("فشل في تحليل المستند", "error");
+      }
+    } catch (error) {
+      console.error("AI Import Error:", error);
+      addToast("حدث خطأ أثناء معالجة المستند", "error");
+    } finally {
+      setIsAIProcessing(false);
+    }
+  };
+
+  const applyAIParsedData = async () => {
+    if (!aiParsedData) return;
+
+    // Find or create supplier
+    let supplier = suppliers.find(s => s.Supplier_Name.toLowerCase().includes(aiParsedData.supplier_name.toLowerCase()) || aiParsedData.supplier_name.toLowerCase().includes(s.Supplier_Name.toLowerCase()));
+    
+    if (!supplier) {
+      if (window.confirm(`المورد "${aiParsedData.supplier_name}" غير موجود. هل تريد إضافته؟`)) {
+        const newId = `SUP-${Date.now()}`;
+        const newSup: Supplier = {
+          id: newId,
+          Supplier_ID: newId,
+          Supplier_Name: aiParsedData.supplier_name,
+          Balance: 0,
+          openingBalance: 0,
+          Is_Active: true,
+          Created_At: new Date().toISOString()
+        };
+        await db.saveSupplier(newSup);
+        await refreshGlobal();
+        supplier = newSup;
+      }
+    }
+
+    setHeader(prev => ({
+      ...prev,
+      invoice_number: aiParsedData.invoice_number,
+      supplier_id: supplier?.id || '',
+      payment_method: aiParsedData.payment_method,
+      isReturn: aiParsedData.is_return,
+      date: aiParsedData.date,
+      notes: aiParsedData.notes
+    }));
+    setSupplierSearchTerm(supplier?.Supplier_Name || aiParsedData.supplier_name);
+
+    // Map items
+    const mappedItems: InvoiceItem[] = [];
+    for (const item of aiParsedData.items) {
+      const product = products.find(p => p.Name.toLowerCase().includes(item.name.toLowerCase()) || item.name.toLowerCase().includes(p.Name.toLowerCase()));
+      
+      mappedItems.push({
+        id: `PUR-DET-${Date.now()}-${Math.random()}`,
+        parent_id: aiParsedData.invoice_number,
+        product_id: product?.id || `manual-${Date.now()}-${Math.random()}`,
+        name: item.name,
+        qty: item.qty,
+        price: item.price,
+        sum: item.qty * item.price,
+        row_order: mappedItems.length + 1,
+        expiryDate: item.expiryDate,
+        categoryId: product?.categoryId || ''
+      } as any);
+    }
+    setItems(mappedItems);
+    setShowAIConfirmModal(false);
+    addToast("تم تعبئة البيانات بنجاح", "success");
   };
 
   const vTotalSum = useMemo(() => {
@@ -460,6 +576,12 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
     addCategory,
     handleExport,
     printData,
-    editingInvoiceId
+    editingInvoiceId,
+    isAIProcessing,
+    showAIConfirmModal,
+    setShowAIConfirmModal,
+    handleAIImport,
+    applyAIParsedData,
+    resetInvoiceState
   };
 }

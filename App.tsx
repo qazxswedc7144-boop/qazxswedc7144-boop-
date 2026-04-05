@@ -47,6 +47,7 @@ const InvoiceHistoryModule = lazy(() => import('./components/InvoiceHistoryModul
 const AdjustmentsArchiveModule = lazy(() => import('./components/AdjustmentsArchiveModule'));
 const SupplierPaymentModule = lazy(() => import('./components/SupplierPaymentModule'));
 const CustomerReceiptModule = lazy(() => import('./components/CustomerReceiptModule'));
+const VouchersModule = lazy(() => import('./components/VouchersModule'));
 const AgingReportModule = lazy(() => import('./components/AgingReportModule'));
 const FinancialDashboard = lazy(() => import('./components/FinancialDashboard'));
 const ReportsModule = lazy(() => import('./components/ReportsModule'));
@@ -65,6 +66,7 @@ const ExpiryItemsReport = lazy(() => import('./components/reports/ExpiryItemsRep
 
 const MODULES: {id: any, label: string, icon: any, group: string, permission?: Permission}[] = [
   { id: 'dashboard', label: 'الرئيسية', icon: <Home size={20} />, group: 'core' },
+  { id: 'partners', label: 'العملاء والموردين', icon: <Users size={20} />, group: 'core', permission: 'MANAGE_PARTNERS' },
   { id: 'reports', label: 'التقارير', icon: <BarChart3 size={20} />, group: 'admin', permission: 'VIEW_REPORTS' },
   { id: 'advanced-reports', label: 'Gemini AI Insights', icon: <AutoAwesome size={20} />, group: 'admin', permission: 'VIEW_REPORTS' },
   { id: 'system-health', label: 'صحة النظام', icon: <ShieldCheck size={20} />, group: 'admin', permission: 'MANAGE_SYSTEM' },
@@ -474,6 +476,7 @@ function MainLayout() {
                   case 'purchases': return <PurchasesView onNavigate={handleNav} />;
                   case 'supplier-payment': return <RoleGuard permission="CREATE_VOUCHER"><SupplierPaymentModule onNavigate={handleNav} /></RoleGuard>;
                   case 'customer-receipt': return <RoleGuard permission="CREATE_VOUCHER"><CustomerReceiptModule onNavigate={handleNav} /></RoleGuard>;
+                  case 'vouchers': return <RoleGuard permission="CREATE_VOUCHER"><VouchersModule onNavigate={handleNav} initialType={viewParams?.type} /></RoleGuard>;
                   case 'partners': return <RoleGuard permission="FINANCIAL_ACCESS"><SupplierManagement lang="ar" onNavigate={handleNav} /></RoleGuard>;
                   case 'inventory': return <InventoryModule onNavigate={handleNav} />;
                   case 'inventory-audit': return <InventoryAuditModule lang="ar" onNavigate={handleNav} />;

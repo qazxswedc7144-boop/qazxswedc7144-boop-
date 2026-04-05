@@ -1,6 +1,7 @@
 
 import React from 'react';
 import { Badge, Modal, Button } from './SharedUI';
+import { ItemEntryModal } from './ItemEntryModal';
 import { InvoiceLockedBanner } from './SharedInvoiceUI';
 import PrintMenu from './PrintMenu';
 import { ExportService } from '../services/exportService';
@@ -18,7 +19,7 @@ import { DocumentViewer } from './DocumentViewer';
 
 const SalesModule: React.FC<{ onNavigate?: (view: any, params?: any) => void }> = ({ onNavigate }) => {
   const {
-    items,
+    items, setItems,
     manualItemName, setManualItemName,
     tempQty, setTempQty,
     tempPrice, setTempPrice,
@@ -51,6 +52,7 @@ const SalesModule: React.FC<{ onNavigate?: (view: any, params?: any) => void }> 
     handlePost,
     currency,
     isDuplicate,
+    selectedProduct,
     categoryName,
     setCategoryName,
     isRecovery,
@@ -68,6 +70,31 @@ const SalesModule: React.FC<{ onNavigate?: (view: any, params?: any) => void }> 
     confirmAddCustomer,
     cancelAddCustomer
   } = useSales(onNavigate);
+
+  const handleAddItem = (item: any) => {
+    // Logic to add item to sales list
+    const newItem = {
+      ...item,
+      product_id: item.productId,
+      parent_id: header.invoice_number,
+      row_order: items.length + 1
+    };
+    
+    // Check for duplicates
+    const existingIdx = items.findIndex(i => 
+      (i.product_id === newItem.product_id && i.product_id && !i.product_id.startsWith('manual-')) || 
+      (i.name === newItem.name && (!i.product_id || i.product_id.startsWith('manual-')))
+    );
+
+    if (existingIdx > -1) {
+      const updated = [...items];
+      updated[existingIdx].qty += newItem.qty;
+      updated[existingIdx].sum = updated[existingIdx].qty * updated[existingIdx].price;
+      setItems(updated);
+    } else {
+      setItems([...items, newItem as any]);
+    }
+  };
 
   return (
     <div className="flex flex-col min-h-screen bg-white font-['Cairo'] w-full relative overflow-x-hidden" dir="rtl">
@@ -383,179 +410,19 @@ const SalesModule: React.FC<{ onNavigate?: (view: any, params?: any) => void }> 
       </div>
 
       {/* POPUP ITEM ENTRY */}
-      <Modal 
-        isOpen={isDetailModalOpen} 
-        onClose={() => setIsDetailModalOpen(false)} 
-        title=""
-        maxWidth="w-full sm:w-[380px]"
-        noPadding={true}
-        noOuterPadding={true}
-        showCloseButton={false}
-      >
-        <div className="p-0 space-y-0 bg-white" dir="rtl">
-          {/* Row 1: اسم الصنف */}
-          <div className="p-3 space-y-1 border-b border-slate-50">
-            <label className="text-[10px] font-bold text-slate-500">اسم الصنف</label>
-            <div className="relative">
-              <input 
-                ref={itemNameInputRef}
-                className="w-full h-[40px] bg-slate-50 border border-slate-100 rounded-xl px-4 text-xs font-bold text-[#1E4D4D] outline-none focus:border-[#1E4D4D]"
-                placeholder="ابحث عن صنف..." 
-                value={manualItemName} 
-                onChange={e => { setManualItemName(e.target.value); setShowSearchDropdown(true); }} 
-                onFocus={() => setShowSearchDropdown(true)}
-              />
-              <AnimatePresence>
-                {showSearchDropdown && filteredProducts.length > 0 && (
-                  <motion.div 
-                    initial={{ opacity: 0, y: 5 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: 5 }}
-                    className="absolute top-full left-0 right-0 bg-white border border-slate-100 rounded-xl shadow-xl z-[100] mt-1 overflow-hidden"
-                  >
-                    {filteredProducts.map(p => (
-                      <button 
-                        key={p.id} 
-                        onClick={() => selectProduct(p)}
-                        className="w-full px-4 py-3 text-right hover:bg-slate-50 border-b border-slate-50 last:border-0 transition-colors"
-                      >
-                        <p className="text-xs font-bold text-[#1E4D4D]">{p.Name}</p>
-                      </button>
-                    ))}
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-          </div>
-
-          <div className="p-3 space-y-3">
-            {/* Row 2: الكمية (Right) | تاريخ الإنتهاء (Left) */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500">الكمية</label>
-                <input 
-                  ref={qtyInputRef} 
-                  type="number" 
-                  className="w-full h-[40px] bg-slate-50 border border-slate-100 rounded-xl px-4 text-center text-xs font-bold text-[#1E4D4D] outline-none focus:border-[#1E4D4D]" 
-                  placeholder="0" 
-                  value={tempQty} 
-                  onChange={e => setTempQty(e.target.value)} 
-                  onKeyDown={e => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      expiryInputRef.current?.focus();
-                    }
-                  }}
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500">تاريخ الصلاحية</label>
-                <input 
-                  ref={expiryInputRef}
-                  type="date"
-                  className="w-full h-[40px] bg-slate-50 border border-slate-100 rounded-xl px-4 text-xs font-bold text-[#1E4D4D] outline-none focus:border-[#1E4D4D]"
-                  value={tempExpiry} 
-                  onChange={e => setTempExpiry(e.target.value)} 
-                  onKeyDown={e => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      priceInputRef.current?.focus();
-                    }
-                  }}
-                />
-              </div>
-            </div>
-
-            {/* Row 3: السعر (Right) | التصنيف (Left) */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500">السعر</label>
-                <input 
-                  ref={priceInputRef}
-                  type="number" 
-                  className="w-full h-[40px] bg-slate-50 border border-slate-100 rounded-xl px-4 text-center text-xs font-bold text-[#1E4D4D] outline-none focus:border-[#1E4D4D]" 
-                  placeholder="0.00" 
-                  value={tempPrice} 
-                  onChange={e => setTempPrice(e.target.value)} 
-                  onKeyDown={e => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      categoryInputRef.current?.focus();
-                    }
-                  }}
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500">التصنيف</label>
-                <select 
-                  ref={categoryInputRef}
-                  className="w-full h-[40px] bg-slate-50 border border-slate-100 rounded-xl px-4 text-xs font-bold text-[#1E4D4D] outline-none focus:border-[#1E4D4D] appearance-none"
-                  value={categoryName} 
-                  onChange={e => setCategoryName(e.target.value)} 
-                  onKeyDown={e => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      noteInputRef.current?.focus();
-                    }
-                  }}
-                >
-                  <option value="">اختر تصنيفاً...</option>
-                  {['أدوية', 'مستلزمات طبية', 'مستحضرات تجميل', 'مكملات غذائية', 'أجهزة طبية', 'مواد استهلاكية', 'أصناف أخرى'].map(cat => (
-                    <option key={cat} value={cat}>{cat}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {/* Row 4: الإجمالي */}
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-500">الإجمالي</label>
-              <div className="w-full h-[40px] bg-emerald-50 border border-emerald-100 rounded-xl flex items-center justify-center">
-                <span className="text-xs font-black text-emerald-700">
-                  {((parseFloat(tempQty as string) || 0) * (parseFloat(tempPrice as string) || 0)).toLocaleString()} {currency}
-                </span>
-              </div>
-            </div>
-
-            {/* Row 5: ملاحظة الصنف */}
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-500">ملاحظة الصنف</label>
-              <input 
-                ref={noteInputRef}
-                className="w-full h-[40px] bg-slate-50 border border-slate-100 rounded-xl px-4 text-xs font-bold text-[#1E4D4D] outline-none focus:border-[#1E4D4D]"
-                placeholder="أضف ملاحظة هنا..." 
-                value={tempNote} 
-                onChange={e => setTempNote(e.target.value)} 
-                onKeyDown={e => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    finalizeItemAdd();
-                  }
-                }}
-              />
-            </div>
-          </div>
-
-          {/* Bottom Actions: إضافة (Right) | إلغاء (Left) */}
-          <div className="flex gap-3 p-3 border-t border-slate-100">
-            <Button 
-              className="flex-1 !h-[44px] !rounded-xl"
-              variant="primary"
-              onClick={() => finalizeItemAdd()}
-              isLoading={isAdding}
-            >
-              إضافة الصنف
-            </Button>
-            <Button 
-              className="flex-1 !h-[44px] !rounded-xl"
-              variant="neutral"
-              onClick={() => setIsDetailModalOpen(false)}
-            >
-              إلغاء
-            </Button>
-          </div>
-        </div>
-      </Modal>
+      <ItemEntryModal 
+        isOpen={isDetailModalOpen}
+        onClose={() => setIsDetailModalOpen(false)}
+        onAdd={handleAddItem}
+        mode="sale"
+        initialData={selectedProduct ? {
+          productId: selectedProduct.id,
+          name: selectedProduct.Name,
+          price: tempPrice || selectedProduct.UnitPrice,
+          category: selectedProduct.categoryName,
+          product: selectedProduct
+        } : null}
+      />
 
       {/* MODALS - FLATTENED DESIGN */}
       <Modal 

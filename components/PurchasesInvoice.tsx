@@ -1,6 +1,7 @@
 
 import React from 'react';
 import { Card, Button, Badge, Modal, Input } from './SharedUI';
+import { ItemEntryModal } from './ItemEntryModal';
 import { InvoiceLockedBanner } from './SharedInvoiceUI';
 import PrintMenu from './PrintMenu';
 import { 
@@ -9,7 +10,8 @@ import {
   ShoppingBag, Package, CalendarDays, Wallet, Percent, Scale,
   X, Edit3, AlertCircle, History, ShieldAlert, Lock, Clock,
   User, CreditCard, Save, ChevronRight, FileText, ArrowRight, Home, Printer,
-  ChevronLeft, MoreVertical, Trash, Info, FileSpreadsheet, LayoutList
+  ChevronLeft, MoreVertical, Trash, Info, FileSpreadsheet, LayoutList,
+  Sparkles, FileUp, Image as ImageIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { usePurchases } from '../hooks/usePurchases';
@@ -23,6 +25,7 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
   const [isAddItemModalOpen, setIsAddItemModalOpen] = React.useState(false);
   const [showMoreDetails, setShowMoreDetails] = React.useState(false);
   const [tempTotal, setTempTotal] = React.useState<number | string>('');
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const {
     items, setItems,
@@ -83,79 +86,45 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
     addCategory,
     handleExport,
     printData,
-    editingInvoiceId
+    editingInvoiceId,
+    isAIProcessing,
+    showAIConfirmModal,
+    setShowAIConfirmModal,
+    handleAIImport,
+    applyAIParsedData,
+    resetInvoiceState
   } = usePurchases(onNavigate);
 
   // Helper to open modal with product data
   const handleSelectProduct = (p: any) => {
     selectProduct(p);
-    setTempTotal(p.CostPrice || '');
     setIsAddItemModalOpen(true);
   };
 
-  const handleFinalizeAdd = () => {
-    let finalPrice = Number(tempPrice);
-    let finalQty = Number(tempQty);
-    let finalTotal = Number(tempTotal);
-
-    // Auto-Fix: Calculate price if only total and qty are entered
-    if (!tempPrice && tempTotal && tempQty) {
-      finalPrice = Number(tempTotal) / Number(tempQty);
-    } else if (!tempTotal && tempPrice && tempQty) {
-      finalTotal = Number(tempPrice) * Number(tempQty);
-    }
-
-    if (!manualItemName || !finalQty || (!finalPrice && !finalTotal)) {
-      addToast("يرجى إكمال بيانات الصنف", "error");
-      return;
-    }
-
-    const newItem: InvoiceItem = {
-      id: `PUR-DET-${Date.now()}`,
-      parent_id: header.invoice_number,
-      product_id: selectedProduct?.id || `manual-${Date.now()}`,
-      name: manualItemName,
-      qty: finalQty,
-      price: finalPrice || (finalTotal / finalQty),
-      sum: finalTotal || (finalPrice * finalQty),
-      row_order: items.length + 1,
-      expiryDate: tempExpiry,
-      notes: tempNote,
-      categoryId: selectedCategoryId || selectedProduct?.categoryId
-    } as any;
-
+  const handleAddItem = (item: any) => {
     // Auto-Fix: Merge quantities for duplicate items
-    const existingItemIndex = items.findIndex(item => 
-      (item.product_id === newItem.product_id && item.product_id !== `manual-${Date.now()}`) || 
-      (item.name === newItem.name && item.product_id.startsWith('manual-'))
+    const existingItemIndex = items.findIndex(i => 
+      (i.product_id === item.productId && i.product_id && !i.product_id.startsWith('manual-')) || 
+      (i.name === item.name && (!i.product_id || i.product_id.startsWith('manual-')))
     );
 
     if (existingItemIndex > -1) {
       const updatedItems = [...items];
       updatedItems[existingItemIndex] = {
         ...updatedItems[existingItemIndex],
-        qty: updatedItems[existingItemIndex].qty + newItem.qty,
-        sum: (updatedItems[existingItemIndex].qty + newItem.qty) * updatedItems[existingItemIndex].price
+        qty: updatedItems[existingItemIndex].qty + item.qty,
+        sum: (updatedItems[existingItemIndex].qty + item.qty) * updatedItems[existingItemIndex].price
       };
       setItems(updatedItems);
       addToast("تم دمج الكمية للصنف المكرر", "info");
     } else {
-      setItems([...items, newItem]);
+      setItems([...items, {
+        ...item,
+        product_id: item.productId,
+        parent_id: header.invoice_number,
+        row_order: items.length + 1
+      } as any]);
     }
-
-    // Reset fields
-    setSelectedProduct(null);
-    setManualItemName('');
-    setTempQty('');
-    setTempPrice('');
-    setTempTotal('');
-    setTempExpiry('');
-    setTempNote('');
-    setSelectedCategoryId('');
-    setManualCategoryName('');
-    setShowCategoryDropdown(false);
-    setIsAddItemModalOpen(false);
-    setShowMoreDetails(false);
   };
 
   const handleSaveInvoice = () => {
@@ -163,27 +132,34 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
     if (!header.invoice_number) {
       const tempNum = `TEMP-${Date.now().toString().slice(-6)}`;
       setHeader(prev => ({ ...prev, invoice_number: tempNum }));
-      // Wait for state update or pass it directly to handlePost if possible
-      // Since handlePost uses header state, we use a small timeout or just call it with the new value if we modify handlePost
       setTimeout(() => handlePost(), 100);
     } else {
       handlePost();
     }
   };
 
-  // Auto-calculate Total when Qty or Price changes
-  React.useEffect(() => {
-    if (tempQty && tempPrice) {
-      setTempTotal(Number(tempQty) * Number(tempPrice));
+  const isPriceHigher = (item: any) => {
+    const product = filteredProducts.find(p => p.id === item.product_id);
+    if (product && product.LastPurchasePrice && item.price > product.LastPurchasePrice) {
+      return true;
     }
-  }, [tempQty, tempPrice]);
+    return false;
+  };
+
+  const isExpirySoon = (expiryDate: string) => {
+    if (!expiryDate) return false;
+    const expiry = new Date(expiryDate);
+    const sixMonthsFromNow = new Date();
+    sixMonthsFromNow.setMonth(sixMonthsFromNow.getMonth() + 6);
+    return expiry < sixMonthsFromNow;
+  };
 
   return (
     <div className="flex flex-col h-screen bg-white font-['Cairo'] w-full relative overflow-hidden" dir="rtl">
       {/* HEADER SECTION - FLAT & FULL WIDTH */}
       <div className="shrink-0 z-[100] border-b border-slate-100">
         <div className="py-3 px-4 flex items-center justify-between gap-4">
-          {/* Right Group: Title, Print, Return */}
+          {/* Right Group: Title, AI Import, Return */}
           <div className="flex items-center gap-6">
             <div className="flex items-center gap-1">
               <button 
@@ -194,8 +170,29 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
                 <ArrowRight size={18} />
               </button>
               <h2 className="text-lg font-black text-[#1E4D4D] whitespace-nowrap">مشتريات</h2>
-              <div className="mr-1">
-                <PrintMenu data={printData} type="PURCHASE" items={items} />
+              <div className="mr-2 flex items-center gap-2">
+                <input 
+                  type="file" 
+                  ref={fileInputRef} 
+                  className="hidden" 
+                  accept=".jpg,.jpeg,.png,.pdf,.doc,.docx,.xls,.xlsx"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handleAIImport(file);
+                  }}
+                />
+                <button 
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isAIProcessing}
+                  className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-lg text-[11px] font-black hover:bg-emerald-100 transition-all active:scale-95 disabled:opacity-50"
+                >
+                  {isAIProcessing ? (
+                    <div className="w-4 h-4 border-2 border-emerald-700/30 border-t-emerald-700 rounded-full animate-spin" />
+                  ) : (
+                    <Sparkles size={14} />
+                  )}
+                  الاستيراد الذكي
+                </button>
               </div>
             </div>
 
@@ -303,13 +300,17 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
                   <button 
                     onClick={() => setIsViewerOpen(true)}
                     className="w-6 h-6 rounded-md overflow-hidden border border-[#1E4D4D]/20 shadow-sm active:scale-95 transition-transform"
+                    title="عرض المستند"
                   >
-                    <img src={header.attachment} className="w-full h-full object-cover" alt="Thumbnail" />
+                    <div className="w-full h-full bg-slate-50 flex items-center justify-center">
+                      <FileText size={12} className="text-[#1E4D4D]" />
+                    </div>
                   </button>
                 )}
                 <button 
                   onClick={() => setIsCameraOpen(true)}
                   className="text-slate-300 hover:text-[#1E4D4D] transition-colors"
+                  title="تصوير كاميرا"
                 >
                   <Camera size={16} />
                 </button>
@@ -322,7 +323,7 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
       <CameraModule 
         isOpen={isCameraOpen} 
         onClose={() => setIsCameraOpen(false)} 
-        onCapture={(base64) => setHeader({ ...header, attachment: base64 })}
+        onCapture={(base64) => handleAIImport(base64)}
       />
 
       {header.attachment && (
@@ -417,13 +418,15 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
                 <div className="flex-[2] flex flex-col">
                   <span className="text-xs font-black text-[#1E4D4D]">{item.name}</span>
                   {item.expiryDate && (
-                    <span className="text-[9px] font-bold text-red-400 flex items-center gap-1 mt-0.5">
+                    <span className={`text-[9px] font-bold flex items-center gap-1 mt-0.5 ${isExpirySoon(item.expiryDate) ? 'text-red-500' : 'text-slate-400'}`}>
                       <Clock size={10}/> {item.expiryDate}
                     </span>
                   )}
                 </div>
                 <div className="flex-1 text-center text-xs font-black text-[#1E4D4D]">{item.qty}</div>
-                <div className="flex-1 text-center text-xs font-bold text-slate-600">{item.price.toLocaleString()}</div>
+                <div className={`flex-1 text-center text-xs font-bold ${isPriceHigher(item) ? 'text-red-500 font-black' : 'text-slate-600'}`}>
+                  {item.price.toLocaleString()}
+                </div>
                 <div className="flex-1 text-center text-xs font-black text-[#1E4D4D]">{item.sum.toLocaleString()}</div>
                 <button 
                   onClick={() => setItems(items.filter((_, i) => i !== idx))}
@@ -492,110 +495,68 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
         </div>
       </div>
 
-      {/* ADD ITEM POP-UP MODAL */}
-      <Modal 
-        isOpen={isAddItemModalOpen} 
-        onClose={() => setIsAddItemModalOpen(false)}
-        title="إضافة صنف للفاتورة"
-        showCloseButton={false}
+      {/* AI CONFIRMATION MODAL */}
+      <Modal
+        isOpen={showAIConfirmModal}
+        onClose={() => setShowAIConfirmModal(false)}
+        title="المدير الذكي للمشتريات"
       >
-        <div className="space-y-4 p-2">
-          <div className="space-y-1">
-            <label className="text-[10px] font-black text-slate-400 uppercase mr-1">إسم الصنف</label>
-            <input 
-              value={manualItemName}
-              onChange={(e) => setManualItemName(e.target.value)}
-              className="w-full h-12 bg-slate-50 border border-slate-100 rounded-xl px-4 text-sm font-bold focus:bg-white outline-none transition-all"
-              placeholder="أدخل اسم الصنف..."
-            />
+        <div className="space-y-6 text-center p-4">
+          <div className="w-20 h-20 bg-emerald-50 rounded-full flex items-center justify-center mx-auto text-emerald-600">
+            <Sparkles size={40} />
           </div>
-
-          <div className="grid grid-cols-3 gap-4">
-            <div className="space-y-1">
-              <label className="text-[10px] font-black text-slate-400 uppercase mr-1">الكمية</label>
-              <input 
-                type="number"
-                value={tempQty}
-                onChange={(e) => setTempQty(e.target.value)}
-                className="w-full h-12 bg-slate-50 border border-slate-100 rounded-xl px-4 text-center text-sm font-black focus:bg-white outline-none transition-all"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-[10px] font-black text-slate-400 uppercase mr-1">السعر</label>
-              <input 
-                type="number"
-                value={tempPrice}
-                onChange={(e) => setTempPrice(e.target.value)}
-                className="w-full h-12 bg-slate-50 border border-slate-100 rounded-xl px-4 text-center text-sm font-black focus:bg-white outline-none transition-all"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-[10px] font-black text-slate-400 uppercase mr-1">الإجمالي</label>
-              <input 
-                type="number"
-                value={tempTotal}
-                onChange={(e) => setTempTotal(e.target.value)}
-                className="w-full h-12 bg-slate-50 border border-slate-100 rounded-xl px-4 text-center text-sm font-black focus:bg-white outline-none transition-all"
-              />
-            </div>
+          <div className="space-y-2">
+            <h3 className="text-lg font-black text-[#1E4D4D]">تم تحليل المستند بنجاح</h3>
+            <p className="text-sm font-bold text-slate-500">
+              لقد تم تعبئة البيانات آلياً من المستند، هل تريد مراجعة البيانات وتعديلها أم الحفظ الفوري؟
+            </p>
           </div>
-
-          <div className="flex justify-center py-2">
+          <div className="flex flex-col gap-3">
             <button 
-              onClick={() => setShowMoreDetails(!showMoreDetails)}
-              className="text-xs font-black text-slate-400 hover:text-[#1E4D4D] flex items-center gap-1 transition-colors"
+              onClick={applyAIParsedData}
+              className="w-full h-12 bg-[#1E4D4D] text-white rounded-xl font-black text-sm flex items-center justify-center gap-2"
             >
-              <span>تفاصيل أخرى</span>
-              <ChevronDown className={`transition-transform ${showMoreDetails ? 'rotate-180' : ''}`} size={14} />
-            </button>
-          </div>
-
-          <AnimatePresence>
-            {showMoreDetails && (
-              <motion.div 
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: 'auto', opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                className="overflow-hidden space-y-4"
-              >
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-400 uppercase mr-1">تاريخ الانتهاء</label>
-                  <input 
-                    type="date"
-                    value={tempExpiry}
-                    onChange={(e) => setTempExpiry(e.target.value)}
-                    className="w-full h-12 bg-slate-50 border border-slate-100 rounded-xl px-4 text-sm font-bold outline-none"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-400 uppercase mr-1">ملاحظات الصنف</label>
-                  <textarea 
-                    value={tempNote}
-                    onChange={(e) => setTempNote(e.target.value)}
-                    className="w-full h-20 bg-slate-50 border border-slate-100 rounded-xl p-4 text-sm font-bold outline-none resize-none"
-                    placeholder="أدخل ملاحظات..."
-                  />
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          <div className="flex gap-3 pt-4">
-            <button 
-              onClick={handleFinalizeAdd}
-              className="flex-1 h-12 bg-[#10b981] text-white rounded-xl font-black text-sm shadow-lg shadow-emerald-900/10 active:scale-95 transition-all"
-            >
-              إضافة
+              <Edit3 size={18} />
+              نعم - للمراجعة والتعديل
             </button>
             <button 
-              onClick={() => setIsAddItemModalOpen(false)}
-              className="flex-1 h-12 bg-[#ef4444] text-white rounded-xl font-black text-sm shadow-lg shadow-red-900/10 active:scale-95 transition-all"
+              onClick={async () => {
+                await applyAIParsedData();
+                setTimeout(() => handleSaveInvoice(), 500);
+              }}
+              className="w-full h-12 bg-emerald-600 text-white rounded-xl font-black text-sm flex items-center justify-center gap-2"
             >
-              إلغاء
+              <CheckCircle2 size={18} />
+              لا - للحفظ الفوري
+            </button>
+            <button 
+              onClick={() => {
+                setShowAIConfirmModal(false);
+                resetInvoiceState();
+              }}
+              className="w-full h-12 bg-red-50 text-red-600 rounded-xl font-black text-sm flex items-center justify-center gap-2"
+            >
+              <Trash2 size={18} />
+              حذف - لإلغاء العملية
             </button>
           </div>
         </div>
       </Modal>
+
+      {/* ADD ITEM POP-UP MODAL */}
+      <ItemEntryModal 
+        isOpen={isAddItemModalOpen}
+        onClose={() => setIsAddItemModalOpen(false)}
+        onAdd={handleAddItem}
+        mode="purchase"
+        initialData={selectedProduct ? {
+          productId: selectedProduct.id,
+          name: selectedProduct.Name,
+          price: selectedProduct.CostPrice || selectedProduct.UnitPrice,
+          category: selectedProduct.categoryName,
+          product: selectedProduct
+        } : null}
+      />
 
       {/* ADJUSTMENTS MODAL */}
       <Modal 

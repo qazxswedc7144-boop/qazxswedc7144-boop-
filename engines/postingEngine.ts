@@ -34,12 +34,23 @@ export class PostingEngine {
     }
 
     // 2. DETERMINE TYPE
-    let type: 'sale_cash' | 'sale_credit' | 'purchase_cash' | 'purchase_credit';
+    let type: 'sale_cash' | 'sale_credit' | 'purchase_cash' | 'purchase_credit' | 'sale_return_cash' | 'sale_return_credit' | 'purchase_return_cash' | 'purchase_return_credit';
+    const isReturn = isSale ? (invoice as Sale).isReturn : (invoice as Purchase).invoiceType === 'مرتجع';
+
     if (isSale) {
-      type = (invoice as Sale).paymentStatus === 'Cash' ? 'sale_cash' : 'sale_credit';
+      const s = invoice as Sale;
+      if (isReturn) {
+        type = s.paymentStatus === 'Cash' ? 'sale_return_cash' : 'sale_return_credit';
+      } else {
+        type = s.paymentStatus === 'Cash' ? 'sale_cash' : 'sale_credit';
+      }
     } else {
       const p = invoice as Purchase;
-      type = p.status === 'PAID' ? 'purchase_cash' : 'purchase_credit';
+      if (isReturn) {
+        type = p.status === 'PAID' ? 'purchase_return_cash' : 'purchase_return_credit';
+      } else {
+        type = p.status === 'PAID' ? 'purchase_cash' : 'purchase_credit';
+      }
     }
 
     const entryId = db.generateId('JE');
@@ -48,21 +59,35 @@ export class PostingEngine {
     await SyncEngine.executeBatch(async (batch) => {
       // 3. FIFO & STOCK MOVEMENTS
       if (isSale) {
-        for (const item of items) {
-          // FIFO Consumption
-          const { totalCost: itemCost } = await FIFOEngine.consumeFIFO(invoiceId, item.product_id, item.qty, batch);
-          calculatedTotalCost += itemCost;
-          
-          // Stock Movement
-          await StockMovementEngine.recordSaleMovement(item.product_id, item.qty, itemCost, invoiceId, batch);
+        if (isReturn) {
+          // SALE RETURN: Increase Stock, Add FIFO Layer
+          for (const item of items) {
+            // We treat sale return as a purchase to restore stock
+            await FIFOEngine.addPurchaseLayer(item.product_id, item.qty, item.price, invoiceId, batch);
+            await StockMovementEngine.recordPurchaseMovement(item.product_id, item.qty, item.price, invoiceId, batch);
+          }
+        } else {
+          // NORMAL SALE: Decrease Stock, Consume FIFO
+          for (const item of items) {
+            const { totalCost: itemCost } = await FIFOEngine.consumeFIFO(invoiceId, item.product_id, item.qty, batch);
+            calculatedTotalCost += itemCost;
+            await StockMovementEngine.recordSaleMovement(item.product_id, item.qty, itemCost, invoiceId, batch);
+          }
         }
       } else {
-        for (const item of items) {
-          // FIFO Layer
-          await FIFOEngine.addPurchaseLayer(item.product_id, item.qty, item.price, invoiceId, batch);
-          
-          // Stock Movement
-          await StockMovementEngine.recordPurchaseMovement(item.product_id, item.qty, item.price, invoiceId, batch);
+        if (isReturn) {
+          // PURCHASE RETURN: Decrease Stock, Consume FIFO
+          for (const item of items) {
+            const { totalCost: itemCost } = await FIFOEngine.consumeFIFO(invoiceId, item.product_id, item.qty, batch);
+            calculatedTotalCost += itemCost;
+            await StockMovementEngine.recordSaleMovement(item.product_id, item.qty, itemCost, invoiceId, batch);
+          }
+        } else {
+          // NORMAL PURCHASE: Increase Stock, Add FIFO Layer
+          for (const item of items) {
+            await FIFOEngine.addPurchaseLayer(item.product_id, item.qty, item.price, invoiceId, batch);
+            await StockMovementEngine.recordPurchaseMovement(item.product_id, item.qty, item.price, invoiceId, batch);
+          }
         }
       }
 
@@ -96,6 +121,19 @@ export class PostingEngine {
           }
           break;
 
+        case 'sale_return_cash':
+          // Debit Revenue, Credit Cash
+          lines.push(this.createLine(entryId, revenueAcc, total, 0, tenantId));
+          lines.push(this.createLine(entryId, cashAcc, 0, total, tenantId));
+          // Note: Stock increase is handled by FIFO/StockMovement above
+          break;
+
+        case 'sale_return_credit':
+          // Debit Revenue, Credit AR
+          lines.push(this.createLine(entryId, revenueAcc, total, 0, tenantId));
+          lines.push(this.createLine(entryId, arAcc, 0, total, tenantId));
+          break;
+
         case 'purchase_cash':
           lines.push(this.createLine(entryId, invAcc, total, 0, tenantId));
           lines.push(this.createLine(entryId, cashAcc, 0, total, tenantId));
@@ -104,6 +142,18 @@ export class PostingEngine {
         case 'purchase_credit':
           lines.push(this.createLine(entryId, invAcc, total, 0, tenantId));
           lines.push(this.createLine(entryId, apAcc, 0, total, tenantId));
+          break;
+
+        case 'purchase_return_cash':
+          // Debit Cash, Credit Inventory
+          lines.push(this.createLine(entryId, cashAcc, total, 0, tenantId));
+          lines.push(this.createLine(entryId, invAcc, 0, total, tenantId));
+          break;
+
+        case 'purchase_return_credit':
+          // Debit AP, Credit Inventory
+          lines.push(this.createLine(entryId, apAcc, total, 0, tenantId));
+          lines.push(this.createLine(entryId, invAcc, 0, total, tenantId));
           break;
       }
 

@@ -63,5 +63,123 @@ export const transactionOrchestrator = {
 
   async deleteInvoice(invoiceId: string, type: 'SALE' | 'PURCHASE'): Promise<{ success: boolean }> {
     return await SystemOrchestrator.deleteInvoice(invoiceId, type);
+  },
+
+  /**
+   * Central execution layer for ERP transactions.
+   */
+  async processTransaction(type: 'purchase' | 'purchase_return' | 'sale' | 'sale_return' | 'supplier_payment' | 'customer_payment', data: any): Promise<{ success: boolean; refId?: string }> {
+    switch(type) {
+      case 'purchase':
+        return await this.handlePurchase(data);
+      case 'purchase_return':
+        return await this.handlePurchaseReturn(data);
+      case 'sale':
+        return await this.handleSale(data);
+      case 'sale_return':
+        return await this.handleSalesReturn(data);
+      case 'supplier_payment':
+        return await this.settleSupplier(data);
+      case 'customer_payment':
+        return await this.settleCustomer(data);
+      default:
+        throw new Error(`Unknown transaction type: ${type}`);
+    }
+  },
+
+  async handlePurchase(data: any) {
+    return await SystemOrchestrator.processInvoice({
+      type: 'PURCHASE',
+      payload: {
+        supplierId: data.supplierId,
+        items: data.items,
+        total: data.total,
+        date: data.date,
+        notes: data.notes,
+        id: data.invoiceId
+      },
+      options: {
+        isCash: data.type === 'cash',
+        paymentStatus: data.type === 'cash' ? 'Cash' : 'Credit'
+      }
+    });
+  },
+
+  async handlePurchaseReturn(data: any) {
+    return await SystemOrchestrator.processInvoice({
+      type: 'PURCHASE',
+      payload: {
+        supplierId: data.supplierId,
+        items: data.items,
+        total: data.total,
+        date: data.date,
+        notes: data.notes,
+        id: data.invoiceId
+      },
+      options: {
+        isReturn: true,
+        isCash: data.type === 'cash',
+        paymentStatus: data.type === 'cash' ? 'Cash' : 'Credit'
+      }
+    });
+  },
+
+  async handleSale(data: any) {
+    return await SystemOrchestrator.processInvoice({
+      type: 'SALE',
+      payload: {
+        customerId: data.customerId,
+        items: data.items,
+        total: data.total,
+        date: data.date,
+        notes: data.notes,
+        id: data.invoiceId
+      },
+      options: {
+        isCash: data.type === 'cash',
+        paymentStatus: data.type === 'cash' ? 'Cash' : 'Credit'
+      }
+    });
+  },
+
+  async handleSalesReturn(data: any) {
+    return await SystemOrchestrator.processInvoice({
+      type: 'SALE',
+      payload: {
+        customerId: data.customerId,
+        items: data.items,
+        total: data.total,
+        date: data.date,
+        notes: data.notes,
+        id: data.invoiceId
+      },
+      options: {
+        isReturn: true,
+        isCash: data.type === 'cash',
+        paymentStatus: data.type === 'cash' ? 'Cash' : 'Credit'
+      }
+    });
+  },
+
+  async settleSupplier(data: any) {
+    const { voucherService } = await import('./voucherService');
+    const result = await voucherService.createPayment({
+      supplier_id: data.supplierId,
+      amount: data.amount,
+      notes: data.notes,
+      date: data.date || new Date().toISOString()
+    });
+    return { success: true, refId: result.id };
+  },
+
+  async settleCustomer(data: any) {
+    const { voucherService } = await import('./voucherService');
+    const result = await voucherService.createReceipt({
+      customer_id: data.customerId,
+      amount: data.amount,
+      notes: data.notes,
+      date: data.date || new Date().toISOString()
+    });
+    return { success: true, refId: result.id };
   }
 };

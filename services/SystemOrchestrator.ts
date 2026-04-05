@@ -114,7 +114,8 @@ export class SystemOrchestrator {
             0,
             'LOW',
             payload.id,
-            payload.attachment
+            payload.attachment,
+            !!options?.isReturn
           );
         }
 

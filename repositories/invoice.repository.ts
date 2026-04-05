@@ -98,6 +98,19 @@ export const InvoiceRepository = {
     return `${prefix}${isReturn ? 'R' : ''}${nextSeq}`;
   },
 
+  generateInvoiceNumber: async (): Promise<string> => {
+    const lastInvoice = await db.db.invoices.orderBy('created_at').last();
+    if (!lastInvoice || !lastInvoice.invoice_number) return 'A-1';
+    
+    const parts = lastInvoice.invoice_number.split('-');
+    if (parts.length < 2) return 'A-1';
+    
+    const num = parseInt(parts[1]);
+    if (isNaN(num)) return 'A-1';
+    
+    return `A-${num + 1}`;
+  },
+
   /**
    * جلب الأرشيف مع دعم التحميل المؤجل والتقسيم السنوي
    */
@@ -188,15 +201,10 @@ export const InvoiceRepository = {
       return result;
     });
   },
-  savePurchase: async (sId: string, items: any[], total: number, inv: string, isC: boolean, curr: string = 'USD', invSt: InvoiceStatus = 'PENDING', auditScore?: number, riskLevel?: 'LOW' | 'MEDIUM' | 'HIGH', pid?: string, attachment?: string) => {
+  savePurchase: async (sId: string, items: any[], total: number, inv: string, isC: boolean, curr: string = 'USD', invSt: InvoiceStatus = 'PENDING', auditScore?: number, riskLevel?: 'LOW' | 'MEDIUM' | 'HIGH', pid?: string, attachment?: string, isReturn: boolean = false) => {
     return await db.runTransaction(async () => {
       const invoiceData = { id: pid || inv, partnerId: sId, items, totalAmount: total, date: new Date().toISOString(), attachment };
       
-      // Phase 7: Day Lock System (تم استبداله بـ PeriodLockEngine في المنسق)
-      // if (await db.isDateLocked(invoiceData.date)) {
-      //   throw new Error("Accounting period closed (الفترة المحاسبية مغلقة)");
-      // }
-
       // Phase 1: State Engine Validation
       const recordId = pid || inv;
       if (recordId) {
@@ -228,7 +236,7 @@ export const InvoiceRepository = {
       // Phase 2 & 3: Validation & Hashing
       const hash = await InvoiceValidationEngine.validate(invoiceData, 'PURCHASE');
 
-      const result = await db.processPurchase(sId, items, total, inv, isC, curr, invSt, 'شراء', hash, auditScore, riskLevel, pid, attachment);
+      const result = await db.processPurchase(sId, items, total, inv, isC, curr, invSt, isReturn ? 'مرتجع' : 'شراء', hash, auditScore, riskLevel, pid, attachment);
       
       // NEW: Automatic Posting
       const purchase = await InvoiceRepository.getPurchaseById(result.id);

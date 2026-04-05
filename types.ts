@@ -936,6 +936,7 @@ export interface Receipt extends SyncableEntity {
   customer_id: string;
   amount: number;
   notes?: string;
+  paymentMethod?: 'CASH' | 'TRANSFER';
   created_at: string;
 }
 
@@ -945,6 +946,7 @@ export interface Payment extends SyncableEntity {
   supplier_id: string;
   amount: number;
   notes?: string;
+  paymentMethod?: 'CASH' | 'TRANSFER';
   created_at: string;
 }
 

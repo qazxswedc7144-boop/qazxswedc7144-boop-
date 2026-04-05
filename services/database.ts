@@ -115,7 +115,7 @@ class PharmaFlowDB extends Dexie {
       purchases: 'id, purchase_id, invoiceId, date, partnerId, invoiceStatus, hash, deleted_at, [partnerId+date], [invoiceStatus+date], riskLevel',
       receipts: 'id, date, customer_id, tenant_id',
       payments: 'id, date, supplier_id, tenant_id',
-      invoices: 'id, date, customerId, type',
+      invoices: 'id, date, customerId, type, invoice_number, created_at',
       invoice_items: 'id, invoiceId, productId',
       cashFlow: 'id, transaction_id, date, type, category, [type+date]',
       journalEntries: 'id, EntryID, date, sourceId, status, hash, [sourceId+status]',
@@ -442,6 +442,7 @@ class LocalDatabase {
   get inventoryTransactions() { return this.db.inventoryTransactions; }
   get warehouseStock() { return this.db.warehouseStock; }
   get settlements() { return this.db.settlements; }
+  get stock_movements() { return this.db.stock_movements; }
   get accounts() { return this.db.accounts; }
   get users() { return this.db.users; }
   get Accounting_Periods() { return this.db.Accounting_Periods; }
@@ -862,6 +863,17 @@ class LocalDatabase {
       hash, auditScore, riskLevel, attachment
     };
     await this.db.sales.put(sale); 
+    
+    // Add to unified invoices table for numbering and tracking
+    await this.db.invoices.put({
+      id: sale.id,
+      date: sale.date,
+      customerId: sale.customerId,
+      type: 'SALE',
+      invoice_number: sale.SaleID,
+      created_at: now
+    });
+
     await this.addAuditLog(pid ? 'UPDATE' : 'CREATE', 'SALE', sale.id, `Sale ${sale.SaleID} processed with risk ${riskLevel || 'LOW'}`);
     return { sale_id: sale.SaleID, totalSaleCost: finalSaleCost, id: sale.id };
   }
@@ -880,6 +892,17 @@ class LocalDatabase {
       hash, auditScore, riskLevel, attachment
     };
     await this.db.purchases.put(purchase); 
+    
+    // Add to unified invoices table for numbering and tracking
+    await this.db.invoices.put({
+      id: purchase.id,
+      date: purchase.date,
+      customerId: purchase.partnerId,
+      type: 'PURCHASE',
+      invoice_number: purchase.invoiceId,
+      created_at: now
+    });
+
     await this.addAuditLog(pid ? 'UPDATE' : 'CREATE', 'PURCHASE', purchase.id, `Purchase ${purchase.invoiceId} processed with risk ${riskLevel || 'LOW'}`);
     return { purchase_id: purchase.id, id: purchase.id };
   }
