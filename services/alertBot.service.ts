@@ -103,8 +103,10 @@ export const alertBotService = {
         await db.saveMedicineAlert(duplicate);
       }
     } else {
+      const alertId = db.generateId('ALT');
       const newAlert: MedicineAlert = {
-        AlertID: db.generateId('ALT'),
+        id: alertId,
+        AlertID: alertId,
         Type: data.type,
         ReferenceID: data.referenceId,
         Title: data.title,

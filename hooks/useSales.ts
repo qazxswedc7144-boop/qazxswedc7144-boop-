@@ -9,6 +9,7 @@ import { InvoiceRepository } from '../repositories/invoice.repository';
 import { priceIntelligenceService } from '../services/priceIntelligence.service';
 import { InvoiceWorkflowEngine } from '../services/logic/InvoiceWorkflowEngine';
 import { ExportService } from '../services/exportService';
+import { predictionService } from '../services/predictionService';
 
 const DRAFT_KEY = 'pharmaflow_sales_draft';
 
@@ -54,6 +55,9 @@ export const useSales = (onNavigate?: (view: any, params?: any) => void) => {
   const [isAddCustomerModalOpen, setIsAddCustomerModalOpen] = useState(false);
   const [newCustomerName, setNewCustomerName] = useState('');
 
+  const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
+  const [filteredCustomers, setFilteredCustomers] = useState<Supplier[]>([]);
+
   const itemNameInputRef = useRef<HTMLInputElement>(null);
   const qtyInputRef = useRef<HTMLInputElement>(null);
   const priceInputRef = useRef<HTMLInputElement>(null);
@@ -68,12 +72,31 @@ export const useSales = (onNavigate?: (view: any, params?: any) => void) => {
     notes: '', warehouse: '', attachment: ''
   });
 
-  const filteredCustomers = useMemo(() => {
-    if (!customerSearchTerm) return [];
-    return customers.filter(c => 
-      c.Supplier_Name.toLowerCase().includes(customerSearchTerm.toLowerCase())
-    ).slice(0, 5);
-  }, [customerSearchTerm, customers]);
+  // Smart Prediction for Products
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      if (manualItemName.trim()) {
+        const results = await predictionService.searchProducts(manualItemName);
+        setFilteredProducts(results);
+      } else {
+        setFilteredProducts([]);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [manualItemName]);
+
+  // Smart Prediction for Customers
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      if (customerSearchTerm.trim()) {
+        const results = await predictionService.searchCustomers(customerSearchTerm);
+        setFilteredCustomers(results);
+      } else {
+        setFilteredCustomers([]);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [customerSearchTerm]);
 
   const handleCustomerSearch = (val: string) => {
     setCustomerSearchTerm(val);
@@ -84,6 +107,10 @@ export const useSales = (onNavigate?: (view: any, params?: any) => void) => {
     setHeader(prev => ({ ...prev, customer_id: c.id }));
     setCustomerSearchTerm(c.Supplier_Name);
     setShowCustomerDropdown(false);
+    // Auto-fill customer balance if needed (optional boost)
+    if (c.Balance !== undefined) {
+      addToast(`رصيد العميل الحالي: ${c.Balance} ${currency}`, "info");
+    }
   };
 
   const handleCustomerBlur = () => {
@@ -238,24 +265,19 @@ export const useSales = (onNavigate?: (view: any, params?: any) => void) => {
     setIsAutoSaving(false);
   }, [header, items, vTotalSum, isDuplicate, isAdmin, isLocked, editingInvoiceId, currency]);
 
-  const filteredProducts = useMemo(() => {
-    if (!manualItemName.trim()) return [];
-    const term = manualItemName.toLowerCase();
-    return products.filter(p => 
-      p.Is_Active !== false && (
-        p.Name.toLowerCase().includes(term) || 
-        p.id.toLowerCase().includes(term) ||
-        (p.barcode && p.barcode.includes(term))
-      )
-    ).slice(0, 5);
-  }, [products, manualItemName]);
-
   const selectProduct = async (p: Product) => {
     setSelectedProduct(p);
     setManualItemName(p.Name);
     setCategoryName(p.categoryName || '');
     const suggestion = await priceIntelligenceService.getSuggestedPrice(p.id, 'SALE', header.customer_id);
     setTempPrice(suggestion.suggestedPrice || p.UnitPrice);
+    setTempQty(1);
+    
+    // Auto-fill stock info
+    if (p.StockQuantity !== undefined) {
+      addToast(`المخزون المتاح: ${p.StockQuantity}`, p.StockQuantity > 0 ? "info" : "error");
+    }
+    
     setShowSearchDropdown(false);
     setIsDetailModalOpen(true);
   };

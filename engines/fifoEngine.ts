@@ -130,10 +130,33 @@ export class FIFOEngine {
       .toArray();
 
     for (const layer of layers) {
-      // Check if any part of this layer was already consumed
-      // In a strict system, we might block unposting if consumed.
-      // For now, we just delete the layer.
       await db.db.inventory_layers.delete(layer.id);
     }
+  }
+
+  /**
+   * APPLY FIFO COSTING
+   */
+  static async apply(invoice: any): Promise<{ totalCost: number, itemCosts: Record<string, number> }> {
+    let totalCost = 0;
+    const itemCosts: Record<string, number> = {};
+    const type = invoice.type || (invoice.customerId ? 'SALE' : 'PURCHASE');
+    const items = invoice.items || [];
+    const invoiceId = invoice.invoiceId || invoice.id;
+
+    if (type === 'SALE') {
+      for (const item of items) {
+        const result = await this.consumeFIFO(invoiceId, item.product_id, item.qty);
+        totalCost += result.totalCost;
+        itemCosts[item.product_id] = result.totalCost;
+      }
+    } else if (type === 'PURCHASE') {
+      for (const item of items) {
+        await this.addPurchaseLayer(item.product_id, item.qty, item.price, invoiceId);
+        itemCosts[item.product_id] = item.qty * item.price;
+      }
+    }
+
+    return { totalCost, itemCosts };
   }
 }

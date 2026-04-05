@@ -39,7 +39,7 @@ export type UserRole = 'Admin' | 'Accountant' | 'Clerk';
 export type SubscriptionPlan = 'Free' | 'Basic' | 'Pro';
 export type TenantStatus = 'Active' | 'Suspended' | 'Expired';
 
-export interface Tenant {
+export interface Tenant extends SyncableEntity {
   tenant_id: string;
   name: string;
   owner_user_id: string;
@@ -58,7 +58,7 @@ export interface Tenant {
   };
 }
 
-export interface LicenseKey {
+export interface LicenseKey extends SyncableEntity {
   key: string;
   plan: SubscriptionPlan;
   duration_days: number;
@@ -66,13 +66,13 @@ export interface LicenseKey {
   used_by_tenant_id?: string;
   used_at?: string;
 }
-export type SyncStatus = 'NEW' | 'UPDATED' | 'SYNCED' | 'CONFLICT';
+export type SyncStatus = 'NEW' | 'UPDATED' | 'SYNCED' | 'CONFLICT' | 'PENDING';
 export type PaymentStatus = 'Unpaid' | 'Partially Paid' | 'Paid';
 export type SystemStatus = 'ACTIVE' | 'RECOVERY_MODE' | 'MAINTENANCE';
 export type SyncAction = 'CREATE' | 'UPDATE' | 'DELETE';
 export type SyncQueueStatus = 'PENDING' | 'SYNCED' | 'CONFLICT';
 
-export interface SyncQueueItem {
+export interface SyncQueueItem extends SyncableEntity {
   id: string;
   entityType: string;
   entityId: string;
@@ -84,7 +84,7 @@ export interface SyncQueueItem {
   error?: string;
 }
 
-export interface ConflictArchive {
+export interface ConflictArchive extends SyncableEntity {
   id: string;
   entityType: string;
   entityId: string;
@@ -93,7 +93,7 @@ export interface ConflictArchive {
   resolution: string;
 }
 
-export interface SecuritySettings {
+export interface SecuritySettings extends SyncableEntity {
   id: string;
   is_enabled: boolean;
   username: string;
@@ -103,7 +103,7 @@ export interface SecuritySettings {
   last_active_at: number;
 }
 
-export interface FinancialHealthSnapshot {
+export interface FinancialHealthSnapshot extends SyncableEntity {
   id: string;
   date: string;
   score: number;
@@ -127,7 +127,7 @@ export interface FinancialHealthSnapshot {
   insights: string[];
 }
 
-export interface SystemAlert {
+export interface SystemAlert extends SyncableEntity {
   id: string;
   type: 'FINANCIAL' | 'STOCK' | 'SECURITY' | 'SYSTEM' | 'BEHAVIORAL' | 'LEDGER';
   severity: 'INFO' | 'WARNING' | 'CRITICAL' | 'HIGH' | 'MEDIUM';
@@ -150,7 +150,7 @@ export interface UserBehavior extends SyncableEntity {
   lastActionAt: string;
 }
 
-export interface HistoricalMetric {
+export interface HistoricalMetric extends SyncableEntity {
   id: string;
   month: string; // YYYY-MM
   type: 'AVG_SALE' | 'AVG_PURCHASE' | 'AVG_MARGIN' | 'AVG_EDITS';
@@ -158,7 +158,7 @@ export interface HistoricalMetric {
   entityId?: string;
 }
 
-export interface ProfitHealth {
+export interface ProfitHealth extends SyncableEntity {
   id: string;
   date: string;
   grossProfitPercent: number;
@@ -170,7 +170,7 @@ export interface ProfitHealth {
   highRiskEntities: { id: string; name: string; riskScore: number }[];
 }
 
-export interface PerformanceMetric {
+export interface PerformanceMetric extends SyncableEntity {
   id: string;
   operation: string;
   durationMs: number;
@@ -214,18 +214,8 @@ export type Permission =
   | 'AUDIT_VIEW'
   | 'ARCHIVE_VIEW';
 
-export interface SecuritySettings {
-  id: string;
-  is_enabled: boolean;
-  username: string;
-  password_hash: string;
-  salt: string;
-  lock_mode: 'instant' | '5m' | '10m' | '20m' | '30m';
-  last_active_at: number;
-}
-
 export interface SyncableEntity {
-  id?: string;
+  id: string;
   lastModified?: string;
   updated_at?: string; // Alias for lastModified
   version?: number;    // Alias for syncVersion
@@ -442,6 +432,7 @@ export interface SupplierProfitEntry extends SyncableEntity {
 }
 
 export interface AccountMovement extends SyncableEntity {
+  id: string;
   movementId: string;
   type: 'income' | 'expense';
   amount: number;
@@ -497,7 +488,7 @@ export interface Product extends SyncableEntity {
   branchId?: string;
 }
 
-export interface InvoiceItem {
+export interface InvoiceItem extends SyncableEntity {
   id: string;
   parent_id: string; 
   product_id: string;
@@ -649,7 +640,7 @@ export interface Supplier extends SyncableEntity {
   Is_Active?: boolean;
 }
 
-export interface MedicineAlert {
+export interface MedicineAlert extends SyncableEntity {
   AlertID: string;
   Type: 'LOW_STOCK' | 'EXPIRY' | 'SEASONAL';
   ReferenceID: string;
@@ -767,7 +758,7 @@ export interface AuditItem {
   reason?: string;
 }
 
-export interface DailyAuditTask {
+export interface DailyAuditTask extends SyncableEntity {
   date: string;
   completed: boolean;
   items: AuditItem[];
@@ -796,7 +787,7 @@ export interface Account extends SyncableEntity {
   balance?: number;
 }
 
-export interface BackupSnapshot {
+export interface BackupSnapshot extends SyncableEntity {
   id: string;
   timestamp: string;
   data: any;
@@ -818,8 +809,8 @@ export interface InvoiceCounter extends SyncableEntity {
   Last_Number: number;  
 }
 
-export interface InvoiceHistory {
-  id?: number;
+export interface InvoiceHistory extends SyncableEntity {
+  id: string;
   invoiceId: string;
   userId: string;
   userName: string;
@@ -828,14 +819,15 @@ export interface InvoiceHistory {
   details: string;
 }
 
-export interface IntegrityReport {
+export interface IntegrityReport extends SyncableEntity {
+  id: string;
   isHealthy: boolean;
   totalDiff: number;
   timestamp: string;
   points: any[];
 }
 
-export interface ReconciliationPoint {
+export interface ReconciliationPoint extends SyncableEntity {
   id: string;
   label: string;
   status: 'balanced' | 'discrepancy' | 'critical';
@@ -855,7 +847,7 @@ export interface AuditLogEntry extends SyncableEntity {
   details?: string;
 }
 
-export interface PendingOperation {
+export interface PendingOperation extends SyncableEntity {
   id: string;
   type: string;
   payload: any;
@@ -864,7 +856,7 @@ export interface PendingOperation {
   createdAt: string;
 }
 
-export interface ValidationRule {
+export interface ValidationRule extends SyncableEntity {
   id: string;
   entityType: 'SALE' | 'PURCHASE' | 'PRODUCT';
   fieldName: string;
@@ -874,7 +866,7 @@ export interface ValidationRule {
   isActive: boolean;
 }
 
-export interface BankTransaction {
+export interface BankTransaction extends SyncableEntity {
   id: string;
   date: string;
   description: string;
@@ -883,7 +875,7 @@ export interface BankTransaction {
   status: 'pending' | 'completed';
 }
 
-export interface BankAccount {
+export interface BankAccount extends SyncableEntity {
   id: string;
   bankName: string;
   accountNumber: string;
@@ -891,7 +883,7 @@ export interface BankAccount {
   lastSync?: string;
 }
 
-export interface PaymentGateway {
+export interface PaymentGateway extends SyncableEntity {
   id: string;
   name: string;
   provider: string;
@@ -899,7 +891,7 @@ export interface PaymentGateway {
   config: any;
 }
 
-export interface WebhookConfig {
+export interface WebhookConfig extends SyncableEntity {
   id: string;
   url: string;
   secret: string;
@@ -907,14 +899,14 @@ export interface WebhookConfig {
   isActive: boolean;
 }
 
-export interface MedicineAlternative {
+export interface MedicineAlternative extends SyncableEntity {
   id: string;
   MedicineID: string;
   AlternativeID: string;
   PriorityLevel: 'First' | 'Second' | 'Third';
 }
 
-export interface MedicineBatch {
+export interface MedicineBatch extends SyncableEntity {
   id: string;
   BatchID: string;
   productId: string;
@@ -924,13 +916,13 @@ export interface MedicineBatch {
   lastUpdated?: string;
 }
 
-export interface PurchaseRecord {
+export interface PurchaseRecord extends SyncableEntity {
   id: string;
   date: string;
   amount: number;
 }
 
-export interface Transaction {
+export interface Transaction extends SyncableEntity {
   id: string;
   date: string;
   amount: number;
@@ -938,7 +930,25 @@ export interface Transaction {
   customer?: string;
 }
 
-export interface InvoiceSettlement {
+export interface Receipt extends SyncableEntity {
+  id: string;
+  date: string;
+  customer_id: string;
+  amount: number;
+  notes?: string;
+  created_at: string;
+}
+
+export interface Payment extends SyncableEntity {
+  id: string;
+  date: string;
+  supplier_id: string;
+  amount: number;
+  notes?: string;
+  created_at: string;
+}
+
+export interface InvoiceSettlement extends SyncableEntity {
   id: string;
   voucherId: string;
   invoiceId: string;
@@ -951,7 +961,7 @@ export interface InvoiceSettlement {
 
 export type AccountType = 'ASSET' | 'LIABILITY' | 'EQUITY' | 'REVENUE' | 'EXPENSE';
 
-export interface PartnerLedgerEntry {
+export interface PartnerLedgerEntry extends SyncableEntity {
   id: string;
   partnerId: string;
   date: string;
@@ -993,7 +1003,8 @@ export interface ExchangeRate extends SyncableEntity {
   date: string;
 }
 
-export interface SupplierLedgerEntry {
+export interface SupplierLedgerEntry extends SyncableEntity {
+  id: string;
   date: string;
   description: string;
   debit: number;

@@ -35,8 +35,10 @@ const ExpensesModule: React.FC<ExpensesModuleProps> = ({ lang, onNavigate }) => 
 
   const handleSave = async () => {
     if (!formData.amount || !formData.category) return;
+    const id = db.generateId('CF');
     const entry: CashFlow = {
-      transaction_id: db.generateId('CF'),
+      id,
+      transaction_id: id,
       date: new Date().toISOString(),
       type: formData.type,
       category: formData.category,

@@ -9,6 +9,7 @@ import { PurchaseRepository } from '../repositories/PurchaseRepository';
 import { InvoiceRepository } from '../repositories/invoice.repository';
 import { InvoiceWorkflowEngine } from '../services/logic/InvoiceWorkflowEngine';
 import { syncService } from '../services/sync.service';
+import { predictionService } from '../services/predictionService';
 
 const DRAFT_KEY = 'pharmaflow_purchase_draft';
 
@@ -27,6 +28,10 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
   const [showSupplierDropdown, setShowSupplierDropdown] = useState(false);
   const [isAddSupplierModalOpen, setIsAddSupplierModalOpen] = useState(false);
   const [newSupplierName, setNewSupplierName] = useState('');
+
+  const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
+  const [filteredSuppliers, setFilteredSuppliers] = useState<Supplier[]>([]);
+
   const [isSearchOpen, setSearchOpen] = useState(false);
   const [isAutoSaving, setIsAutoSaving] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -48,6 +53,7 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
   const [tempPrice, setTempPrice] = useState<number | string>('');
   const [tempExpiry, setTempExpiry] = useState<string>('');
   const [tempNote, setTempNote] = useState<string>('');
+  const [selectedIndex, setSelectedIndex] = useState(-1);
   const [showSearchDropdown, setShowSearchDropdown] = useState(false);
   const [manualCategoryName, setManualCategoryName] = useState<string>('');
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
@@ -74,6 +80,32 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
   });
 
   const [isDateLockedStatus, setIsDateLockedStatus] = useState(false);
+
+  // Smart Prediction for Products
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      if (manualItemName.trim()) {
+        const results = await predictionService.searchProducts(manualItemName);
+        setFilteredProducts(results);
+      } else {
+        setFilteredProducts([]);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [manualItemName]);
+
+  // Smart Prediction for Suppliers
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      if (supplierSearchTerm.trim()) {
+        const results = await predictionService.searchSuppliers(supplierSearchTerm);
+        setFilteredSuppliers(results);
+      } else {
+        setFilteredSuppliers([]);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [supplierSearchTerm]);
 
   useEffect(() => {
     const checkLock = async () => {
@@ -150,21 +182,6 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
     return () => clearTimeout(timer);
   }, [header, items, adjData, isLocked, isSaving]);
 
-  const filteredProducts = useMemo(() => {
-    if (!searchTerm) return [];
-    return products.filter(p => 
-      p.Name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.barcode?.includes(searchTerm)
-    ).slice(0, 5);
-  }, [searchTerm, products]);
-
-  const filteredSuppliers = useMemo(() => {
-    if (!supplierSearchTerm) return [];
-    return suppliers.filter(s => 
-      s.Supplier_Name.toLowerCase().includes(supplierSearchTerm.toLowerCase())
-    ).slice(0, 5);
-  }, [supplierSearchTerm, suppliers]);
-
   const handleSupplierSearch = (val: string) => {
     setSupplierSearchTerm(val);
     setShowSupplierDropdown(true);
@@ -178,6 +195,11 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
     setHeader(prev => ({ ...prev, supplier_id: s.id }));
     setSupplierSearchTerm(s.Supplier_Name);
     setShowSupplierDropdown(false);
+    
+    // Auto-fill supplier info
+    if (s.Balance !== undefined) {
+      addToast(`رصيد المورد الحالي: ${s.Balance} ${currency}`, "info");
+    }
   };
 
   const handleSupplierBlur = () => {
@@ -235,11 +257,42 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
   const selectProduct = (p: Product) => {
     setSelectedProduct(p);
     setManualItemName(p.Name);
-    setTempPrice(p.CostPrice || '');
+    setTempPrice(p.LastPurchasePrice || p.CostPrice || '');
     setTempQty(1);
+    
+    // Auto-fill stock info
+    if (p.StockQuantity !== undefined) {
+      addToast(`المخزون الحالي: ${p.StockQuantity}`, "info");
+    }
+    if (p.LastPurchasePrice) {
+      addToast(`آخر سعر شراء: ${p.LastPurchasePrice} ${currency}`, "info");
+    }
+
     setSearchTerm('');
     setShowSearchDropdown(false);
+    setSelectedIndex(-1);
     qtyInputRef.current?.focus();
+  };
+
+  const handleSearchKeyDown = (e: any) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setSelectedIndex(prev => Math.min(prev + 1, filteredProducts.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSelectedIndex(prev => Math.max(prev - 1, -1));
+    } else if (e.key === 'Enter') {
+      if (selectedIndex >= 0) {
+        e.preventDefault();
+        selectProduct(filteredProducts[selectedIndex]);
+      } else if (manualItemName) {
+        e.preventDefault();
+        qtyInputRef.current?.focus();
+      }
+    } else if (e.key === 'Escape') {
+      setShowSearchDropdown(false);
+      setSelectedIndex(-1);
+    }
   };
 
   const finalizeItemAdd = () => {
@@ -382,6 +435,8 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
     vTotalSum,
     filteredProducts,
     filteredSuppliers,
+    selectedIndex,
+    setSelectedIndex,
     supplierSearchTerm,
     setSupplierSearchTerm,
     showSupplierDropdown,
@@ -396,6 +451,7 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
     cancelAddSupplier,
     selectProduct,
     finalizeItemAdd,
+    handleSearchKeyDown,
     handlePost,
     currency,
     isRecovery,

@@ -9,10 +9,12 @@ export class BehaviorMonitor {
     const now = new Date();
     const isAfterHours = now.getHours() < 7 || now.getHours() > 21;
     
-    let behavior = await db.db.userBehavior.get([userId, today]);
+    const behaviorId = `${userId}_${today}`;
+    let behavior = await db.db.userBehavior.get(behaviorId);
     
     if (!behavior) {
       behavior = {
+        id: behaviorId,
         userId,
         date: today,
         numberOfEdits: 0,

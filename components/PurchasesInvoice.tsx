@@ -58,6 +58,8 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
     vTotalSum,
     filteredProducts,
     filteredSuppliers,
+    selectedIndex,
+    setSelectedIndex,
     supplierSearchTerm,
     setSupplierSearchTerm,
     showSupplierDropdown,
@@ -72,6 +74,7 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
     cancelAddSupplier,
     selectProduct,
     finalizeItemAdd,
+    handleSearchKeyDown,
     handlePost,
     currency,
     isRecovery,
@@ -343,7 +346,10 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
                 setSearchTerm(e.target.value);
                 setManualItemName(e.target.value);
                 setShowSearchDropdown(true);
+                setSelectedIndex(-1);
               }}
+              onFocus={() => setShowSearchDropdown(true)}
+              onKeyDown={handleSearchKeyDown}
               placeholder="إكتب اسم الصنف..."
               className="w-full h-12 bg-slate-50 border border-slate-100 rounded-xl pr-10 pl-4 text-sm font-bold focus:bg-white focus:ring-2 focus:ring-[#1E4D4D]/10 transition-all outline-none"
             />
@@ -357,11 +363,11 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
                   exit={{ opacity: 0, y: 5 }}
                   className="absolute top-full mt-1 right-0 left-0 bg-white border border-slate-100 rounded-xl shadow-2xl z-[100] overflow-hidden"
                 >
-                  {filteredProducts.map(p => (
+                  {filteredProducts.map((p, idx) => (
                     <button 
                       key={p.id}
                       onClick={() => handleSelectProduct(p)}
-                      className="w-full p-4 flex items-center justify-between hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0"
+                      className={`w-full p-4 flex items-center justify-between transition-colors border-b border-slate-50 last:border-0 ${selectedIndex === idx ? 'bg-emerald-50' : 'hover:bg-slate-50'}`}
                     >
                       <div className="flex items-center gap-3 text-right">
                         <Package className="text-slate-400" size={18} />

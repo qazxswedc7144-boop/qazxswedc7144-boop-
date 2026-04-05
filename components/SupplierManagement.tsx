@@ -104,8 +104,10 @@ const SupplierManagement: React.FC<SupplierManagementProps> = ({ lang, onNavigat
     }
 
     try {
+      const id = `${partnerType === 'supplier' ? 'S' : 'C'}-${Date.now()}`;
       const p: Supplier = {
-        Supplier_ID: `${partnerType === 'supplier' ? 'S' : 'C'}-${Date.now()}`,
+        id,
+        Supplier_ID: id,
         Supplier_Name: newPartner.name.trim(),
         Phone: newPartner.phone.trim(),
         Address: newPartner.address.trim(),

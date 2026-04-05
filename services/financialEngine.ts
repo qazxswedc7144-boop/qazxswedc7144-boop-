@@ -36,6 +36,7 @@ class FinancialEngineService {
     const entryId = 'TEMP';
     return [
       { 
+        id: db.generateId('L'),
         lineId: db.generateId('L'), 
         entryId, 
         accountId: toAccount.id, 
@@ -46,6 +47,7 @@ class FinancialEngineService {
         credit: 0
       },
       { 
+        id: db.generateId('L'),
         lineId: db.generateId('L'), 
         entryId, 
         accountId: fromAccount.id, 

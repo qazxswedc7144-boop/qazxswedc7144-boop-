@@ -21,8 +21,10 @@ export const CashFlowRepository = {
    * تسجيل حركة نقدية جديدة
    */
   record: async (type: 'دخل' | 'خرج', category: string, amount: number, name: string, notes?: string) => {
+    const id = db.generateId('CF');
     const entry: CashFlow = {
-      transaction_id: db.generateId('CF'),
+      id,
+      transaction_id: id,
       date: new Date().toISOString(),
       type,
       category,

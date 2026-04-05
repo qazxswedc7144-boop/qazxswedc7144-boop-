@@ -92,8 +92,10 @@ export class YearEndClosingService {
   }
 
   private static createLine(entryId: string, accountId: string, debit: number, credit: number): JournalLine {
+    const id = db.generateId('JL');
     return {
-      lineId: db.generateId('JL'),
+      id,
+      lineId: id,
       entryId,
       accountId,
       accountName: '',

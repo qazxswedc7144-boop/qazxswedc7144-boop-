@@ -61,7 +61,7 @@ export const AccountingPeriodRepository = {
    */
   createPeriod: async (startDate: string, endDate: string) => {
     const period: AccountingPeriod = {
-      id: `PER-${Date.now()}`,
+      id: db.generateId('PER'),
       Start_Date: startDate,
       End_Date: endDate,
       Is_Locked: false,

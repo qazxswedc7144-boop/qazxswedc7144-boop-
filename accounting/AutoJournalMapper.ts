@@ -10,8 +10,10 @@ export const AutoJournalMapper = {
     const account = ChartOfAccounts.getAccountById(accId);
     const accName = account ? account.name : "حساب غير معرف";
     
+    const id = db.generateId('DET');
     return {
-      lineId: db.generateId('DET'),
+      id,
+      lineId: id,
       entryId,
       accountId: accId,
       accountName: accName,

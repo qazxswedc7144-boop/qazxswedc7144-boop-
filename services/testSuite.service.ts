@@ -27,8 +27,8 @@ export const testSuite = {
     // 1. اختبار توازن القيود (Journal Balancing)
     assert(
       FinancialEngine.isBalanced([
-        { lineId: '1', entryId: 'T', accountId: 'A', accountName: 'Test', debit: 500, credit: 0, amount: 500, type: 'DEBIT' },
-        { lineId: '2', entryId: 'T', accountId: 'B', accountName: 'Test', debit: 0, credit: 500, amount: 500, type: 'CREDIT' }
+        { id: '1', lineId: '1', entryId: 'T', accountId: 'A', accountName: 'Test', debit: 500, credit: 0, amount: 500, type: 'DEBIT' },
+        { id: '2', lineId: '2', entryId: 'T', accountId: 'B', accountName: 'Test', debit: 0, credit: 500, amount: 500, type: 'CREDIT' }
       ]),
       "محرك توازن القيود"
     );

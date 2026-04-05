@@ -43,6 +43,7 @@ export class AccountingEngine {
       sourceType: 'SALE',
       lines: [
         {
+          id: `${entryId}-DR`,
           lineId: `${entryId}-DR`,
           entryId,
           accountId: sale.customerId ? 'AC-AR' : 'AC-CASH',
@@ -53,6 +54,7 @@ export class AccountingEngine {
           amount: total
         },
         {
+          id: `${entryId}-CR`,
           lineId: `${entryId}-CR`,
           entryId,
           accountId: 'AC-SALES',
@@ -84,6 +86,7 @@ export class AccountingEngine {
       sourceType: 'PURCHASE',
       lines: [
         {
+          id: `${entryId}-DR`,
           lineId: `${entryId}-DR`,
           entryId,
           accountId: 'AC-INV',
@@ -94,6 +97,7 @@ export class AccountingEngine {
           amount: total
         },
         {
+          id: `${entryId}-CR`,
           lineId: `${entryId}-CR`,
           entryId,
           accountId: purchase.partnerId ? 'AC-AP' : 'AC-CASH',
@@ -107,5 +111,65 @@ export class AccountingEngine {
     };
 
     return [entry];
+  }
+
+  /**
+   * POST INVOICE TO ACCOUNTING
+   */
+  static async postInvoice(invoice: any, costResult: { totalCost: number }): Promise<void> {
+    const { db } = await import('../services/database');
+    const { AccountRepository } = await import('../repositories/account.repository');
+    
+    const type = invoice.type || (invoice.customerId ? 'SALE' : 'PURCHASE');
+    const total = invoice.total || invoice.TotalAmount;
+    const cost = costResult.totalCost;
+
+    if (type === 'SALE') {
+      const entries = this.generateSaleEntries(invoice, total);
+      // Add COGS entry
+      const cogsEntryId = `ENT-COGS-${invoice.id || invoice.invoiceId}`;
+      const cogsEntry: AccountingEntry = {
+        id: cogsEntryId,
+        date: new Date().toISOString(),
+        TotalAmount: cost,
+        status: 'Posted',
+        sourceId: invoice.id || invoice.invoiceId,
+        sourceType: 'COGS',
+        lines: [
+          {
+            id: `${cogsEntryId}-DR`,
+            lineId: `${cogsEntryId}-DR`,
+            entryId: cogsEntryId,
+            accountId: 'AC-COGS',
+            accountName: 'Cost of Goods Sold',
+            debit: cost,
+            credit: 0,
+            type: 'DEBIT',
+            amount: cost
+          },
+          {
+            id: `${cogsEntryId}-CR`,
+            lineId: `${cogsEntryId}-CR`,
+            entryId: cogsEntryId,
+            accountId: 'AC-INV',
+            accountName: 'Inventory',
+            debit: 0,
+            credit: cost,
+            type: 'CREDIT',
+            amount: cost
+          }
+        ]
+      };
+      
+      for (const entry of entries) {
+        await AccountRepository.addEntry(entry);
+      }
+      await AccountRepository.addEntry(cogsEntry);
+    } else if (type === 'PURCHASE') {
+      const entries = this.generatePurchaseEntries(invoice, total);
+      for (const entry of entries) {
+        await AccountRepository.addEntry(entry);
+      }
+    }
   }
 }

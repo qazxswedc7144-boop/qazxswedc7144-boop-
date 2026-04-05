@@ -19,6 +19,7 @@ export const VoucherInvoiceLinkRepository = {
     const now = new Date().toISOString();
     
     const link: VoucherInvoiceLink = {
+      id: id,
       linkId: id,
       voucherId,
       invoiceId,

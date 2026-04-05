@@ -260,7 +260,9 @@ export const accountingService = {
 
       await CashFlowRepository.record(type, category, amount, `سند #${voucherId} لـ: ${name} | ${notes}`);
       
+      const ftId = db.generateId('FT');
       await FinancialTransactionRepository.record({
+        id: ftId,
         Transaction_Type: type === 'دخل' ? 'Receipt' : 'Payment',
         Reference_ID: voucherId,
         Reference_Table: 'Vouchers',
@@ -322,14 +324,16 @@ export const accountingService = {
         status: 'Posted', sourceId: pointId,
         sourceType: 'ADJUSTMENT', branchId: db.getCurrentBranchId(),
         lines: [
-          { lineId: db.generateId('DET'), entryId, accountId: pointId, accountName: `حساب تسوية ${pointId}`, debit: diff > 0 ? diff : 0, credit: diff < 0 ? Math.abs(diff) : 0, type: diff > 0 ? 'DEBIT' : 'CREDIT', amount: Math.abs(diff) },
-          { lineId: db.generateId('DET'), entryId, accountId: 'ACC-SUSPENSE', accountName: 'حساب التسويات المعلق', debit: diff < 0 ? Math.abs(diff) : 0, credit: diff > 0 ? diff : 0, type: diff < 0 ? 'DEBIT' : 'CREDIT', amount: Math.abs(diff) }
+          { id: db.generateId('DET'), lineId: db.generateId('DET'), entryId, accountId: pointId, accountName: `حساب تسوية ${pointId}`, debit: diff > 0 ? diff : 0, credit: diff < 0 ? Math.abs(diff) : 0, type: diff > 0 ? 'DEBIT' : 'CREDIT', amount: Math.abs(diff) },
+          { id: db.generateId('DET'), lineId: db.generateId('DET'), entryId, accountId: 'ACC-SUSPENSE', accountName: 'حساب التسويات المعلق', debit: diff < 0 ? Math.abs(diff) : 0, credit: diff > 0 ? diff : 0, type: diff < 0 ? 'DEBIT' : 'CREDIT', amount: Math.abs(diff) }
         ]
       };
       await dataValidator.validateAccountingEntry(entry);
       await AccountRepository.addEntry(entry);
       
+      const ftId = db.generateId('FT');
       await FinancialTransactionRepository.record({
+        id: ftId,
         Transaction_Type: 'Adjustment',
         Reference_ID: entryId,
         Reference_Table: 'Adjustments',
@@ -370,6 +374,7 @@ export const accountingService = {
     });
 
     return {
+      id: db.generateId('REP'),
       isHealthy: corruptedCount === 0,
       totalDiff: corruptedCount,
       timestamp: new Date().toISOString(),

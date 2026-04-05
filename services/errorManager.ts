@@ -28,6 +28,7 @@ export class ErrorManager {
     const errorId = `ERR-AUTO-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
     const errorEntry: SystemErrorLog = {
+      id: errorId,
       Error_ID: errorId,
       Module_Name: module,
       Error_Message: message,

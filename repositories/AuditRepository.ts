@@ -39,6 +39,7 @@ export const AuditRepository = {
     const now = new Date().toISOString();
     
     const entry: FinancialAuditEntry = {
+      id: db.generateId('AUD'),
       Log_ID: db.generateId('AUD-MAN'),
       Table_Name: module,
       Record_ID: recordId,

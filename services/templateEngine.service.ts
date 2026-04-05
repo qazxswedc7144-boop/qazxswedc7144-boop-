@@ -36,6 +36,7 @@ export const PrintTemplateEngine = {
       // 3. Fallback للقالب الأساسي للنظام
       const systemDefault = await db.db.printTemplates.where('IsDefaultTemplate').equals(1 as any).first();
       return systemDefault || {
+        id: 'SYS-FALLBACK',
         TemplateID: 'SYS-FALLBACK',
         TemplateName: 'System Fallback',
         TemplateType: 'SALE',
@@ -48,6 +49,7 @@ export const PrintTemplateEngine = {
     } catch (error) {
       console.error("[TemplateEngine] Selection Error:", error);
       return {
+        id: 'SYS-FALLBACK',
         TemplateID: 'SYS-FALLBACK',
         TemplateName: 'System Fallback',
         TemplateType: 'SALE',
@@ -65,6 +67,7 @@ export const PrintTemplateEngine = {
    */
   async saveTemplate(template: PrintTemplate) {
     if (!template.TemplateID) return;
+    if (!template.id) template.id = template.TemplateID;
     template.lastModified = new Date().toISOString();
     await db.db.printTemplates.put(template);
   },
@@ -86,8 +89,10 @@ export const PrintTemplateEngine = {
       await db.db.templateAssignments.put(item);
     }
 
+    const id = db.generateId('ASG');
     const newAssignment: TemplateAssignment = {
-      AssignmentID: db.generateId('ASG'),
+      id,
+      AssignmentID: id,
       TemplateID: templateId,
       DocumentType: docType,
       BranchID: branchId,

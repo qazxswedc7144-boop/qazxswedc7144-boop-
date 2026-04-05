@@ -16,6 +16,7 @@ interface AdjustmentFormProps {
 
 const AdjustmentForm: React.FC<AdjustmentFormProps> = ({ isOpen, onClose, invoiceId, currency, onSave, initialType }) => {
   const [formData, setFormData] = useState<Omit<InvoiceAdjustment, 'AdjustmentID' | 'InvoiceID'>>({
+    id: '',
     Type: 'Discount',
     Value: 0,
     IsPercentage: false,
@@ -40,13 +41,15 @@ const AdjustmentForm: React.FC<AdjustmentFormProps> = ({ isOpen, onClose, invoic
   const handleSave = () => {
     if (inputValue <= 0) return;
     
+    const id = db.generateId('ADJ');
     onSave({
       ...formData,
+      id,
       Value: finalCalculatedValue
     });
     
     onClose();
-    setFormData({ Type: 'Discount', Value: 0, IsPercentage: false, Note: '' });
+    setFormData({ id: '', Type: 'Discount', Value: 0, IsPercentage: false, Note: '' });
     setInputValue(0);
   };
 

@@ -1,7 +1,8 @@
 
 import Dexie, { Table } from 'dexie';
+import { generateId, ensureId } from '../utils/id';
 import { 
-  Product, Sale, Purchase, CashFlow, AccountingEntry, AuditLogEntry, 
+  Product, Sale, Purchase, Receipt, Payment, CashFlow, AccountingEntry, AuditLogEntry, 
   PendingOperation, Supplier, ValidationRule, AccountingPeriod, 
   InvoiceHistory, InvoiceStatus, InvoiceAdjustment, DailyAuditTask,
   BankTransaction, BankAccount, PaymentGateway, MedicineAlternative,
@@ -32,6 +33,8 @@ class PharmaFlowDB extends Dexie {
   products!: Table<Product, string>;
   sales!: Table<Sale, string>;
   purchases!: Table<Purchase, string>;
+  receipts!: Table<Receipt, string>;
+  payments!: Table<Payment, string>;
   invoices!: Table<any, string>;
   invoice_items!: Table<any, string>;
   cashFlow!: Table<CashFlow, string>;
@@ -77,7 +80,7 @@ class PharmaFlowDB extends Dexie {
   financialHealthSnapshots!: Table<FinancialHealthSnapshot, string>;
   systemAlerts!: Table<SystemAlert, string>;
   systemPerformanceLog!: Table<PerformanceMetric, string>;
-  userBehavior!: Table<UserBehavior, [string, string]>;
+  userBehavior!: Table<UserBehavior, string>;
   historicalMetrics!: Table<HistoricalMetric, string>;
   profitHealth!: Table<ProfitHealth, string>;
   security_settings!: Table<SecuritySettings, string>;
@@ -103,16 +106,18 @@ class PharmaFlowDB extends Dexie {
   constructor() {
     super('PharmaFlowDB');
     
-    // التحديث لإصدار 63 لدعم محرك FIFO وAI Insights وإصلاح الفهرسة وإضافة مستودعات ومعالجة تعارضات المفاتيح الأساسية
-    this.version(63).stores({
+    // التحديث لإصدار 64 لتوحيد المعرفات (id) وإزالة الترقيم التلقائي (Auto-increment) لضمان سلامة البيانات
+    this.version(65).stores({
       users: 'id, username, User_Email, User_Name, Role, Is_Active',
-      userRoles: 'User_Email, Role_Type', 
+      userRoles: 'id, User_Email, Role_Type', 
       products: 'id, name, Name, barcode, Is_Active, categoryId, supplierId',
       sales: 'id, SaleID, date, customerId, InvoiceStatus, hash, deleted_at, [customerId+date], [InvoiceStatus+date], riskLevel',
       purchases: 'id, purchase_id, invoiceId, date, partnerId, invoiceStatus, hash, deleted_at, [partnerId+date], [invoiceStatus+date], riskLevel',
+      receipts: 'id, date, customer_id, tenant_id',
+      payments: 'id, date, supplier_id, tenant_id',
       invoices: 'id, date, customerId, type',
       invoice_items: 'id, invoiceId, productId',
-      cashFlow: 'transaction_id, date, type, category, [type+date]',
+      cashFlow: 'id, transaction_id, date, type, category, [type+date]',
       journalEntries: 'id, EntryID, date, sourceId, status, hash, [sourceId+status]',
       journal_entries: 'id, date, sourceId',
       suppliers: 'id, Supplier_ID, Supplier_Name, phone, Is_Active',
@@ -122,41 +127,41 @@ class PharmaFlowDB extends Dexie {
       accounts: 'id, name, code, type, parentId',
       settings: 'id, key',
       validationRules: 'id, entityType',
-      invoiceHistory: '++id, invoiceId, timestamp',
-      Invoice_Adjustments: 'AdjustmentID, InvoiceID, Type',
+      invoiceHistory: 'id, invoiceId, timestamp',
+      Invoice_Adjustments: 'id, AdjustmentID, InvoiceID, Type',
       partnerLedger: 'id, partnerId, date, referenceId, [partnerId+date]',
       pendingOperations: 'id, type, status',
       Accounting_Periods: 'id, Start_Date, End_Date, Is_Locked',
       periodLockLogs: 'id, periodId, user, timestamp',
       aiInsights: 'id, type, severity, timestamp',
       journalRules: 'id',
-      dailyAuditTask: 'date',
+      dailyAuditTask: 'id, date',
       bankTransactions: 'id, date',
       bankAccounts: 'id',
       paymentGateways: 'id',
       medicineAlternatives: 'id, MedicineID',
-      medicineAlerts: 'AlertID, ReferenceID',
-      medicineBatches: 'BatchID, productId, ExpiryDate, warehouseId, [productId+warehouseId]',
+      medicineAlerts: 'id, AlertID, ReferenceID',
+      medicineBatches: 'id, BatchID, productId, ExpiryDate, warehouseId, [productId+warehouseId]',
       snapshots: 'id, timestamp, type', 
-      itemUnits: 'Unit_ID, Item_ID, Unit_Name',
+      itemUnits: 'id, Unit_ID, Item_ID, Unit_Name',
       itemUsageLog: 'id, productId, timestamp, type, partnerId, userId, [productId+timestamp]',
       settlements: 'id, voucherId, invoiceId, partnerId, date, [voucherId+invoiceId]',
-      financialTransactions: 'Transaction_ID, Transaction_Type, Reference_ID, Entity_Name, Transaction_Date, [Reference_ID+Transaction_Type]',
-      voucherInvoiceLinks: 'linkId, voucherId, invoiceId, Created_At',
-      Invoice_Counters: 'Counter_Type',
+      financialTransactions: 'id, Transaction_ID, Transaction_Type, Reference_ID, Entity_Name, Transaction_Date, [Reference_ID+Transaction_Type]',
+      voucherInvoiceLinks: 'id, linkId, voucherId, invoiceId, Created_At',
+      Invoice_Counters: 'id, Counter_Type',
       aiInsights_History: 'id, productId, Item_Name, Customer, Invoice_Date', // Replaced priceHistory
-      Audit_Log: 'Log_ID, Table_Name, Record_ID, Column_Name, Modified_At',
-      System_Error_Log: 'Error_ID, Module_Name, Record_ID, User_Email, Timestamp',
-      printTemplates: 'TemplateID, TemplateName, TemplateType, IsDefaultTemplate',
-      templateAssignments: 'AssignmentID, TemplateID, DocumentType, BranchID, IsActive',
-      inventoryTransactions: 'TransactionID, productId, warehouseId, SourceDocumentID, TransactionType, TransactionDate, [productId+TransactionDate]',
+      Audit_Log: 'id, Log_ID, Table_Name, Record_ID, Column_Name, Modified_At',
+      System_Error_Log: 'id, Error_ID, Module_Name, Record_ID, User_Email, Timestamp',
+      printTemplates: 'id, TemplateID, TemplateName, TemplateType, IsDefaultTemplate',
+      templateAssignments: 'id, AssignmentID, TemplateID, DocumentType, BranchID, IsActive',
+      inventoryTransactions: 'id, TransactionID, productId, warehouseId, SourceDocumentID, TransactionType, TransactionDate, [productId+TransactionDate]',
       systemBackups: 'id, backupName, backupType, createdAt, status',
       syncQueue: 'id, entityType, entityId, action, syncStatus, localTimestamp',
       conflictArchive: 'id, entityType, entityId, resolvedAt',
       financialHealthSnapshots: 'id, date, score',
       systemAlerts: 'id, type, severity, timestamp, isRead, resolvedStatus, linkedInvoiceId',
       systemPerformanceLog: 'id, operation, timestamp',
-      userBehavior: '[userId+date], userId, date',
+      userBehavior: 'id, userId, date',
       historicalMetrics: 'id, month, type',
       profitHealth: 'id, date',
       security_settings: 'id, is_enabled',
@@ -174,7 +179,7 @@ class PharmaFlowDB extends Dexie {
       itemProfits: 'id, productId, itemName, totalSales, grossProfit',
       customerProfits: 'id, customerId, customerName, totalProfit',
       supplierProfits: 'id, supplierId, supplierName, totalProfit',
-      accountMovements: 'movementId, type, date, amount',
+      accountMovements: 'id, movementId, type, date, amount',
       purchasesByItem: 'id, productId, supplierId, purchaseDate',
       expiringItems: 'id, productId, expiryDate, status'
     });
@@ -231,12 +236,12 @@ class PharmaFlowDB extends Dexie {
     financialTables.forEach(({ name, table, pk }) => {
       table.hook('creating', (primaryKey, obj) => {
         this.incrementDataVersion();
-        const recordId = String(primaryKey || (obj as any)[pk] || 'NEW');
+        const recordId = String(primaryKey || (obj as any).id || (obj as any)[pk] || 'NEW');
         this.logAuditEntryAsync(name, recordId, 'ALL', 'NULL', 'Record Created', 'ADD');
       });
       table.hook('updating', (mods, obj) => {
         this.incrementDataVersion();
-        const recordId = String((obj as any)[pk] || (obj as any).id || 'UNKNOWN');
+        const recordId = String((obj as any).id || (obj as any)[pk] || 'UNKNOWN');
         Object.keys(mods).forEach(key => {
           if (SENSITIVE_MAP[key]) {
             const oldValue = String((obj as any)[key]);
@@ -249,7 +254,7 @@ class PharmaFlowDB extends Dexie {
       });
       table.hook('deleting', (primaryKey, obj) => {
         this.incrementDataVersion();
-        const recordId = String(primaryKey || (obj as any)[pk] || 'DELETED');
+        const recordId = String(primaryKey || (obj as any).id || (obj as any)[pk] || 'DELETED');
         this.logAuditEntryAsync(name, recordId, 'RECORD', 'Record Deleted', 'DELETED', 'DELETE');
       });
     });
@@ -261,6 +266,7 @@ class PharmaFlowDB extends Dexie {
         const user = authService.getCurrentUser();
         const now = new Date().toISOString();
         const auditEntry: FinancialAuditEntry = {
+          id: generateId('AUD'),
           Log_ID: `AUD-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
           Table_Name: tableName, Record_ID: recordId, Column_Name: columnName,
           Old_Value: oldVal ? oldVal.substring(0, 1000) : 'NULL', 
@@ -273,7 +279,7 @@ class PharmaFlowDB extends Dexie {
     }, 0);
   }
 
-  generateId(prefix: string) { return `${prefix}-${Date.now()}-${Math.floor(Math.random()*10000)}`; }
+  generateId(prefix: string) { return generateId(prefix); }
   getDataVersion() { return this.dataVersion; }
   incrementDataVersion() { this.dataVersion++; }
 
@@ -326,6 +332,7 @@ class PharmaFlowDB extends Dexie {
 
           // 3. Update Account Movements
           await this.accountMovements.add({
+            id: generateId('MOV'),
             movementId: this.generateId('MOV'),
             type: 'income',
             amount: sale.finalTotal,
@@ -355,6 +362,7 @@ class PharmaFlowDB extends Dexie {
 
           // 2. Update Account Movements
           await this.accountMovements.add({
+            id: generateId('MOV'),
             movementId: this.generateId('MOV'),
             type: 'expense',
             amount: purchase.totalAmount,
@@ -419,6 +427,8 @@ class LocalDatabase {
   get products() { return this.db.products; }
   get sales() { return this.db.sales; }
   get purchases() { return this.db.purchases; }
+  get receipts() { return this.db.receipts; }
+  get payments() { return this.db.payments; }
   get invoices() { return this.db.invoices; }
   get invoice_items() { return this.db.invoice_items; }
   get cashFlow() { return this.db.cashFlow; }
@@ -653,7 +663,7 @@ class LocalDatabase {
       }
       console.error("TRANSACTION_FAILURE: Rolling back operations.", error);
       await this.db.systemPerformanceLog.add({
-        id: this.generateId('ERR'),
+        id: generateId('PERF'),
         operation: 'TRANSACTION_ROLLBACK',
         durationMs: 0,
         timestamp: new Date().toISOString(),
@@ -702,10 +712,18 @@ class LocalDatabase {
   getSuppliers() { return this.cache.suppliers || []; }
   getCustomers() { return this.cache.customers || []; }
   async getAuditLogs() { await this.ensureOpen(); return await this.db.audit_log.orderBy('timestamp').reverse().limit(300).toArray(); }
-  async addInvoiceHistory(h: any) { await this.ensureOpen(); await this.db.invoiceHistory.add(h); }
+  async addInvoiceHistory(h: any) { 
+    await this.ensureOpen(); 
+    if (!h.id) h.id = generateId('HST');
+    await this.db.invoiceHistory.add(h); 
+  }
   getJournalRules() { return this.cache.journalRules || []; }
   async getAccountingPeriods() { await this.ensureOpen(); return await this.db.Accounting_Periods.toArray(); }
-  async recordCashFlow(entry: CashFlow) { await this.ensureOpen(); await this.db.cashFlow.put(entry); }
+  async recordCashFlow(entry: CashFlow) { 
+    await this.ensureOpen(); 
+    if (!entry.id) entry.id = generateId('CSH');
+    await this.db.cashFlow.put(entry); 
+  }
   async getMedicineAlternatives() { await this.ensureOpen(); return await this.db.medicineAlternatives.toArray(); }
   async clearOldAlerts() { await this.ensureOpen(); await this.db.medicineAlerts.clear(); }
   async getMedicineBatches() { await this.ensureOpen(); return await this.db.medicineBatches.toArray(); }
@@ -773,7 +791,7 @@ class LocalDatabase {
   async addAuditLog(action: 'CREATE' | 'UPDATE' | 'DELETE' | 'POST' | 'CANCEL' | 'SYSTEM', target_type: 'SALE' | 'PURCHASE' | 'VOUCHER' | 'PRODUCT' | 'SYSTEM' | 'OTHER', target_id: string, details?: string) {
     const user = authService.getCurrentUser();
     const entry: AuditLogEntry = {
-      id: this.generateId('AUD'),
+      id: generateId('AUD'),
       user_id: user?.User_Email || 'SYSTEM',
       action,
       target_type,
@@ -865,7 +883,19 @@ class LocalDatabase {
     await this.addAuditLog(pid ? 'UPDATE' : 'CREATE', 'PURCHASE', purchase.id, `Purchase ${purchase.invoiceId} processed with risk ${riskLevel || 'LOW'}`);
     return { purchase_id: purchase.id, id: purchase.id };
   }
-  async persist(table: string, data: any[]) { if ((this.db as any)[table]) await (this.db as any)[table].bulkPut(data); }
+  async persist(table: string, data: any[]) { 
+    if ((this.db as any)[table]) {
+      const dataWithIds = data.map(item => {
+        if (!item.id) {
+          // Try to find a suitable prefix based on table name
+          const prefix = table.substring(0, 3).toUpperCase();
+          item.id = generateId(prefix);
+        }
+        return item;
+      });
+      await (this.db as any)[table].bulkPut(dataWithIds); 
+    }
+  }
   async saveSettlement(s: InvoiceSettlement) { 
     if (!s.id) s.id = this.generateId('SET');
     await this.db.settlements.put(s); 
@@ -877,11 +907,11 @@ class LocalDatabase {
   }
   async getDailyAuditTask(date?: string) { 
     const targetDate = date || new Date().toISOString().split('T')[0];
-    return await this.db.dailyAuditTask.get(targetDate) || { date: targetDate, completed: false, items: [] }; 
+    return await this.db.dailyAuditTask.get(targetDate) || { id: targetDate, date: targetDate, completed: false, items: [] }; 
   }
   async saveAuditProgress(items: any[]) {
     const date = new Date().toISOString().split('T')[0];
-    await this.db.dailyAuditTask.put({ date, completed: false, items });
+    await this.db.dailyAuditTask.put({ id: date, date, completed: false, items });
   }
 
   // --- New Integrated Accounting & Inventory Methods ---
@@ -934,7 +964,7 @@ class LocalDatabase {
   }
   async finalizeAudit(items: any[]) {
     const date = new Date().toISOString().split('T')[0];
-    await this.db.dailyAuditTask.put({ date, completed: true, items });
+    await this.db.dailyAuditTask.put({ id: date, date, completed: true, items });
   }
   async getFullState() {
     const tables = (this.db as any).tables.map((t: any) => t.name);
@@ -1006,7 +1036,8 @@ class LocalDatabase {
   getItemUnits(productId: string) { return (this.cache.itemUnits || []).filter((u: any) => u.Item_ID === productId); }
   async getMedicineAlerts() { return await this.db.medicineAlerts.toArray(); }
   async saveMedicineAlert(alert: any) { 
-    if (!alert.AlertID) alert.AlertID = this.generateId('MAL');
+    if (!alert.id) alert.id = alert.AlertID || generateId('MAL');
+    if (!alert.AlertID) alert.AlertID = alert.id;
     await this.db.medicineAlerts.put(alert); 
   }
   async getInvoiceAdjustments(invoiceId?: string) {
@@ -1014,7 +1045,8 @@ class LocalDatabase {
     return await this.db.Invoice_Adjustments.toArray();
   }
   async saveInvoiceAdjustment(adj: any) { 
-    if (!adj.AdjustmentID) adj.AdjustmentID = this.generateId('IAD');
+    if (!adj.id) adj.id = adj.AdjustmentID || generateId('IAD');
+    if (!adj.AdjustmentID) adj.AdjustmentID = adj.id;
     await this.db.Invoice_Adjustments.put(adj); 
   }
   async deleteInvoiceAdjustment(id: string) { await this.db.Invoice_Adjustments.delete(id); }

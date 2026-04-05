@@ -11,7 +11,7 @@ export class LoadTestService {
    */
   static async logMetric(operation: string, durationMs: number, metadata?: any) {
     const metric: PerformanceMetric = {
-      id: `METRIC-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      id: db.generateId('METRIC'),
       operation,
       durationMs,
       timestamp: new Date().toISOString(),
@@ -50,7 +50,7 @@ export class LoadTestService {
     if (products.length === 0) {
       console.log("Generating base products...");
       const baseProducts: Product[] = Array.from({ length: 100 }, (_, i) => ({
-        id: `PROD-${i}`,
+        id: db.generateId('PROD'),
         Name: `Test Product ${i}`,
         barcode: `BAR-${i}`,
         CostPrice: 10 + Math.random() * 90,
@@ -79,7 +79,7 @@ export class LoadTestService {
     await this.measure("BULK_SALES_GENERATION", async () => {
       const sales: Sale[] = Array.from({ length: 10000 }, (_, i) => {
         const date = this.getRandomDateWithin12Months();
-        const saleId = `SALE-LOAD-${i}`;
+        const saleId = db.generateId('SALE');
         return {
           id: saleId,
           SaleID: `S${i}`,
@@ -118,7 +118,7 @@ export class LoadTestService {
     await this.measure("BULK_PURCHASES_GENERATION", async () => {
       const purchases: Purchase[] = Array.from({ length: 8000 }, (_, i) => {
         const date = this.getRandomDateWithin12Months();
-        const purId = `PUR-LOAD-${i}`;
+        const purId = db.generateId('PUR');
         return {
           id: purId,
           purchase_id: `P${i}`,
@@ -157,8 +157,10 @@ export class LoadTestService {
     await this.measure("BULK_STOCK_MOVEMENTS_GENERATION", async () => {
       const movements: InventoryTransaction[] = Array.from({ length: 50000 }, (_, i) => {
         const date = this.getRandomDateWithin12Months();
+        const mId = db.generateId('STK');
         return {
-          TransactionID: `STK-LOAD-${i}`,
+          id: mId,
+          TransactionID: mId,
           productId: 'P1',
           warehouseId: 'WH-MAIN',
           SourceDocumentType: i % 2 === 0 ? 'PURCHASE' : 'SALE',
@@ -182,6 +184,7 @@ export class LoadTestService {
       const receipts: CashFlow[] = Array.from({ length: 6000 }, (_, i) => {
         const date = this.getRandomDateWithin12Months();
         return {
+          id: db.generateId('REC'),
           transaction_id: `REC-LOAD-${i}`,
           date: date.toISOString(),
           type: 'دخل',
@@ -201,6 +204,7 @@ export class LoadTestService {
       const payments: CashFlow[] = Array.from({ length: 5000 }, (_, i) => {
         const date = this.getRandomDateWithin12Months();
         return {
+          id: db.generateId('PAY'),
           transaction_id: `PAY-LOAD-${i}`,
           date: date.toISOString(),
           type: 'خرج',

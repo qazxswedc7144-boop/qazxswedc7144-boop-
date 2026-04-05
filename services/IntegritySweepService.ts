@@ -219,7 +219,7 @@ export class IntegritySweepService {
 
     // Log CRITICAL_ERROR
     const alert: SystemAlert = {
-      id: `CRIT-${Date.now()}`,
+      id: db.generateId('CRIT'),
       type: 'SYSTEM',
       severity: 'CRITICAL',
       message: `خطأ فادح في نزاهة البيانات: ${errors.join(' | ')}`,

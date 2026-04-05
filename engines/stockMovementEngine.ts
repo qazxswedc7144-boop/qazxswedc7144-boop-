@@ -111,18 +111,32 @@ export class StockMovementEngine {
     }
 
     for (const movement of movements) {
-      // To reverse, we add a counter-movement or just delete and update product?
-      // The requirement says "reverse quantity_change" and "restore stock".
-      // Deleting the movement and updating the product stock is the cleanest way for an unpost.
-      
       const currentProduct = await db.db.products.get(movement.item_id);
       if (currentProduct) {
         await db.db.products.update(movement.item_id, {
           StockQuantity: (currentProduct.StockQuantity || 0) - movement.quantity_change
         });
       }
-      
       await db.db.stock_movements.delete(movement.id);
+    }
+  }
+
+  /**
+   * APPLY STOCK MOVEMENT
+   */
+  static async apply(invoice: any): Promise<void> {
+    const type = invoice.type || (invoice.customerId ? 'SALE' : 'PURCHASE');
+    const items = invoice.items || [];
+    const invoiceId = invoice.invoiceId || invoice.id;
+
+    if (type === 'SALE') {
+      for (const item of items) {
+        await this.recordSaleMovement(item.product_id, item.qty, 0, invoiceId);
+      }
+    } else if (type === 'PURCHASE') {
+      for (const item of items) {
+        await this.recordPurchaseMovement(item.product_id, item.qty, item.price, invoiceId);
+      }
     }
   }
 }

@@ -19,6 +19,7 @@ export const InvoiceCounterRepository = {
       if (!counter) {
         // إنشاء عداد جديد إذا لم يكن موجوداً
         counter = {
+          id: type,
           Counter_Type: type,
           Last_Number: initialValue,
           lastModified: new Date().toISOString(),
@@ -49,6 +50,7 @@ export const InvoiceCounterRepository = {
    */
   setCounter: async (type: 'Sales' | 'Purchase', value: number): Promise<void> => {
     const counter: InvoiceCounter = {
+      id: type,
       Counter_Type: type,
       Last_Number: value,
       lastModified: new Date().toISOString(),

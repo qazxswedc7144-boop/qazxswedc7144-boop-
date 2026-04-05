@@ -31,6 +31,7 @@ export const FinancialTransactionRepository = {
     
     const transaction: FinancialTransaction = {
       ...data,
+      id: id,
       Transaction_ID: id,
       Paid_Amount: data.Paid_Amount || data.Amount || 0, 
       Transaction_Date: data.Transaction_Date || now,

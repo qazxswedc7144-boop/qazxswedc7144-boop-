@@ -311,6 +311,7 @@ export class ReportEngine {
     const movements: AccountMovement[] = filteredLines.map(l => {
       currentBalance += (l.debit - l.credit);
       return {
+        id: l.lineId,
         movementId: l.lineId,
         type: l.debit > 0 ? 'income' : 'expense',
         amount: l.debit > 0 ? l.debit : l.credit,
@@ -375,19 +376,16 @@ export class ReportEngine {
 
     const products = await db.getProducts();
     
-    // Top selling items
     const topSelling = [...products]
       .sort((a, b) => (b.usageCount || 0) - (a.usageCount || 0))
       .slice(0, 10)
       .map(p => ({ id: p.id, name: p.Name, count: p.usageCount || 0 }));
 
-    // Top profit items
     const itemProfits = await this.getItemProfit();
     const topProfit = itemProfits
       .sort((a, b) => b.grossProfit - a.grossProfit)
       .slice(0, 10);
 
-    // Average prices
     const avgSellingPrice = products.reduce((sum, p) => sum + (p.UnitPrice || 0), 0) / (products.length || 1);
     const avgPurchasePrice = products.reduce((sum, p) => sum + (p.LastPurchasePrice || 0), 0) / (products.length || 1);
 
@@ -400,5 +398,13 @@ export class ReportEngine {
 
     reportCache.set(cacheKey, result);
     return result;
+  }
+
+  /**
+   * REFRESH REPORTS
+   */
+  static async refresh(): Promise<void> {
+    reportCache.purge();
+    await this.getAnalyticsSummary();
   }
 }

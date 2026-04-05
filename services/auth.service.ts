@@ -48,6 +48,7 @@ export const authService = {
       }
       
       return {
+        id: payload.user_id,
         user_id: payload.user_id,
         User_Email: payload.email,
         User_Name: payload.name,
@@ -67,6 +68,7 @@ export const authService = {
 
     // Default mock user for development if no session (only for initial setup)
     return {
+      id: 'USR-DEV-001',
       user_id: 'USR-DEV-001',
       User_Email: 'admin@pharmaflow.local',
       User_Name: 'مدير النظام',
@@ -82,6 +84,7 @@ export const authService = {
     const password_hash = authService.hashPassword(password, salt);
     
     const newUser: User = {
+      id: `USR-${Date.now()}`,
       user_id: `USR-${Date.now()}`,
       User_Email: email,
       User_Name: username,
