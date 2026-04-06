@@ -10,6 +10,8 @@ import { InvoiceRepository } from '../repositories/invoice.repository';
 import { InvoiceWorkflowEngine } from '../services/logic/InvoiceWorkflowEngine';
 import { syncService } from '../services/sync.service';
 import { predictionService } from '../services/predictionService';
+import { saveLearning } from '../services/learningService';
+import { matchProductName } from '../services/productMatcher';
 
 const DRAFT_KEY = 'pharmaflow_purchase_draft';
 
@@ -274,33 +276,30 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
   const handleAIImport = async (file: File | string) => {
     setIsAIProcessing(true);
     try {
-      let base64 = '';
-      let mimeType = '';
-      if (typeof file === 'string') {
-        base64 = file.split(',')[1];
-        mimeType = file.split(',')[0].split(':')[1].split(';')[0];
-      } else {
-        const reader = new FileReader();
-        base64 = await new Promise((resolve) => {
-          reader.onload = () => resolve((reader.result as string).split(',')[1]);
-          reader.readAsDataURL(file);
-        });
-        mimeType = file.type;
-      }
-
-      const { aiDocumentService } = await import('../services/aiDocumentService');
-      const parsed = await aiDocumentService.parseInvoice(base64, mimeType);
+      const { processInvoice } = await import('../services/smartImportEngine');
+      const parsed = await processInvoice(file);
 
       if (parsed) {
         setAIParsedData(parsed);
         setShowAIConfirmModal(true);
-        setHeader(prev => ({ ...prev, attachment: typeof file === 'string' ? file : `data:${mimeType};base64,${base64}` }));
+        
+        // Handle attachment preview
+        if (typeof file === 'string') {
+          setHeader(prev => ({ ...prev, attachment: file }));
+        } else {
+          const reader = new FileReader();
+          const base64 = await new Promise<string>((resolve) => {
+            reader.onload = () => resolve(reader.result as string);
+            reader.readAsDataURL(file);
+          });
+          setHeader(prev => ({ ...prev, attachment: base64 }));
+        }
       } else {
         addToast("فشل في تحليل المستند", "error");
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("AI Import Error:", error);
-      addToast("حدث خطأ أثناء معالجة المستند", "error");
+      addToast(error.message || "حدث خطأ أثناء معالجة المستند", "error");
     } finally {
       setIsAIProcessing(false);
     }
@@ -310,15 +309,19 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
     if (!aiParsedData) return;
 
     // Find or create supplier
-    let supplier = suppliers.find(s => s.Supplier_Name.toLowerCase().includes(aiParsedData.supplier_name.toLowerCase()) || aiParsedData.supplier_name.toLowerCase().includes(s.Supplier_Name.toLowerCase()));
+    const supplierName = aiParsedData.supplier || '';
+    let supplier = suppliers.find(s => 
+      s.Supplier_Name.toLowerCase().includes(supplierName.toLowerCase()) || 
+      supplierName.toLowerCase().includes(s.Supplier_Name.toLowerCase())
+    );
     
-    if (!supplier) {
-      if (window.confirm(`المورد "${aiParsedData.supplier_name}" غير موجود. هل تريد إضافته؟`)) {
+    if (!supplier && supplierName) {
+      if (window.confirm(`المورد "${supplierName}" غير موجود. هل تريد إضافته؟`)) {
         const newId = `SUP-${Date.now()}`;
         const newSup: Supplier = {
           id: newId,
           Supplier_ID: newId,
-          Supplier_Name: aiParsedData.supplier_name,
+          Supplier_Name: supplierName,
           Balance: 0,
           openingBalance: 0,
           Is_Active: true,
@@ -332,28 +335,37 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
 
     setHeader(prev => ({
       ...prev,
-      invoice_number: aiParsedData.invoice_number,
+      invoice_number: aiParsedData.invoice_number || '',
       supplier_id: supplier?.id || '',
-      payment_method: aiParsedData.payment_method,
-      isReturn: aiParsedData.is_return,
-      date: aiParsedData.date,
-      notes: aiParsedData.notes
+      payment_method: aiParsedData.type === 'credit' ? 'Credit' : 'Cash',
+      isReturn: aiParsedData.type === 'return',
+      date: aiParsedData.date || new Date().toISOString().split('T')[0],
+      notes: aiParsedData.notes || ''
     }));
-    setSupplierSearchTerm(supplier?.Supplier_Name || aiParsedData.supplier_name);
+    setSupplierSearchTerm(supplier?.Supplier_Name || supplierName);
 
     // Map items
     const mappedItems: InvoiceItem[] = [];
     for (const item of aiParsedData.items) {
-      const product = products.find(p => p.Name.toLowerCase().includes(item.name.toLowerCase()) || item.name.toLowerCase().includes(p.Name.toLowerCase()));
+      // Try advanced matching
+      let product = matchProductName(item.name, products);
+      
+      // Fallback to simple include check if no match found
+      if (!product) {
+        product = products.find(p => 
+          p.Name.toLowerCase().includes(item.name.toLowerCase()) || 
+          item.name.toLowerCase().includes(p.Name.toLowerCase())
+        );
+      }
       
       mappedItems.push({
         id: `PUR-DET-${Date.now()}-${Math.random()}`,
-        parent_id: aiParsedData.invoice_number,
+        parent_id: aiParsedData.invoice_number || '',
         product_id: product?.id || `manual-${Date.now()}-${Math.random()}`,
         name: item.name,
-        qty: item.qty,
-        price: item.price,
-        sum: item.qty * item.price,
+        qty: item.quantity || 1,
+        price: item.price || 0,
+        sum: (item.quantity || 1) * (item.price || 0),
         row_order: mappedItems.length + 1,
         expiryDate: item.expiryDate,
         categoryId: product?.categoryId || ''
@@ -457,6 +469,25 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
 
     setIsSaving(true);
     try {
+      // Self-Learning: Compare AI output with final user input
+      if (aiParsedData) {
+        // Check supplier name correction
+        const originalSupplier = aiParsedData.supplier;
+        const finalSupplier = suppliers.find(s => s.id === header.supplier_id)?.Supplier_Name;
+        if (originalSupplier && finalSupplier && originalSupplier !== finalSupplier) {
+          saveLearning(originalSupplier, finalSupplier);
+        }
+
+        // Check items name corrections
+        aiParsedData.items.forEach((aiItem: any) => {
+          // Find the corresponding item in the final list (this is a bit heuristic)
+          const finalItem = items.find(i => i.qty === aiItem.quantity && i.price === aiItem.price);
+          if (finalItem && aiItem.name !== finalItem.name) {
+            saveLearning(aiItem.name, finalItem.name);
+          }
+        });
+      }
+
       const purchaseData: any = {
         invoiceId: header.invoice_number || `PUR-${Date.now()}`,
         partnerId: header.supplier_id,

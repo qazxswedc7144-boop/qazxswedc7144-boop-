@@ -21,12 +21,14 @@
     "firebase": "^12.11.0",
     "lucide-react": "0.460.0",
     "motion": "^12.35.0",
+    "pdfjs-dist": "^5.6.205",
     "react": "18.3.1",
     "react-chartjs-2": "5.2.0",
     "react-dom": "18.3.1",
     "react-markdown": "^10.1.0",
     "react-window": "1.8.10",
     "recharts": "^3.7.0",
+    "tesseract.js": "^7.0.0",
     "zustand": "^5.0.11"
   },
   "devDependencies": {

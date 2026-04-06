@@ -1,0 +1,85 @@
+import { GoogleGenAI, Type } from "@google/genai";
+
+export interface ParsedInvoice {
+  type: 'cash' | 'credit' | 'return';
+  supplier: string;
+  invoice_number: string;
+  date?: string;
+  notes: string;
+  items: {
+    name: string;
+    quantity: number;
+    price: number;
+    expiryDate?: string;
+  }[];
+}
+
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+export async function parseInvoice(text: string): Promise<ParsedInvoice> {
+  const prompt = `
+Extract structured invoice data from the following text:
+
+Language: Arabic or English
+
+Return JSON:
+{
+  "type": "cash | credit | return",
+  "supplier": "Supplier Name",
+  "invoice_number": "Invoice Number",
+  "date": "YYYY-MM-DD",
+  "notes": "Any additional notes",
+  "items": [
+    {
+      "name": "Item Name",
+      "quantity": number,
+      "price": number,
+      "expiryDate": "YYYY-MM-DD (if available)"
+    }
+  ]
+}
+
+Text:
+${text}
+`;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            type: { type: Type.STRING, enum: ['cash', 'credit', 'return'] },
+            supplier: { type: Type.STRING },
+            invoice_number: { type: Type.STRING },
+            date: { type: Type.STRING },
+            notes: { type: Type.STRING },
+            items: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  name: { type: Type.STRING },
+                  quantity: { type: Type.NUMBER },
+                  price: { type: Type.NUMBER },
+                  expiryDate: { type: Type.STRING }
+                },
+                required: ['name', 'quantity', 'price']
+              }
+            }
+          },
+          required: ['type', 'supplier', 'invoice_number', 'items']
+        }
+      }
+    });
+
+    const result = JSON.parse(response.text || '{}');
+    return result as ParsedInvoice;
+  } catch (error) {
+    console.error('AI Parsing Error:', error);
+    throw new Error('فشل تحليل البيانات بواسطة الذكاء الاصطناعي');
+  }
+}
