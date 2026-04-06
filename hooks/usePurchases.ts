@@ -279,34 +279,42 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
       const { processInvoice } = await import('../services/smartImportEngine');
       const parsed = await processInvoice(file);
 
-      if (parsed) {
-        setAIParsedData(parsed);
-        setShowAIConfirmModal(true);
-        
-        // Handle attachment preview
-        if (typeof file === 'string') {
-          setHeader(prev => ({ ...prev, attachment: file }));
-        } else {
-          const reader = new FileReader();
-          const base64 = await new Promise<string>((resolve) => {
-            reader.onload = () => resolve(reader.result as string);
-            reader.readAsDataURL(file);
-          });
-          setHeader(prev => ({ ...prev, attachment: base64 }));
-        }
+      console.log("AI RESULT:", parsed);
+
+      if (!parsed || !parsed.items || parsed.items.length === 0) {
+        addToast("لم يتم التعرف على بيانات الفاتورة", "error");
+        return;
+      }
+
+      setAIParsedData(parsed);
+      setShowAIConfirmModal(true);
+      
+      // Handle attachment preview
+      if (typeof file === 'string') {
+        setHeader(prev => ({ ...prev, attachment: file }));
       } else {
-        addToast("فشل في تحليل المستند", "error");
+        const reader = new FileReader();
+        const base64 = await new Promise<string>((resolve) => {
+          reader.onload = () => resolve(reader.result as string);
+          reader.readAsDataURL(file);
+        });
+        setHeader(prev => ({ ...prev, attachment: base64 }));
       }
     } catch (error: any) {
       console.error("AI Import Error:", error);
-      addToast(error.message || "حدث خطأ أثناء معالجة المستند", "error");
+      addToast("فشل تحليل الفاتورة", "error");
     } finally {
       setIsAIProcessing(false);
     }
   };
 
-  const applyAIParsedData = async () => {
+  const applyAIParsedData = async (autoSave = false) => {
     if (!aiParsedData) return;
+
+    if (!aiParsedData.items || aiParsedData.items.length === 0) {
+      addToast("الفاتورة لا تحتوي على أصناف", "warning");
+      return;
+    }
 
     // Find or create supplier
     const supplierName = aiParsedData.supplier || '';
@@ -373,7 +381,15 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
     }
     setItems(mappedItems);
     setShowAIConfirmModal(false);
-    addToast("تم تعبئة البيانات بنجاح", "success");
+    
+    if (autoSave) {
+      // Small delay to ensure state is updated before handlePost
+      setTimeout(() => {
+        handlePost();
+      }, 300);
+    } else {
+      addToast("تم تعبئة البيانات بنجاح", "success");
+    }
   };
 
   const vTotalSum = useMemo(() => {

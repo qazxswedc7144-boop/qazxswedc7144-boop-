@@ -28,23 +28,16 @@ export interface DashboardMetrics {
 }
 
 export class AIDashboardEngine {
-  private static cache: DashboardMetrics | null = null;
-  private static lastCalcTime: number = 0;
-  private static CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+  private static AI_CACHE_KEY = 'pharmaflow_dashboard_ai_cache';
+  private static AI_CACHE_DURATION = 60 * 60 * 1000; // 1 hour for dashboard AI
 
   static async getMetrics(forceRefresh = false): Promise<DashboardMetrics> {
-    const now = Date.now();
-    if (!forceRefresh && this.cache && (now - this.lastCalcTime < this.CACHE_DURATION)) {
-      return this.cache;
-    }
-
-    const metrics = await this.calculateMetrics();
-    this.cache = metrics;
-    this.lastCalcTime = now;
+    // Always calculate fresh DB metrics
+    const metrics = await this.calculateMetrics(forceRefresh);
     return metrics;
   }
 
-  private static async calculateMetrics(): Promise<DashboardMetrics> {
+  private static async calculateMetrics(forceRefreshAI = false): Promise<DashboardMetrics> {
     const sales = await db.db.sales.toArray();
     const purchases = await db.db.purchases.toArray();
     const products = await db.db.products.toArray();
@@ -225,21 +218,35 @@ export class AIDashboardEngine {
 
     // 9) Optional Gemini Summary
     let recommendations = '';
-    try {
-      // Send only totals and counts
-      const summaryData = {
-        totalSales,
-        totalPurchases,
-        netProfit,
-        expenses,
-        alertsCount: lowStockAlerts.length + expiryAlerts.length + anomalies.length,
-        riskScore,
-        todaySummary
-      };
-      recommendations = await GeminiAnalyticsService.analyzeData("قدم ملخصاً ذكياً وتوصيات بناءً على هذه المؤشرات المالية والتشغيلية للمؤسسة اليوم.", summaryData);
-    } catch (e) {
-      console.error("Gemini summary failed:", e);
-      recommendations = "تعذر الحصول على ملخص ذكي حالياً.";
+    const now = Date.now();
+    const cachedAIStr = localStorage.getItem(this.AI_CACHE_KEY);
+    let cachedAI = null;
+    
+    if (cachedAIStr) {
+      try {
+        cachedAI = JSON.parse(cachedAIStr);
+      } catch (e) {}
+    }
+    
+    if (!forceRefreshAI && cachedAI && (now - cachedAI.timestamp < this.AI_CACHE_DURATION)) {
+      recommendations = cachedAI.recommendations;
+    } else {
+      try {
+        const summaryData = {
+          totalSales,
+          totalPurchases,
+          netProfit,
+          expenses,
+          alertsCount: lowStockAlerts.length + expiryAlerts.length + anomalies.length,
+          riskScore,
+          todaySummary
+        };
+        recommendations = await GeminiAnalyticsService.analyzeData("قدم ملخصاً ذكياً وتوصيات بناءً على هذه المؤشرات المالية والتشغيلية للمؤسسة اليوم.", summaryData);
+        localStorage.setItem(this.AI_CACHE_KEY, JSON.stringify({ recommendations, timestamp: now }));
+      } catch (e) {
+        console.error("Gemini summary failed:", e);
+        recommendations = cachedAI?.recommendations || "تعذر الحصول على ملخص ذكي حالياً.";
+      }
     }
 
     return {

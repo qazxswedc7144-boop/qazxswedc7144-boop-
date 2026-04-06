@@ -95,7 +95,7 @@ const Dashboard: React.FC<{ lang?: 'ar', onNavigate?: (view: any, params?: any) 
   useEffect(() => {
     const fetchStats = async () => {
       const { AIDashboardEngine } = await import('../services/AIDashboardEngine');
-      const metrics = await AIDashboardEngine.getMetrics(true);
+      const metrics = await AIDashboardEngine.getMetrics(false);
       
       const today = new Date().toISOString().split('T')[0];
       const transactions = await AccountingRepository.getTransactions();

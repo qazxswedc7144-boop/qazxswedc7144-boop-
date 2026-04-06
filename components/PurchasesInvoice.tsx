@@ -513,17 +513,14 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
           </div>
           <div className="flex flex-col gap-3">
             <button 
-              onClick={applyAIParsedData}
+              onClick={() => applyAIParsedData(false)}
               className="w-full h-12 bg-[#1E4D4D] text-white rounded-xl font-black text-sm flex items-center justify-center gap-2"
             >
               <Edit3 size={18} />
               نعم - للمراجعة والتعديل
             </button>
             <button 
-              onClick={async () => {
-                await applyAIParsedData();
-                setTimeout(() => handleSaveInvoice(), 500);
-              }}
+              onClick={() => applyAIParsedData(true)}
               className="w-full h-12 bg-emerald-600 text-white rounded-xl font-black text-sm flex items-center justify-center gap-2"
             >
               <CheckCircle2 size={18} />
@@ -533,6 +530,7 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
               onClick={() => {
                 setShowAIConfirmModal(false);
                 resetInvoiceState();
+                onNavigate?.('dashboard');
               }}
               className="w-full h-12 bg-red-50 text-red-600 rounded-xl font-black text-sm flex items-center justify-center gap-2"
             >

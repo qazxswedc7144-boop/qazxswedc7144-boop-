@@ -36,6 +36,20 @@ export async function processInvoice(file: File | string): Promise<ParsedInvoice
   
   // 1. Cache check
   let text = getOCRCache(hash);
+  const aiCacheKey = `pharmaflow_ai_cache_${hash}`;
+  const cachedAI = localStorage.getItem(aiCacheKey);
+
+  if (cachedAI) {
+    try {
+      const { data, timestamp } = JSON.parse(cachedAI);
+      // AI cache TTL: 24 hours (since invoice content doesn't change)
+      if (Date.now() - timestamp < 24 * 60 * 60 * 1000) {
+        return data;
+      }
+    } catch (e) {
+      console.error("AI Cache Parse Error:", e);
+    }
+  }
   
   if (!text) {
     if (file instanceof File && file.type === 'application/pdf') {
@@ -62,6 +76,12 @@ export async function processInvoice(file: File | string): Promise<ParsedInvoice
 
   // 4. AI Analysis
   const data = await parseInvoice(text);
+
+  // 5. Save AI to Cache
+  localStorage.setItem(aiCacheKey, JSON.stringify({
+    data,
+    timestamp: Date.now()
+  }));
 
   return data;
 }

@@ -78,8 +78,11 @@ ${text}
 
     const result = JSON.parse(response.text || '{}');
     return result as ParsedInvoice;
-  } catch (error) {
+  } catch (error: any) {
     console.error('AI Parsing Error:', error);
+    if (error.message?.includes('429') || error.status === 429 || error.message?.includes('RESOURCE_EXHAUSTED')) {
+      throw new Error('تم تجاوز حصة الاستخدام لـ Gemini AI. يرجى المحاولة لاحقاً أو التحقق من خطة الاشتراك.');
+    }
     throw new Error('فشل تحليل البيانات بواسطة الذكاء الاصطناعي');
   }
 }
