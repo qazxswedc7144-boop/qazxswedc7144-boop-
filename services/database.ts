@@ -1,6 +1,7 @@
 
 import Dexie, { Table } from 'dexie';
 import { generateId, ensureId } from '../utils/id';
+import { safeGetById } from '../utils/dexieSafe';
 import { 
   Product, Sale, Purchase, Receipt, Payment, CashFlow, AccountingEntry, AuditLogEntry, 
   PendingOperation, Supplier, ValidationRule, AccountingPeriod, 
@@ -13,17 +14,17 @@ import {
   PrintTemplate, TemplateAssignment, InventoryTransaction,
   SystemBackup, SyncQueueItem, ConflictArchive,
   FinancialHealthSnapshot, SystemAlert, PerformanceMetric,
-  UserBehavior, HistoricalMetric, ProfitHealth,
+  UserBehavior, HistoricalMetric, ProfitHealth, CashLog,
   Warehouse, WarehouseStock, Currency, ExchangeRate, Category,
   InventoryItem, ItemProfitEntry, CustomerProfitEntry, SupplierProfitEntry,
   AccountMovement, PurchaseByItemEntry, ExpiringItemEntry,
   InventoryLayer, FIFOConsumptionLog, StockMovement,
-  PeriodLockLog, AIInsight, SecuritySettings
+  PeriodLockLog, AIInsight, SecuritySettings, InventoryLog
 } from '../types';
 import { authService } from './auth.service';
 import { ErrorManager } from './errorManager';
-import { SyncEngine } from './SyncEngine';
 import { IS_PREVIEW } from '../constants';
+import { InventoryEngine } from '@/core/engines/inventoryEngine';
 
 class PharmaFlowDB extends Dexie {
   private dataVersion = 0;
@@ -31,6 +32,7 @@ class PharmaFlowDB extends Dexie {
   users!: Table<User, string>;
   userRoles!: Table<UserRoleEntry, string>; 
   products!: Table<Product, string>;
+  inventory_logs!: Table<InventoryLog, string>;
   sales!: Table<Sale, string>;
   purchases!: Table<Purchase, string>;
   receipts!: Table<Receipt, string>;
@@ -38,6 +40,7 @@ class PharmaFlowDB extends Dexie {
   invoices!: Table<any, string>;
   invoice_items!: Table<any, string>;
   cashFlow!: Table<CashFlow, string>;
+  cash_logs!: Table<CashLog, string>;
   journalEntries!: Table<AccountingEntry, string>;
   journal_entries!: Table<any, string>;
   suppliers!: Table<Supplier, string>;
@@ -106,22 +109,23 @@ class PharmaFlowDB extends Dexie {
   constructor() {
     super('PharmaFlowDB');
     
-    // التحديث لإصدار 64 لتوحيد المعرفات (id) وإزالة الترقيم التلقائي (Auto-increment) لضمان سلامة البيانات
-    this.version(65).stores({
+    // التحديث لإصدار 67 لإضافة سجلات المخزون (Inventory Logs)
+    this.version(67).stores({
       users: 'id, username, User_Email, User_Name, Role, Is_Active',
       userRoles: 'id, User_Email, Role_Type', 
-      products: 'id, name, Name, barcode, Is_Active, categoryId, supplierId',
-      sales: 'id, SaleID, date, customerId, InvoiceStatus, hash, deleted_at, [customerId+date], [InvoiceStatus+date], riskLevel',
-      purchases: 'id, purchase_id, invoiceId, date, partnerId, invoiceStatus, hash, deleted_at, [partnerId+date], [invoiceStatus+date], riskLevel',
-      receipts: 'id, date, customer_id, tenant_id',
-      payments: 'id, date, supplier_id, tenant_id',
-      invoices: 'id, date, customerId, type, invoice_number, created_at',
+      products: 'id, name, Name, barcode, Is_Active, categoryId, supplierId, isSynced, updatedAt',
+      inventory_logs: 'id, productId, type, date',
+      sales: 'id, SaleID, date, customerId, InvoiceStatus, hash, deleted_at, [customerId+date], [InvoiceStatus+date], riskLevel, isSynced, updatedAt',
+      purchases: 'id, purchase_id, invoiceId, date, partnerId, invoiceStatus, hash, deleted_at, [partnerId+date], [invoiceStatus+date], riskLevel, isSynced, updatedAt',
+      receipts: 'id, date, customer_id, tenant_id, isSynced, updatedAt',
+      payments: 'id, date, supplier_id, tenant_id, isSynced, updatedAt',
+      invoices: 'id, date, customerId, type, invoice_number, created_at, isSynced, updatedAt',
       invoice_items: 'id, invoiceId, productId',
-      cashFlow: 'id, transaction_id, date, type, category, [type+date]',
-      journalEntries: 'id, EntryID, date, sourceId, status, hash, [sourceId+status]',
+      cashFlow: 'id, transaction_id, date, type, category, [type+date], isSynced, updatedAt',
+      journalEntries: 'id, EntryID, date, sourceId, status, hash, [sourceId+status], isSynced, updatedAt',
       journal_entries: 'id, date, sourceId',
-      suppliers: 'id, Supplier_ID, Supplier_Name, phone, Is_Active',
-      customers: 'id, Supplier_ID, Supplier_Name, phone, Is_Active',
+      suppliers: 'id, Supplier_ID, Supplier_Name, phone, Is_Active, isSynced, updatedAt',
+      customers: 'id, Supplier_ID, Supplier_Name, phone, Is_Active, isSynced, updatedAt',
       journal_lines: 'id, entryId, accountId',
       audit_log: 'id, user_id, action, target_type, target_id, timestamp, [user_id+timestamp]',
       accounts: 'id, name, code, type, parentId',
@@ -150,7 +154,7 @@ class PharmaFlowDB extends Dexie {
       voucherInvoiceLinks: 'id, linkId, voucherId, invoiceId, Created_At',
       Invoice_Counters: 'id, Counter_Type',
       aiInsights_History: 'id, productId, Item_Name, Customer, Invoice_Date', // Replaced priceHistory
-      Audit_Log: 'id, Log_ID, Table_Name, Record_ID, Column_Name, Modified_At',
+      Audit_Log: 'id, Log_ID, Table_Name, Record_ID, Column_Name, Modified_At, Change_Type',
       System_Error_Log: 'id, Error_ID, Module_Name, Record_ID, User_Email, Timestamp',
       printTemplates: 'id, TemplateID, TemplateName, TemplateType, IsDefaultTemplate',
       templateAssignments: 'id, AssignmentID, TemplateID, DocumentType, BranchID, IsActive',
@@ -223,7 +227,12 @@ class PharmaFlowDB extends Dexie {
       { name: 'Financial_Transactions', table: this.financialTransactions, pk: 'Transaction_ID' },
       { name: 'Voucher_Invoice_Link', table: this.voucherInvoiceLinks, pk: 'linkId' },
       { name: 'Suppliers', table: this.suppliers, pk: 'Supplier_ID' },
-      { name: 'Customers', table: this.customers, pk: 'Supplier_ID' }
+      { name: 'Customers', table: this.customers, pk: 'Supplier_ID' },
+      { name: 'Invoices', table: this.invoices, pk: 'id' },
+      { name: 'Journal_Entries', table: this.journalEntries, pk: 'EntryID' },
+      { name: 'Cash_Flow', table: this.cashFlow, pk: 'transaction_id' },
+      { name: 'Accounts', table: this.accounts, pk: 'id' },
+      { name: 'Inventory_Transactions', table: this.inventoryTransactions, pk: 'TransactionID' }
     ];
 
     this.sales.hook('creating', (pk, obj) => {
@@ -236,19 +245,24 @@ class PharmaFlowDB extends Dexie {
     financialTables.forEach(({ name, table, pk }) => {
       table.hook('creating', (primaryKey, obj) => {
         this.incrementDataVersion();
+        (obj as any).isSynced = false; // Mark for sync
+        (obj as any).updatedAt = Date.now(); // 6. ADD UPDATED TIMESTAMP
         const recordId = String(primaryKey || (obj as any).id || (obj as any)[pk] || 'NEW');
         this.logAuditEntryAsync(name, recordId, 'ALL', 'NULL', 'Record Created', 'ADD');
       });
       table.hook('updating', (mods, obj) => {
         this.incrementDataVersion();
+        (mods as any).isSynced = false; // Mark for re-sync
+        (mods as any).updatedAt = Date.now(); // 6. ADD UPDATED TIMESTAMP
         const recordId = String((obj as any).id || (obj as any)[pk] || 'UNKNOWN');
         Object.keys(mods).forEach(key => {
-          if (SENSITIVE_MAP[key]) {
-            const oldValue = String((obj as any)[key]);
-            const newValue = String((mods as any)[key]);
-            if (oldValue !== newValue) {
-              this.logAuditEntryAsync(name, recordId, SENSITIVE_MAP[key], oldValue, newValue, 'UPDATE');
-            }
+          // Audit all changes, but prioritize sensitive fields mapping
+          const auditKey = SENSITIVE_MAP[key] || key;
+          const oldValue = String((obj as any)[key]);
+          const newValue = String((mods as any)[key]);
+          
+          if (oldValue !== newValue && key !== 'updatedAt' && key !== 'isSynced' && key !== 'lastModified') {
+            this.logAuditEntryAsync(name, recordId, auditKey, oldValue, newValue, 'UPDATE');
           }
         });
       });
@@ -425,6 +439,7 @@ class LocalDatabase {
   private initPromise: Promise<void> | null = null;
 
   get products() { return this.db.products; }
+  get inventory_logs() { return this.db.inventory_logs; }
   get sales() { return this.db.sales; }
   get purchases() { return this.db.purchases; }
   get receipts() { return this.db.receipts; }
@@ -432,6 +447,7 @@ class LocalDatabase {
   get invoices() { return this.db.invoices; }
   get invoice_items() { return this.db.invoice_items; }
   get cashFlow() { return this.db.cashFlow; }
+  get cash_flow() { return this.db.cashFlow; }
   get journalEntries() { return this.db.journalEntries; }
   get journal_entries() { return this.db.journal_entries; }
   get suppliers() { return this.db.suppliers; }
@@ -474,6 +490,8 @@ class LocalDatabase {
         }
         await this.refreshCache();
         await this.seedCategories();
+        await this.seedJournalRules();
+        await this.seedAccounts();
         await this.seedMockData();
         this.version++;
       } catch (e) {
@@ -575,6 +593,39 @@ class LocalDatabase {
       await this.db.categories.bulkAdd(entries);
       this.cache.categories = entries;
     }
+  }
+
+  private async seedJournalRules() {
+    const count = await this.db.journalRules.count();
+    if (count > 0) return;
+
+    const { DEFAULT_JOURNAL_RULES } = await import('../config/journalRules');
+    const entries = Object.entries(DEFAULT_JOURNAL_RULES).map(([id, rule]) => ({
+      id,
+      ...rule
+    }));
+    await this.db.journalRules.bulkAdd(entries);
+    this.cache.journalRules = entries;
+  }
+
+  private async seedAccounts() {
+    const count = await this.db.accounts.count();
+    if (count > 0) return;
+
+    const initialAccounts: any[] = [
+      { id: 'ACC-101', code: '1101', name: 'الصندوق (نقدي)', type: 'ASSET', balance_type: 'DEBIT', isSystem: true, isActive: true, balance: 0 },
+      { id: 'ACC-104', code: '1104', name: 'البنك (تحويلات)', type: 'ASSET', balance_type: 'DEBIT', isSystem: true, isActive: true, balance: 0 },
+      { id: 'ACC-103', code: '1103', name: 'ذمم مدينة (عملاء)', type: 'ASSET', balance_type: 'DEBIT', isSystem: true, isActive: true, balance: 0 },
+      { id: 'ACC-102', code: '1102', name: 'المخزون السلعي', type: 'ASSET', balance_type: 'DEBIT', isSystem: true, isActive: true, balance: 0 },
+      { id: 'ACC-201', code: '2101', name: 'ذمم دائنة (موردين)', type: 'LIABILITY', balance_type: 'CREDIT', isSystem: true, isActive: true, balance: 0 },
+      { id: 'ACC-401', code: '4101', name: 'إيرادات المبيعات', type: 'REVENUE', balance_type: 'CREDIT', isSystem: true, isActive: true, balance: 0 },
+      { id: 'ACC-501', code: '5101', name: 'تكلفة البضاعة المباعة', type: 'EXPENSE', balance_type: 'DEBIT', isSystem: true, isActive: true, balance: 0 },
+      { id: 'ACC-502', code: '5102', name: 'مصاريف عامة', type: 'EXPENSE', balance_type: 'DEBIT', isSystem: true, isActive: true, balance: 0 },
+      { id: 'ACC-210', code: '2110', name: 'ضريبة القيمة المضافة', type: 'LIABILITY', balance_type: 'CREDIT', isSystem: true, isActive: true, balance: 0 },
+    ];
+
+    await this.db.accounts.bulkAdd(initialAccounts);
+    this.cache.accounts = initialAccounts;
   }
 
   async ensureOpen() {
@@ -789,17 +840,24 @@ class LocalDatabase {
     await this.init(); 
   }
   
-  async addAuditLog(action: 'CREATE' | 'UPDATE' | 'DELETE' | 'POST' | 'CANCEL' | 'SYSTEM', target_type: 'SALE' | 'PURCHASE' | 'VOUCHER' | 'PRODUCT' | 'SYSTEM' | 'OTHER', target_id: string, details?: string) {
+  async addAuditLog(
+    action: 'CREATE' | 'UPDATE' | 'DELETE' | 'POST' | 'CANCEL' | 'SYSTEM' | 'RESTORE' | 'LOGIN' | 'SECURITY' | 'INFO', 
+    target_type: 'SALE' | 'PURCHASE' | 'VOUCHER' | 'PRODUCT' | 'SYSTEM' | 'OTHER' | 'USER_ACTIVITY', 
+    target_id: string, 
+    details?: string,
+    metadata?: any
+  ) {
     const user = authService.getCurrentUser();
     const entry: AuditLogEntry = {
       id: generateId('AUD'),
       user_id: user?.User_Email || 'SYSTEM',
-      action,
-      target_type,
+      action: action as any,
+      target_type: target_type as any,
       target_id,
       timestamp: new Date().toISOString(),
-      details
-    };
+      details,
+      metadata
+    } as any;
     await this.db.audit_log.add(entry);
   }
   async isDateLocked(dateStr: string): Promise<boolean> {
@@ -822,7 +880,7 @@ class LocalDatabase {
     }
   }
   async updatePurchaseNotes(id: string, notes: string) {
-    const purchase = await this.db.purchases.get(id);
+    const purchase = await safeGetById(this.db.purchases, id);
     if (purchase) {
       (purchase as any).notes = notes;
       purchase.lastModified = new Date().toISOString();
@@ -940,6 +998,16 @@ class LocalDatabase {
   // --- New Integrated Accounting & Inventory Methods ---
 
   async getCurrencies() { return await this.db.currencies.toArray(); }
+  
+  async getInventoryValue() {
+    const products = await this.db.products.toArray();
+    return products.reduce((sum, p) => {
+      const stock = p.StockQuantity || 0;
+      const cost = p.avgCost || p.CostPrice || 0;
+      return sum + (stock * cost);
+    }, 0);
+  }
+
   async saveCurrency(c: Currency) { 
     if (!c.id) c.id = this.generateId('CUR');
     await this.db.currencies.put(c); 

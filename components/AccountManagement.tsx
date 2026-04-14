@@ -27,7 +27,11 @@ const AccountManagement: React.FC<AccountManagementProps> = ({ onNavigate }) => 
       balance_type: (editingAccount.type === 'REVENUE' || editingAccount.type === 'LIABILITY' || editingAccount.type === 'EQUITY') ? 'CREDIT' : 'DEBIT',
       description: editingAccount.description || '',
       isSystem: editingAccount.isSystem || false,
-      isActive: editingAccount.isActive !== undefined ? editingAccount.isActive : true
+      isActive: editingAccount.isActive !== undefined ? editingAccount.isActive : true,
+      balance: editingAccount.balance || 0,
+      debit: editingAccount.debit || 0,
+      credit: editingAccount.credit || 0,
+      updatedAt: new Date().toISOString()
     };
 
     await db.saveAccount(account);

@@ -10,14 +10,14 @@ export class AccountingEngine {
     if (!setting) {
       // Fallback to defaults if not configured
       const defaults: Record<string, string> = {
-        CASH: 'ACC-CASH-001',
-        BANK: 'ACC-BANK-001',
-        RECEIVABLE: 'ACC-AR-001',
-        PAYABLE: 'ACC-AP-001',
-        INVENTORY: 'ACC-INV-001',
-        SALES_REVENUE: 'ACC-REV-001',
-        COGS: 'ACC-COGS-001',
-        EXPENSE: 'ACC-EXP-001'
+        CASH: 'ACC-101',
+        BANK: 'ACC-104',
+        RECEIVABLE: 'ACC-103',
+        PAYABLE: 'ACC-201',
+        INVENTORY: 'ACC-102',
+        SALES_REVENUE: 'ACC-401',
+        COGS: 'ACC-501',
+        EXPENSE: 'ACC-502'
       };
       return defaults[type];
     }
@@ -25,21 +25,7 @@ export class AccountingEngine {
   }
 
   static async seedAccounts() {
-    const count = await db.db.accounts.count();
-    if (count > 0) return;
-
-    const initialAccounts: any[] = [
-      { id: 'ACC-CASH-001', code: '1101', name: 'الصندوق (نقدي)', type: 'ASSET', balance_type: 'DEBIT', isSystem: true, isActive: true, balance: 0 },
-      { id: 'ACC-BANK-001', code: '1104', name: 'البنك (تحويلات)', type: 'ASSET', balance_type: 'DEBIT', isSystem: true, isActive: true, balance: 0 },
-      { id: 'ACC-AR-001', code: '1102', name: 'ذمم مدينة (عملاء)', type: 'ASSET', balance_type: 'DEBIT', isSystem: true, isActive: true, balance: 0 },
-      { id: 'ACC-INV-001', code: '1103', name: 'المخزون السلعي', type: 'ASSET', balance_type: 'DEBIT', isSystem: true, isActive: true, balance: 0 },
-      { id: 'ACC-AP-001', code: '2101', name: 'ذمم دائنة (موردين)', type: 'LIABILITY', balance_type: 'CREDIT', isSystem: true, isActive: true, balance: 0 },
-      { id: 'ACC-REV-001', code: '4101', name: 'إيرادات المبيعات', type: 'REVENUE', balance_type: 'CREDIT', isSystem: true, isActive: true, balance: 0 },
-      { id: 'ACC-COGS-001', code: '5101', name: 'تكلفة البضاعة المباعة', type: 'EXPENSE', balance_type: 'DEBIT', isSystem: true, isActive: true, balance: 0 },
-      { id: 'ACC-EXP-001', code: '5102', name: 'مصاريف عامة', type: 'EXPENSE', balance_type: 'DEBIT', isSystem: true, isActive: true, balance: 0 },
-    ];
-
-    await db.db.accounts.bulkAdd(initialAccounts);
+    // Redundant - now handled in database.ts
   }
 
   static async generateSalesEntry(sale: Sale, items: InvoiceItem[]): Promise<AccountingEntry> {
@@ -276,6 +262,8 @@ export class AccountingEngine {
 
   private static createLine(entryId: string, accountId: string, debit: number, credit: number): JournalLine {
     const id = db.generateId('JL');
+    const account = db.getAccounts().find(a => a.id === accountId);
+    
     return {
       id,
       lineId: id,
@@ -283,7 +271,7 @@ export class AccountingEngine {
       entry_id: entryId,
       accountId,
       account_id: accountId,
-      accountName: '', // Will be populated by repository if needed
+      accountName: account?.name || 'حساب غير معرف',
       debit,
       credit,
       type: debit > 0 ? 'DEBIT' : 'CREDIT',

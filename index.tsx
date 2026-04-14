@@ -15,11 +15,9 @@ if (!rootElement) throw new Error("Could not find root element");
 
 const root = createRoot(rootElement);
 root.render(
-  <React.StrictMode>
     <ErrorBoundary>
       <AppProvider>
         <App />
       </AppProvider>
     </ErrorBoundary>
-  </React.StrictMode>
 );

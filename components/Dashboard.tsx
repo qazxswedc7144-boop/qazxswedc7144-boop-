@@ -8,6 +8,7 @@ import { db } from '../services/database';
 import { syncService } from '../services/sync.service';
 import { FinancialHealthService } from '../services/FinancialHealthService';
 import { useAppStore } from '../store/useAppStore';
+import { useSafeNavigation } from '../utils/navigation';
 import { Card, Badge } from './SharedUI';
 import { FinancialHealthSnapshot } from '../types';
 import InstallPWAButton from './InstallPWAButton';
@@ -49,6 +50,7 @@ const StatMiniCard = React.memo(({ label, value, icon, color, unit, trend }: { l
 
 const Dashboard: React.FC<{ lang?: 'ar', onNavigate?: (view: any, params?: any) => void }> = ({ onNavigate }) => {
   const { currency, version, addToast } = useUI();
+  const { goDebts, goReports } = useSafeNavigation();
   const [isSyncing, setIsSyncing] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
   const [delayedSyncEnabled, setDelayedSyncEnabled] = useState(true);
@@ -216,7 +218,7 @@ const Dashboard: React.FC<{ lang?: 'ar', onNavigate?: (view: any, params?: any) 
         </div>
 
         {/* Quick Access Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-4">
           <QuickActionBtn icon={<PackageIcon size={24} />} label="المخزون" onClick={() => onNavigate?.('inventory')} color="bg-purple-500" />
           
           <div className="relative h-full">
@@ -229,7 +231,8 @@ const Dashboard: React.FC<{ lang?: 'ar', onNavigate?: (view: any, params?: any) 
           </div>
 
           <QuickActionBtn icon={<Wallet2 size={24} />} label="المحاسبة" onClick={() => onNavigate?.('accounting')} color="bg-amber-500" />
-          <QuickActionBtn icon={<Clock size={24} />} label="تعمير الذمم" onClick={() => onNavigate?.('aging-report')} color="bg-red-500" />
+          <QuickActionBtn icon={<Clock size={24} />} label="تعمير الذمم" onClick={goDebts} color="bg-red-500" />
+          <QuickActionBtn icon={<BarChart3 size={24} />} label="التقارير" onClick={goReports} color="bg-indigo-600" />
           <QuickActionBtn icon={<ShieldCheck size={24} />} label="التدقيق" onClick={() => onNavigate?.('audit-history')} color="bg-emerald-600" />
           <QuickActionBtn icon={<History size={24} />} label="الأرشيف" onClick={() => onNavigate?.('invoices-archive')} color="bg-slate-500" />
         </div>

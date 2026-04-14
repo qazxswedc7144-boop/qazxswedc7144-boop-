@@ -1,5 +1,5 @@
 
-import { db } from '../services/database';
+import { db } from '@/services/database';
 import { 
   AccountingEntry, 
   JournalLine, 
@@ -13,8 +13,8 @@ import {
   CustomerProfitEntry,
   SupplierProfitEntry,
   AccountMovement
-} from '../types';
-import { reportCache } from '../services/reportCache.service';
+} from '@/types';
+import { reportCache } from '@/services/reportCache.service';
 
 export class ReportEngine {
   
@@ -406,5 +406,32 @@ export class ReportEngine {
   static async refresh(): Promise<void> {
     reportCache.purge();
     await this.getAnalyticsSummary();
+  }
+
+  static getSummary() {
+    return {
+      sales: 0,
+      purchases: 0,
+      profit: 0
+    }
+  }
+
+  /**
+   * GENERATE P&L (Profit and Loss)
+   * Simplified version for quick dashboard access
+   */
+  static async generatePL() {
+    const accounts = await db.getAccounts();
+    const revenueAcc = accounts.find(a => a.id === 'ACC-401' || a.id === 'revenue');
+    const cogsAcc = accounts.find(a => a.id === 'ACC-501' || a.id === 'cogs');
+
+    const totalRevenue = revenueAcc?.credit || 0;
+    const totalCost = cogsAcc?.debit || 0;
+
+    return {
+      revenue: totalRevenue,
+      cost: totalCost,
+      profit: totalRevenue - totalCost
+    };
   }
 }

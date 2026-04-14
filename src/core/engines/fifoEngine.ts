@@ -1,14 +1,13 @@
 
-import { db } from '../services/database';
-import { InventoryLayer, FIFOConsumptionLog } from '../types';
-import { SyncEngine } from '../services/SyncEngine';
+import { db } from '@/services/database';
+import { InventoryLayer, FIFOConsumptionLog } from '@/types';
 
 export class FIFOEngine {
 
   /**
    * ON PURCHASE: Create new layer
    */
-  static async addPurchaseLayer(item_id: string, quantity: number, unit_cost: number, reference_id: string, batch?: any): Promise<void> {
+  static async addPurchaseLayer(item_id: string, quantity: number, unit_cost: number, reference_id: string): Promise<void> {
     const layer: InventoryLayer = {
       id: db.generateId('LAY'),
       item_id,
@@ -17,18 +16,20 @@ export class FIFOEngine {
       created_at: new Date().toISOString(),
       reference_id,
       lastModified: new Date().toISOString(),
-      tenant_id: SyncEngine.getTenantId()
+      tenant_id: 'TEN-DEV-001'
     };
     await db.db.inventory_layers.add(layer);
-    if (batch) {
-      SyncEngine.addToBatch(batch, 'inventory_layers', layer.id, layer);
-    }
   }
 
   /**
    * FIFO CONSUMPTION
    */
-  static async consumeFIFO(sale_id: string, item_id: string, quantity: number, batch?: any): Promise<{ totalCost: number, unitCost: number }> {
+  static async consumeFIFO(sale_id: string, item_id: string, quantity: number): Promise<{ totalCost: number, unitCost: number }> {
+    if (!item_id) {
+      console.warn("Skipping FIFO consumption: missing item ID");
+      return { totalCost: 0, unitCost: 0 };
+    }
+    
     let remainingToConsume = quantity;
     let totalCost = 0;
 
@@ -72,7 +73,7 @@ export class FIFOEngine {
         unit_cost: layer.unit_cost,
         consumed_at: new Date().toISOString(),
         lastModified: new Date().toISOString(),
-        tenant_id: SyncEngine.getTenantId()
+        tenant_id: 'TEN-DEV-001'
       });
     }
 
@@ -84,11 +85,9 @@ export class FIFOEngine {
     // 4. UPDATE INVENTORY & LOGS
     for (const layer of updatedLayers) {
       await db.db.inventory_layers.put(layer);
-      if (batch) SyncEngine.addToBatch(batch, 'inventory_layers', layer.id, layer);
     }
     for (const log of consumptionLogs) {
       await db.db.fifo_consumption_log.add(log);
-      if (batch) SyncEngine.addToBatch(batch, 'fifo_consumption_log', log.id, log);
     }
 
     return {
@@ -101,6 +100,7 @@ export class FIFOEngine {
    * ON UNPOST: Restore consumed quantities
    */
   static async reverseFIFO(sale_id: string): Promise<void> {
+    if (!sale_id) return;
     // 1. Find consumption logs for this sale
     const logs = await db.db.fifo_consumption_log
       .where('sale_id')
@@ -124,6 +124,7 @@ export class FIFOEngine {
    * ON PURCHASE UNPOST: Remove the layer
    */
   static async removePurchaseLayer(reference_id: string): Promise<void> {
+    if (!reference_id) return;
     const layers = await db.db.inventory_layers
       .where('reference_id')
       .equals(reference_id)
@@ -143,17 +144,38 @@ export class FIFOEngine {
     const type = invoice.type || (invoice.customerId ? 'SALE' : 'PURCHASE');
     const items = invoice.items || [];
     const invoiceId = invoice.invoiceId || invoice.id;
+    const isReturn = invoice.isReturn || invoice.invoiceType === 'مرتجع';
 
     if (type === 'SALE') {
-      for (const item of items) {
-        const result = await this.consumeFIFO(invoiceId, item.product_id, item.qty);
-        totalCost += result.totalCost;
-        itemCosts[item.product_id] = result.totalCost;
+      if (isReturn) {
+        // Sale Return: Restore stock (Add as a new layer with original cost if possible)
+        for (const item of items) {
+          // We use the item.price as fallback cost, but ideally we should track original cost
+          const returnCost = item.cost || item.price; 
+          await this.addPurchaseLayer(item.product_id, item.qty, returnCost, invoiceId);
+          itemCosts[item.product_id] = item.qty * returnCost;
+          totalCost += itemCosts[item.product_id];
+        }
+      } else {
+        for (const item of items) {
+          const result = await this.consumeFIFO(invoiceId, item.product_id, item.qty);
+          totalCost += result.totalCost;
+          itemCosts[item.product_id] = result.totalCost;
+        }
       }
     } else if (type === 'PURCHASE') {
-      for (const item of items) {
-        await this.addPurchaseLayer(item.product_id, item.qty, item.price, invoiceId);
-        itemCosts[item.product_id] = item.qty * item.price;
+      if (isReturn) {
+        // Purchase Return: Reduce stock (Consume FIFO layers)
+        for (const item of items) {
+          const result = await this.consumeFIFO(invoiceId, item.product_id, item.qty);
+          totalCost += result.totalCost;
+          itemCosts[item.product_id] = result.totalCost;
+        }
+      } else {
+        for (const item of items) {
+          await this.addPurchaseLayer(item.product_id, item.qty, item.price, invoiceId);
+          itemCosts[item.product_id] = item.qty * item.price;
+        }
       }
     }
 

@@ -1,6 +1,7 @@
 
 import { db } from './database';
 import { Product, InventoryItem, InventoryTransaction, MedicineBatch, MedicineAlert } from '../types';
+import { safeGetById, safeWhereEqual } from '../utils/dexieSafe';
 
 export class InventoryService {
   /**
@@ -25,7 +26,7 @@ export class InventoryService {
    * Updates the stock quantity of a product.
    */
   static async updateStock(productId: string, quantityChange: number): Promise<Product | undefined> {
-    const product = await db.products.get(productId);
+    const product = await safeGetById(db.products, productId);
     if (product) {
       product.StockQuantity += quantityChange;
       await db.products.put(product);
@@ -71,7 +72,11 @@ export class InventoryService {
     notes?: string
   }): Promise<void> {
     try {
-      const product = await db.products.get(movement.productId);
+      if (!movement.productId) {
+        throw new Error("Movement productId is required");
+      }
+
+      const product = await safeGetById(db.products, movement.productId);
       if (!product) {
         throw new Error(`Product [${movement.productId}] not found.`);
       }
@@ -106,22 +111,34 @@ export class InventoryService {
       await db.products.put(product);
 
       // Update warehouse stock
-      const warehouseStock = await db.warehouseStock
-        .where('[warehouseId+productId]')
-        .equals([movement.warehouseId || 'WH-MAIN', movement.productId])
-        .first();
+      const warehouseId = movement.warehouseId || 'WH-MAIN';
+      const productId = movement.productId;
 
-      if (warehouseStock) {
-        warehouseStock.quantity += movement.quantity;
-        await db.warehouseStock.put(warehouseStock);
-      } else {
-        await db.warehouseStock.add({
-          id: db.generateId('WHS'),
-          warehouseId: movement.warehouseId || 'WH-MAIN',
-          productId: movement.productId,
-          quantity: movement.quantity,
-          lastUpdated: new Date().toISOString()
-        });
+      if (!warehouseId || !productId || typeof warehouseId !== 'string' || typeof productId !== 'string') {
+        console.warn("Skipping warehouse stock update: invalid IDs", { warehouseId, productId });
+        return;
+      }
+
+      try {
+        const warehouseStock = await db.warehouseStock
+          .where('[warehouseId+productId]')
+          .equals([warehouseId, productId])
+          .first();
+
+        if (warehouseStock) {
+          warehouseStock.quantity += movement.quantity;
+          await db.warehouseStock.put(warehouseStock);
+        } else {
+          await db.warehouseStock.add({
+            id: db.generateId('WHS'),
+            warehouseId: warehouseId,
+            productId: productId,
+            quantity: movement.quantity,
+            lastUpdated: new Date().toISOString()
+          });
+        }
+      } catch (err) {
+        console.error("❌ Warehouse stock update failed:", err);
       }
     } catch (error) {
       console.error("Error recording movement:", error);
@@ -133,11 +150,20 @@ export class InventoryService {
    * Gets the stock level for a specific warehouse and product.
    */
   static async getWarehouseStock(warehouseId: string, productId: string): Promise<number> {
-    const stock = await db.warehouseStock
-      .where('[warehouseId+productId]')
-      .equals([warehouseId, productId])
-      .first();
-    return stock ? stock.quantity : 0;
+    if (!warehouseId || !productId || typeof warehouseId !== 'string' || typeof productId !== 'string') {
+      return 0;
+    }
+    
+    try {
+      const stock = await db.warehouseStock
+        .where('[warehouseId+productId]')
+        .equals([warehouseId, productId])
+        .first();
+      return stock ? stock.quantity : 0;
+    } catch (error) {
+      console.error('Error fetching warehouse stock:', error);
+      return 0;
+    }
   }
 
   /**

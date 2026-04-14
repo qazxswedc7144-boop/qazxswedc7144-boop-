@@ -11,9 +11,10 @@ export class EncryptionService {
   private static readonly IV_LENGTH = 12;
 
   /**
-   * Derives an AES-GCM key from a password and salt using PBKDF2.
+   * 1. DERIVE ENCRYPTION KEY
+   * Derives an AES-GCM key from a password and salt using PBKDF2 + SHA-256.
    */
-  private static async deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey> {
+  static async deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey> {
     const encoder = new TextEncoder();
     const passwordBuffer = encoder.encode(password);
 
@@ -40,9 +41,10 @@ export class EncryptionService {
   }
 
   /**
+   * 2. ENCRYPT BACKUP
    * Encrypts plain data (JSON) using a password.
    */
-  static async encrypt(data: any, password: string): Promise<{ iv: string; salt: string; encrypted_data: string }> {
+  static async encryptBackup(data: any, password: string): Promise<{ iv: string; salt: string; encrypted_data: string }> {
     const encoder = new TextEncoder();
     const plainText = typeof data === 'string' ? data : JSON.stringify(data);
     const plainTextBuffer = encoder.encode(plainText);
@@ -68,9 +70,10 @@ export class EncryptionService {
   }
 
   /**
+   * 3. DECRYPT BACKUP
    * Decrypts an encrypted object using a password.
    */
-  static async decrypt(encryptedObj: { iv: string; salt: string; encrypted_data: string }, password: string): Promise<any> {
+  static async decryptBackup(encryptedObj: { iv: string; salt: string; encrypted_data: string }, password: string): Promise<any> {
     const iv = this.hexToBuf(encryptedObj.iv);
     const salt = this.hexToBuf(encryptedObj.salt);
     const encryptedData = this.hexToBuf(encryptedObj.encrypted_data);

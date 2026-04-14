@@ -6,7 +6,8 @@ import { integrityVerifier } from '../services/integrityVerifier';
 import { eventBus, EVENTS } from '../services/eventBus';
 import { Card, Button, Badge } from './SharedUI';
 import { useEventBus } from '../store/AppContext';
-import { ShieldCheck, Activity, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { ShieldCheck, Activity, AlertCircle, CheckCircle2, RefreshCw } from 'lucide-react';
+import { IntegritySweepService } from '../services/IntegritySweepService';
 
 interface TestResult {
   name: string;
@@ -16,8 +17,10 @@ interface TestResult {
 
 const SystemHealthModule: React.FC<{ onNavigate?: (v: any) => void }> = ({ onNavigate }) => {
   const [isRunning, setIsRunning] = useState(false);
+  const [isSweeping, setIsSweeping] = useState(false);
   const [results, setResults] = useState<TestResult[]>([]);
   const [integrityStatus, setIntegrityStatus] = useState<{ isValid: boolean; checking: boolean }>({ isValid: true, checking: false });
+  const [sweepResult, setSweepResult] = useState<{ success: boolean; message: string } | null>(null);
 
   const checkIntegrity = async () => {
     setIntegrityStatus(p => ({ ...p, checking: true }));
@@ -42,6 +45,23 @@ const SystemHealthModule: React.FC<{ onNavigate?: (v: any) => void }> = ({ onNav
     eventBus.emit(EVENTS.SYSTEM_TEST_RUN, { passed, failed });
   }, []);
 
+  const runIntegritySweep = async () => {
+    setIsSweeping(true);
+    setSweepResult(null);
+    try {
+      const success = await IntegritySweepService.runSweep(true); // Run with autoFix
+      setSweepResult({
+        success,
+        message: success ? 'تم فحص وإصلاح جميع مشاكل نزاهة البيانات بنجاح.' : 'تم اكتشاف مشاكل في نزاهة البيانات. يرجى مراجعة سجلات النظام.'
+      });
+      await checkIntegrity(); // Refresh chain status
+    } catch (err) {
+      setSweepResult({ success: false, message: 'فشل تشغيل فحص النزاهة.' });
+    } finally {
+      setIsSweeping(false);
+    }
+  };
+
   return (
     <div className="p-6 md:p-10 space-y-8 animate-in fade-in duration-500 font-['Cairo']" dir="rtl">
       <div className="flex items-center justify-between bg-white p-8 rounded-[40px] shadow-sm border border-slate-100">
@@ -53,6 +73,7 @@ const SystemHealthModule: React.FC<{ onNavigate?: (v: any) => void }> = ({ onNav
           </div>
         </div>
         <div className="flex gap-3">
+          <Button variant="neutral" onClick={runIntegritySweep} isLoading={isSweeping} icon={<RefreshCw size={16} />}>فحص النزاهة الشامل</Button>
           <Button variant="primary" onClick={runTests} isLoading={isRunning} icon="🧪">تشغيل الاختبارات</Button>
           <button onClick={() => onNavigate?.('dashboard')} className="w-12 h-12 bg-white border border-slate-100 rounded-2xl flex items-center justify-center text-[#1E4D4D] text-2xl font-black shadow-sm">➦</button>
         </div>
@@ -75,6 +96,13 @@ const SystemHealthModule: React.FC<{ onNavigate?: (v: any) => void }> = ({ onNav
                  </Badge>
               </div>
            </Card>
+
+           {sweepResult && (
+             <div className={`p-4 rounded-2xl border ${sweepResult.success ? 'bg-emerald-50 border-emerald-100 text-emerald-800' : 'bg-red-50 border-red-100 text-red-800'} flex items-center gap-3 animate-in slide-in-from-top duration-300`}>
+               {sweepResult.success ? <CheckCircle2 size={20} /> : <AlertCircle size={20} />}
+               <p className="text-xs font-bold">{sweepResult.message}</p>
+             </div>
+           )}
 
            <div className="space-y-3">
               <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest px-2">نتائج اختبارات الوحدة (Unit Tests)</h4>

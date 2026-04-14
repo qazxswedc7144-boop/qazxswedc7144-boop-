@@ -37,12 +37,12 @@ export const Toast: React.FC<{ message: string; type: 'success' | 'error' | 'inf
   );
 };
 
-export const Card: React.FC<{ children: React.ReactNode; className?: string; noPadding?: boolean; onClick?: () => void }> = ({ children, className = "", noPadding = false, onClick }) => (
+export const Card: React.FC<{ children: React.ReactNode; className?: string; noPadding?: boolean; onClick?: () => void; style?: React.CSSProperties }> = ({ children, className = "", noPadding = false, onClick, style }) => (
   <motion.div 
     whileHover={onClick ? { y: -4, boxShadow: "0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1)" } : {}}
     onClick={onClick}
     className={`bg-white border border-slate-100 shadow-sm overflow-hidden transition-all duration-300 ${noPadding ? '' : 'p-6'} ${onClick ? 'cursor-pointer hover:border-emerald-100' : ''} ${className}`} 
-    style={{ borderRadius: '24px' }}
+    style={{ borderRadius: '24px', ...style }} 
   >
     {children}
   </motion.div>

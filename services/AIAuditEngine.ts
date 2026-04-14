@@ -3,6 +3,7 @@ import { db } from './database';
 import { Sale, Purchase, InvoiceItem, SystemAlert } from '../types';
 import { AlertCenter } from './AlertCenter';
 import { BehaviorMonitor } from './BehaviorMonitor';
+import { createSafeDateRange } from '../utils/safeRange';
 
 export class AIAuditEngine {
   
@@ -101,6 +102,7 @@ export class AIAuditEngine {
   }
 
   private static async getEntityAvgAmount(entityId: string, type: 'SALE' | 'PURCHASE'): Promise<number> {
+    if (!entityId) return 0;
     if (type === 'SALE') {
       const sales = await db.db.sales.where('customerId').equals(entityId).toArray();
       if (sales.length === 0) return 0;
@@ -114,13 +116,16 @@ export class AIAuditEngine {
 
   private static async checkDuplicateAmount(amount: number, type: 'SALE' | 'PURCHASE', currentId: string): Promise<boolean> {
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    if (!oneHourAgo) return false;
     if (type === 'SALE') {
+      if (!db.db.sales) return false;
       const duplicates = await db.db.sales
         .where('date').above(oneHourAgo)
         .filter(s => s.finalTotal === amount && s.id !== currentId)
         .toArray();
       return duplicates.length > 0;
     } else {
+      if (!db.db.purchases) return false;
       const duplicates = await db.db.purchases
         .where('date').above(oneHourAgo)
         .filter(p => p.totalAmount === amount && p.id !== currentId)

@@ -1,15 +1,15 @@
 
-import { db } from '../services/database';
-import { StockMovement } from '../types';
-import { SyncEngine } from '../services/SyncEngine';
-import { PeriodLockEngine } from '../services/PeriodLockEngine';
+import { db } from '@/services/database';
+import { StockMovement } from '@/types';
+import { PeriodLockEngine } from '@/services/PeriodLockEngine';
+import { InventoryEngine } from './inventoryEngine';
 
 export class StockMovementEngine {
 
   /**
    * CREATE STOCK MOVEMENT
    */
-  static async createStockMovement(data: Omit<StockMovement, 'id' | 'created_at' | 'lastModified'>, batch?: any): Promise<void> {
+  static async createStockMovement(data: Omit<StockMovement, 'id' | 'created_at' | 'lastModified'>): Promise<void> {
     // 8. PROTECT DATA: Block stock changes if period is locked
     const date = (data as any).date || new Date().toISOString();
     await PeriodLockEngine.validateOperation(date, 'تعديل المخزون');
@@ -25,7 +25,7 @@ export class StockMovementEngine {
       id: db.generateId('MOV'),
       created_at: new Date().toISOString(),
       lastModified: new Date().toISOString(),
-      tenant_id: SyncEngine.getTenantId()
+      tenant_id: 'TEN-DEV-001'
     };
 
     // VALIDATION: Reject if quantity_after < 0
@@ -36,20 +36,20 @@ export class StockMovementEngine {
     await db.db.stock_movements.add(movement);
 
     // Update Product StockQuantity (Sync)
-    await db.db.products.update(movement.item_id, {
-      StockQuantity: movement.quantity_after
-    });
+    const { product: updatedProduct, log } = movement.quantity_change > 0 
+      ? InventoryEngine.addStock(product, Math.abs(movement.quantity_change), movement.unit_cost)
+      : InventoryEngine.removeStock(product, Math.abs(movement.quantity_change));
 
-    if (batch) {
-      SyncEngine.addToBatch(batch, 'stock_movements', movement.id, movement);
-      SyncEngine.addToBatch(batch, 'products', movement.item_id, { StockQuantity: movement.quantity_after });
-    }
+    await db.db.products.put(updatedProduct);
+    await db.db.inventory_logs.put(log);
   }
 
   /**
    * GET CURRENT STOCK (Calculated from movements)
    */
   static async getCurrentStock(item_id: string): Promise<number> {
+    if (!item_id) return 0;
+    
     const movements = await db.db.stock_movements
       .where('item_id')
       .equals(item_id)
@@ -61,7 +61,7 @@ export class StockMovementEngine {
   /**
    * ON PURCHASE MOVEMENT
    */
-  static async recordPurchaseMovement(item_id: string, qty: number, unit_cost: number, reference_id: string, batch?: any): Promise<void> {
+  static async recordPurchaseMovement(item_id: string, qty: number, unit_cost: number, reference_id: string): Promise<void> {
     const currentStock = await this.getCurrentStock(item_id);
     
     await this.createStockMovement({
@@ -73,13 +73,13 @@ export class StockMovementEngine {
       unit_cost,
       total_cost: qty * unit_cost,
       reference_id
-    }, batch);
+    });
   }
 
   /**
    * ON SALE MOVEMENT
    */
-  static async recordSaleMovement(item_id: string, qty: number, total_cost: number, reference_id: string, batch?: any): Promise<void> {
+  static async recordSaleMovement(item_id: string, qty: number, total_cost: number, reference_id: string): Promise<void> {
     const currentStock = await this.getCurrentStock(item_id);
     const unit_cost = qty > 0 ? total_cost / qty : 0;
 
@@ -92,13 +92,15 @@ export class StockMovementEngine {
       unit_cost,
       total_cost,
       reference_id
-    }, batch);
+    });
   }
 
   /**
    * ON UNPOST: Reverse movements
    */
   static async reverseMovements(reference_id: string): Promise<void> {
+    if (!reference_id) return;
+    
     const movements = await db.db.stock_movements
       .where('reference_id')
       .equals(reference_id)
@@ -128,14 +130,27 @@ export class StockMovementEngine {
     const type = invoice.type || (invoice.customerId ? 'SALE' : 'PURCHASE');
     const items = invoice.items || [];
     const invoiceId = invoice.invoiceId || invoice.id;
+    const isReturn = invoice.isReturn || invoice.invoiceType === 'مرتجع';
 
     if (type === 'SALE') {
       for (const item of items) {
-        await this.recordSaleMovement(item.product_id, item.qty, 0, invoiceId);
+        if (isReturn) {
+          // Sale Return: Increase stock
+          await this.recordPurchaseMovement(item.product_id, item.qty, item.price, invoiceId);
+        } else {
+          // Sale: Decrease stock
+          await this.recordSaleMovement(item.product_id, item.qty, 0, invoiceId);
+        }
       }
     } else if (type === 'PURCHASE') {
       for (const item of items) {
-        await this.recordPurchaseMovement(item.product_id, item.qty, item.price, invoiceId);
+        if (isReturn) {
+          // Purchase Return: Decrease stock
+          await this.recordSaleMovement(item.product_id, item.qty, 0, invoiceId);
+        } else {
+          // Purchase: Increase stock
+          await this.recordPurchaseMovement(item.product_id, item.qty, item.price, invoiceId);
+        }
       }
     }
   }

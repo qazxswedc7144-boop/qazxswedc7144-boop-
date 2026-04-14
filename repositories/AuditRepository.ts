@@ -24,6 +24,7 @@ export const AuditRepository = {
    * فلترة السجلات حسب المستند (Contextual Audit Trail)
    */
   getByRecord: async (recordId: string): Promise<FinancialAuditEntry[]> => {
+    if (!recordId) return [];
     return await db.db.Audit_Log
       .where('Record_ID')
       .equals(recordId)

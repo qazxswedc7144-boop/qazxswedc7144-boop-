@@ -54,13 +54,30 @@ export const AccountRepository = {
     }
 
     await db.addJournalEntry(entry);
+    
+    // Update account balances
+    for (const line of entry.lines) {
+      const amount = (line.debit || 0) - (line.credit || 0);
+      await db.updateAccountBalance(line.accountId, amount);
+    }
+  },
+
+  deleteEntry: async (entryId: string) => {
+    const entry = await db.db.journalEntries.get(entryId);
+    if (entry) {
+      // Reverse balances before deleting
+      for (const line of entry.lines) {
+        const amount = (line.credit || 0) - (line.debit || 0);
+        await db.updateAccountBalance(line.accountId, amount);
+      }
+      await db.db.journalEntries.delete(entryId);
+    }
   },
 
   deleteEntriesBySource: async (sourceId: string) => {
-    const all = await db.getJournalEntries();
-    const filtered = all.filter(e => e.sourceId !== sourceId && (e as any).SourceID !== sourceId);
-    if (all.length !== filtered.length) {
-      await db.persist('journalEntries', filtered);
+    const entries = await db.db.journalEntries.where('sourceId').equals(sourceId).toArray();
+    for (const entry of entries) {
+      await AccountRepository.deleteEntry(entry.id);
     }
   },
 

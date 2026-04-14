@@ -2,14 +2,13 @@
 import { db } from './database';
 import { SystemAlert } from '../types';
 import { IS_PREVIEW } from '../constants';
+import { safeWhereEqual, safeWhereAbove } from '../utils/dexieSafe';
 
 export class AlertCenter {
   static async addAlert(alert: Omit<SystemAlert, 'id' | 'timestamp' | 'isRead' | 'resolvedStatus'>) {
     // Check for existing unread duplicate to prevent flooding
-    const existing = await db.db.systemAlerts
-      .where('isRead').equals(0)
-      .filter(a => a.message === alert.message && a.severity === alert.severity)
-      .first();
+    const existingAlerts = await safeWhereEqual(db.db.systemAlerts, 'isRead', 0);
+    const existing = existingAlerts.find(a => a.message === alert.message && a.severity === alert.severity);
       
     if (existing) return existing;
 
@@ -33,10 +32,9 @@ export class AlertCenter {
 
   private static async checkCriticalThreshold() {
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    const criticalAlerts = await db.db.systemAlerts
-      .where('timestamp').above(oneDayAgo)
-      .filter(a => a.severity === 'CRITICAL')
-      .toArray();
+    if (!oneDayAgo) return;
+    const criticalAlerts = (await safeWhereAbove(db.db.systemAlerts, 'timestamp', oneDayAgo))
+      .filter(a => a.severity === 'CRITICAL');
       
     if (criticalAlerts.length >= 10) {
       console.error("CRITICAL THRESHOLD REACHED: Switching to Audit Intensive Mode 🛡️", {
@@ -57,10 +55,8 @@ export class AlertCenter {
   }
 
   static async getActiveAlerts() {
-    return await db.db.systemAlerts
-      .where('resolvedStatus').equals('OPEN')
-      .reverse()
-      .sortBy('timestamp');
+    const alerts = await safeWhereEqual(db.db.systemAlerts, 'resolvedStatus', 'OPEN');
+    return alerts.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   }
 
   static async resolveAlert(id: string) {

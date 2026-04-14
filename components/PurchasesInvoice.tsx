@@ -79,6 +79,7 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
     finalizeItemAdd,
     handleSearchKeyDown,
     handlePost,
+    safeNavigate,
     currency,
     isRecovery,
     suppliers,
@@ -87,13 +88,26 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
     handleExport,
     printData,
     editingInvoiceId,
-    isAIProcessing,
+    isProcessingAI, setIsProcessingAI,
+    hasUnsavedAI,
     showAIConfirmModal,
     setShowAIConfirmModal,
     handleAIImport,
     applyAIParsedData,
     resetInvoiceState
   } = usePurchases(onNavigate);
+
+  // Navigation Guard: Browser Refresh/Close
+  React.useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isProcessingAI || hasUnsavedAI || items.length > 0) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isProcessingAI, hasUnsavedAI, items.length]);
 
   // Helper to open modal with product data
   const handleSelectProduct = (p: any) => {
@@ -163,7 +177,7 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
           <div className="flex items-center gap-6">
             <div className="flex items-center gap-1">
               <button 
-                onClick={() => onNavigate?.('dashboard')} 
+                onClick={() => safeNavigate('dashboard')} 
                 className="w-8 h-8 bg-slate-50 border border-slate-100 rounded-lg flex items-center justify-center text-[#1E4D4D] hover:bg-slate-100 transition-all ml-2"
                 title="الرجوع للرئيسية"
               >
@@ -183,10 +197,10 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
                 />
                 <button 
                   onClick={() => fileInputRef.current?.click()}
-                  disabled={isAIProcessing}
+                  disabled={isProcessingAI}
                   className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-lg text-[11px] font-black hover:bg-emerald-100 transition-all active:scale-95 disabled:opacity-50"
                 >
-                  {isAIProcessing ? (
+                  {isProcessingAI ? (
                     <div className="w-4 h-4 border-2 border-emerald-700/30 border-t-emerald-700 rounded-full animate-spin" />
                   ) : (
                     <Sparkles size={14} />
@@ -231,7 +245,7 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
         </div>
 
         {/* DATA DIVIDERS SECTION */}
-        <div className="border-t border-slate-50">
+        <form onSubmit={(e) => e.preventDefault()} className="border-t border-slate-50">
           <div className="flex border-b border-slate-50">
             <div className="w-[60%] flex items-center h-10 px-3 border-l border-slate-50">
               <User className="text-slate-300 ml-2" size={14} />
@@ -317,7 +331,7 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
               </div>
             </div>
           </div>
-        </div>
+        </form>
       </div>
 
       <CameraModule 
@@ -479,7 +493,7 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
             التسويات
           </button>
           <button 
-            disabled={isSaving || items.length === 0}
+            disabled={isSaving || items.length === 0 || isProcessingAI}
             onClick={handleSaveInvoice}
             className="flex-[2] h-12 bg-[#1E4D4D] text-white rounded-xl font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/20 disabled:opacity-50"
           >
@@ -508,34 +522,38 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
           <div className="space-y-2">
             <h3 className="text-lg font-black text-[#1E4D4D]">تم تحليل المستند بنجاح</h3>
             <p className="text-sm font-bold text-slate-500">
-              لقد تم تعبئة البيانات آلياً من المستند، هل تريد مراجعة البيانات وتعديلها أم الحفظ الفوري؟
+              تم تعبئة البيانات، هل تريد التعديل؟
             </p>
           </div>
           <div className="flex flex-col gap-3">
             <button 
-              onClick={() => applyAIParsedData(false)}
+              onClick={() => applyAIParsedData()}
               className="w-full h-12 bg-[#1E4D4D] text-white rounded-xl font-black text-sm flex items-center justify-center gap-2"
             >
               <Edit3 size={18} />
-              نعم - للمراجعة والتعديل
+              نعم (تعديل يدوي)
             </button>
             <button 
-              onClick={() => applyAIParsedData(true)}
+              onClick={() => {
+                applyAIParsedData();
+                setTimeout(() => handlePost(), 500);
+              }}
               className="w-full h-12 bg-emerald-600 text-white rounded-xl font-black text-sm flex items-center justify-center gap-2"
             >
               <CheckCircle2 size={18} />
-              لا - للحفظ الفوري
+              لا (حفظ فوراً)
             </button>
             <button 
               onClick={() => {
                 setShowAIConfirmModal(false);
                 resetInvoiceState();
-                onNavigate?.('dashboard');
+                setIsProcessingAI(false);
+                safeNavigate('dashboard');
               }}
               className="w-full h-12 bg-red-50 text-red-600 rounded-xl font-black text-sm flex items-center justify-center gap-2"
             >
               <Trash2 size={18} />
-              حذف - لإلغاء العملية
+              حذف وإلغاء العملية
             </button>
           </div>
         </div>

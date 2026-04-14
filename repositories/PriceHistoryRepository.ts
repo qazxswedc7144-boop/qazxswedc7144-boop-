@@ -35,6 +35,7 @@ export const PriceHistoryRepository = {
    * جلب السعر بناءً على المورد/العميل المفضل (الأكثر تكراراً)
    */
   getPreferredPartnerPrice: async (productId: string): Promise<{ price: number, partner: string } | null> => {
+    if (!productId) return null;
     const cacheKey = `preferred_${productId}`;
     const cached = PRICE_CACHE.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < CACHE_TTL) return cached.data;
@@ -84,6 +85,7 @@ export const PriceHistoryRepository = {
    * Fix: Added missing getRecentInsights method required by SalesRepository.
    */
   getRecentInsights: async (productId: string, limit: number = 5): Promise<PriceHistory[]> => {
+    if (!productId) return [];
     const cacheKey = `recent_${productId}_${limit}`;
     const cached = PRICE_CACHE.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < CACHE_TTL) return cached.data;
@@ -99,6 +101,7 @@ export const PriceHistoryRepository = {
   },
 
   getAveragePriceForProduct: async (productId: string): Promise<number | null> => {
+    if (!productId) return null;
     const cacheKey = `avg_${productId}`;
     const cached = PRICE_CACHE.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < CACHE_TTL) return cached.data;

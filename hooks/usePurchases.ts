@@ -12,6 +12,7 @@ import { syncService } from '../services/sync.service';
 import { predictionService } from '../services/predictionService';
 import { saveLearning } from '../services/learningService';
 import { matchProductName } from '../services/productMatcher';
+import { BackupService } from '../services/backupService';
 
 const DRAFT_KEY = 'pharmaflow_purchase_draft';
 
@@ -43,7 +44,8 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
   const [isAdjustmentsOpen, setIsAdjustmentsOpen] = useState(false);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [isViewerOpen, setIsViewerOpen] = useState(false);
-  const [isAIProcessing, setIsAIProcessing] = useState(false);
+  const [isProcessingAI, setIsProcessingAI] = useState(false);
+  const [hasUnsavedAI, setHasUnsavedAI] = useState(false);
   const [showAIConfirmModal, setShowAIConfirmModal] = useState(false);
   const [aiParsedData, setAIParsedData] = useState<any>(null);
   const [adjData, setAdjData] = useState({
@@ -102,6 +104,8 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
     setEditingInvoiceId(null);
     setAIParsedData(null);
     setShowAIConfirmModal(false);
+    setIsProcessingAI(false);
+    setHasUnsavedAI(false);
   }, [setEditingInvoiceId]);
 
   const [isDateLockedStatus, setIsDateLockedStatus] = useState(false);
@@ -273,20 +277,34 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
     setHeader(prev => ({ ...prev, supplier_id: '' }));
   };
 
-  const handleAIImport = async (file: File | string) => {
-    setIsAIProcessing(true);
+  const safeNavigate = useCallback((path: string) => {
     try {
+      onNavigate?.(path as any);
+    } catch (error) {
+      console.error("Navigation failed, falling back to window.location", error);
+      window.location.hash = path; // Simple fallback for hash routing if applicable
+    }
+  }, [onNavigate]);
+
+  const handleAIImport = async (file: File | string) => {
+    console.log("IMPORT FLOW RUNNING");
+    console.log("STEP 1: FILE SELECTED");
+    setIsProcessingAI(true);
+    try {
+      console.log("STEP 2: AI START");
       const { processInvoice } = await import('../services/smartImportEngine');
       const parsed = await processInvoice(file);
 
-      console.log("AI RESULT:", parsed);
-
+      console.log("STEP 3: AI DONE", parsed);
+      
       if (!parsed || !parsed.items || parsed.items.length === 0) {
-        addToast("لم يتم التعرف على بيانات الفاتورة", "error");
+        addToast("لم يتم التعرف على بيانات الفاتورة", "warning");
+        setIsProcessingAI(false);
         return;
       }
 
       setAIParsedData(parsed);
+      console.log("STEP 4: MODAL OPENED");
       setShowAIConfirmModal(true);
       
       // Handle attachment preview
@@ -303,16 +321,16 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
     } catch (error: any) {
       console.error("AI Import Error:", error);
       addToast("فشل تحليل الفاتورة", "error");
-    } finally {
-      setIsAIProcessing(false);
+      setIsProcessingAI(false);
     }
   };
 
-  const applyAIParsedData = async (autoSave = false) => {
+  const applyAIParsedData = async () => {
     if (!aiParsedData) return;
 
     if (!aiParsedData.items || aiParsedData.items.length === 0) {
-      addToast("الفاتورة لا تحتوي على أصناف", "warning");
+      addToast("لم يتم التعرف على بيانات الفاتورة", "warning");
+      setIsProcessingAI(false);
       return;
     }
 
@@ -324,41 +342,29 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
     );
     
     if (!supplier && supplierName) {
-      if (window.confirm(`المورد "${supplierName}" غير موجود. هل تريد إضافته؟`)) {
-        const newId = `SUP-${Date.now()}`;
-        const newSup: Supplier = {
-          id: newId,
-          Supplier_ID: newId,
-          Supplier_Name: supplierName,
-          Balance: 0,
-          openingBalance: 0,
-          Is_Active: true,
-          Created_At: new Date().toISOString()
-        };
-        await db.saveSupplier(newSup);
-        await refreshGlobal();
-        supplier = newSup;
-      }
+      setNewSupplierName(supplierName);
+      setIsAddSupplierModalOpen(true);
     }
 
+    // Incremental Injection: Only update header if empty
     setHeader(prev => ({
       ...prev,
-      invoice_number: aiParsedData.invoice_number || '',
-      supplier_id: supplier?.id || '',
-      payment_method: aiParsedData.type === 'credit' ? 'Credit' : 'Cash',
-      isReturn: aiParsedData.type === 'return',
-      date: aiParsedData.date || new Date().toISOString().split('T')[0],
-      notes: aiParsedData.notes || ''
+      invoice_number: prev.invoice_number || aiParsedData.invoice_number || '',
+      supplier_id: prev.supplier_id || supplier?.id || '',
+      payment_method: prev.payment_method === 'Cash' && aiParsedData.type === 'credit' ? 'Credit' : prev.payment_method,
+      isReturn: prev.isReturn || aiParsedData.type === 'return',
+      date: prev.date || aiParsedData.date || new Date().toISOString().split('T')[0],
+      notes: prev.notes ? `${prev.notes}\n${aiParsedData.notes || ''}` : (aiParsedData.notes || '')
     }));
-    setSupplierSearchTerm(supplier?.Supplier_Name || supplierName);
+    
+    if (!supplierSearchTerm && (supplier?.Supplier_Name || supplierName)) {
+      setSupplierSearchTerm(supplier?.Supplier_Name || supplierName);
+    }
 
-    // Map items
+    // Map items and MERGE with existing
     const mappedItems: InvoiceItem[] = [];
     for (const item of aiParsedData.items) {
-      // Try advanced matching
       let product = matchProductName(item.name, products);
-      
-      // Fallback to simple include check if no match found
       if (!product) {
         product = products.find(p => 
           p.Name.toLowerCase().includes(item.name.toLowerCase()) || 
@@ -368,28 +374,24 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
       
       mappedItems.push({
         id: `PUR-DET-${Date.now()}-${Math.random()}`,
-        parent_id: aiParsedData.invoice_number || '',
+        parent_id: header.invoice_number || aiParsedData.invoice_number || '',
         product_id: product?.id || `manual-${Date.now()}-${Math.random()}`,
         name: item.name,
         qty: item.quantity || 1,
         price: item.price || 0,
         sum: (item.quantity || 1) * (item.price || 0),
-        row_order: mappedItems.length + 1,
+        row_order: items.length + mappedItems.length + 1,
         expiryDate: item.expiryDate,
         categoryId: product?.categoryId || ''
       } as any);
     }
-    setItems(mappedItems);
-    setShowAIConfirmModal(false);
     
-    if (autoSave) {
-      // Small delay to ensure state is updated before handlePost
-      setTimeout(() => {
-        handlePost();
-      }, 300);
-    } else {
-      addToast("تم تعبئة البيانات بنجاح", "success");
-    }
+    setItems(prev => [...prev, ...mappedItems]);
+    setShowAIConfirmModal(false);
+    setIsProcessingAI(false);
+    setHasUnsavedAI(true);
+    
+    addToast("تم استخراج البيانات بنجاح، يرجى مراجعتها وتعديلها قبل الحفظ", "success");
   };
 
   const vTotalSum = useMemo(() => {
@@ -535,7 +537,13 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
       }
 
       refreshGlobal();
-      onNavigate?.('dashboard');
+      setHasUnsavedAI(false);
+      
+      // Auto Backup after save (Google Apps Script)
+      const password = localStorage.getItem('pharmaflow_backup_password') || 'pharmaflow-internal-secure-key-2026';
+      BackupService.uploadBackup(password).catch(err => console.error("Auto-backup failed:", err));
+
+      safeNavigate('dashboard');
     } catch (error) {
       console.error("Save error", error);
       addToast("فشل في حفظ الفاتورة", "error");
@@ -616,6 +624,7 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
     finalizeItemAdd,
     handleSearchKeyDown,
     handlePost,
+    safeNavigate,
     currency,
     isRecovery,
     suppliers,
@@ -624,7 +633,8 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
     handleExport,
     printData,
     editingInvoiceId,
-    isAIProcessing,
+    isProcessingAI, setIsProcessingAI,
+    hasUnsavedAI,
     showAIConfirmModal,
     setShowAIConfirmModal,
     handleAIImport,

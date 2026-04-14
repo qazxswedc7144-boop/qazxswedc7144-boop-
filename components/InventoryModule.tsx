@@ -26,8 +26,20 @@ const InventoryModule: React.FC<{ onNavigate?: (view: any) => void }> = ({ onNav
   const { refreshGlobal, addToast, currency } = useUI();
   const containerRef = useRef<HTMLDivElement>(null);
   
-  const [searchTerm, setSearchTerm] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (products.length > 0) {
+      setLoading(false);
+    } else {
+      const timer = setTimeout(() => setLoading(false), 500);
+      return () => clearTimeout(timer);
+    }
+  }, [products]);
+  
+  const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [sortAsc, setSortAsc] = useState(true);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [sortBy, setSortBy] = useState<'name' | 'stock' | 'price' | 'expiry' | 'category'>('name');
   const [filterBy, setFilterBy] = useState<'all' | 'low' | 'out' | 'expired'>('all');
@@ -63,11 +75,11 @@ const InventoryModule: React.FC<{ onNavigate?: (view: any) => void }> = ({ onNav
   }, [editingProduct]);
 
   useEffect(() => {
-    const handler = setTimeout(() => setDebouncedSearch(searchTerm), 300);
+    const handler = setTimeout(() => setDebouncedSearch(search), 300);
     return () => clearTimeout(handler);
-  }, [searchTerm]);
+  }, [search]);
 
-  const filteredAndSorted = useMemo(() => {
+  const filteredProducts = useMemo(() => {
     let result = [...products];
     
     if (selectedCategoryId !== 'ALL') {
@@ -89,14 +101,11 @@ const InventoryModule: React.FC<{ onNavigate?: (view: any) => void }> = ({ onNav
     }
 
     return result.sort((a, b) => {
-      if (sortBy === 'name') return a.Name.localeCompare(b.Name, 'ar');
-      if (sortBy === 'stock') return b.StockQuantity - a.StockQuantity;
-      if (sortBy === 'price') return b.UnitPrice - a.UnitPrice;
-      if (sortBy === 'expiry') return (a.ExpiryDate || '9999').localeCompare(b.ExpiryDate || '9999');
-      if (sortBy === 'category') return (a.categoryName || '').localeCompare(b.categoryName || '', 'ar');
-      return 0;
+      const nameA = a.Name.toLowerCase();
+      const nameB = b.Name.toLowerCase();
+      return sortAsc ? nameA.localeCompare(nameB, 'ar') : nameB.localeCompare(nameA, 'ar');
     });
-  }, [products, debouncedSearch, sortBy, filterBy, selectedCategoryId]);
+  }, [products, debouncedSearch, sortAsc, filterBy, selectedCategoryId]);
 
   const handleAdjustment = async () => {
     if (!editingProduct || adjustment.qty === 0) return;
@@ -123,58 +132,76 @@ const InventoryModule: React.FC<{ onNavigate?: (view: any) => void }> = ({ onNav
     }
   };
 
-  const ProductRow = ({ index, style }: { index: number, style: React.CSSProperties }) => {
-    const p = filteredAndSorted[index];
-    const lastRealPurchasePrice = PurchaseRepository.getLastPurchasePriceForItem(p.id);
-
-    return (
-      <div style={style} className="px-8 py-3">
-        <motion.div 
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-white border border-slate-100 rounded-[40px] h-full flex items-center justify-between px-10 shadow-sm hover:shadow-xl hover:border-[#1E4D4D]/20 transition-all group cursor-pointer active:scale-[0.99]"
-          onClick={() => { setEditingProduct(p); setActiveTab('details'); }}
-        >
-           <div className="flex items-center gap-8 flex-1">
-              <div className="w-16 h-16 bg-slate-50 text-[#1E4D4D] rounded-[24px] flex items-center justify-center text-2xl shadow-inner group-hover:scale-110 transition-transform">
-                <Box size={28} />
-              </div>
-              <div className="min-w-0">
-                <h3 className="text-xl font-black text-[#1E4D4D] truncate leading-none mb-2">{p.Name}</h3>
-                <div className="flex items-center gap-4">
-                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">ID: {p.id}</p>
-                   <div className="w-1.5 h-1.5 bg-slate-200 rounded-full"></div>
-                   <Badge variant={p.StockQuantity <= p.MinLevel ? 'danger' : 'info'} className="!rounded-full px-3 py-0.5 text-[9px] font-black uppercase tracking-widest">
-                    {p.categoryName || 'بدون تصنيف'}
-                   </Badge>
-                </div>
-              </div>
-           </div>
-           
-           <div className="flex items-center gap-16">
-              <div className="text-center hidden lg:block border-r border-slate-50 pr-12">
-                 <p className="text-[10px] font-black text-slate-300 uppercase mb-1 tracking-widest flex items-center justify-center gap-2">
-                  <TrendingUp size={12}/> آخر تكلفة
-                 </p>
-                 <p className="text-lg font-black text-[#1E4D4D]">
-                    {lastRealPurchasePrice ? `${lastRealPurchasePrice.toLocaleString()} ${currency}` : '---'}
-                 </p>
-              </div>
-              <div className="text-center w-32">
-                 <p className="text-[10px] font-black text-slate-300 uppercase mb-1 tracking-widest">الرصيد الحالي</p>
-                 <div className="flex items-center justify-center gap-2">
-                   <p className={`text-3xl font-black ${p.StockQuantity <= p.MinLevel ? 'text-red-500' : 'text-[#1E4D4D]'}`}>{p.StockQuantity}</p>
-                   <span className="text-[10px] font-bold text-slate-400 uppercase">{p.DefaultUnit || 'حبة'}</span>
-                 </div>
-              </div>
-              <div className="w-12 h-12 bg-slate-50 text-slate-300 rounded-2xl flex items-center justify-center group-hover:bg-[#1E4D4D] group-hover:text-white transition-all shadow-sm">
-                <ChevronRight size={24} />
-              </div>
-           </div>
-        </motion.div>
-      </div>
-    );
+  const exportCSV = () => {
+    const headers = ["الاسم", "الكمية", "السعر"];
+    const rows = filteredProducts.map(p => [p.Name, p.StockQuantity, p.UnitPrice]);
+    const csv = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "inventory.csv";
+    a.click();
   };
+
+  const printInventory = () => {
+    const content = filteredProducts.map(p => `${p.Name} - الكمية: ${p.StockQuantity} - السعر: ${p.UnitPrice}`).join("\n");
+    const win = window.open("", "", "width=800,height=600");
+    if (win) {
+      win.document.write(`<pre>${content}</pre>`);
+      win.print();
+    }
+  };
+
+const ProductItem = React.memo(({ product, currency, onClick }: { product: Product, currency: string, onClick: () => void }) => {
+  const lastRealPurchasePrice = PurchaseRepository.getLastPurchasePriceForItem(product.id);
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="bg-white border border-slate-100 rounded-[40px] h-full flex items-center justify-between px-10 shadow-sm hover:shadow-xl hover:border-[#1E4D4D]/20 transition-all group cursor-pointer active:scale-[0.99]"
+      onClick={onClick}
+    >
+        <div className="flex items-center gap-8 flex-1">
+          <div className="w-16 h-16 bg-slate-50 text-[#1E4D4D] rounded-[24px] flex items-center justify-center text-2xl shadow-inner group-hover:scale-110 transition-transform">
+            <Box size={28} />
+          </div>
+          <div className="min-w-0">
+            <h3 className="text-xl font-black text-[#1E4D4D] truncate leading-none mb-2">{product.Name}</h3>
+            <div className="flex items-center gap-4">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">ID: {product.id}</p>
+                <div className="w-1.5 h-1.5 bg-slate-200 rounded-full"></div>
+                <Badge variant={product.StockQuantity <= product.MinLevel ? 'danger' : 'info'} className="!rounded-full px-3 py-0.5 text-[9px] font-black uppercase tracking-widest">
+                {product.categoryName || 'بدون تصنيف'}
+                </Badge>
+            </div>
+          </div>
+        </div>
+        
+        <div className="flex items-center gap-16">
+          <div className="text-center hidden lg:block border-r border-slate-50 pr-12">
+              <p className="text-[10px] font-black text-slate-300 uppercase mb-1 tracking-widest flex items-center justify-center gap-2">
+              <TrendingUp size={12}/> آخر تكلفة
+              </p>
+              <p className="text-lg font-black text-[#1E4D4D]">
+                {lastRealPurchasePrice ? `${lastRealPurchasePrice.toLocaleString()} ${currency}` : '---'}
+              </p>
+          </div>
+          <div className="text-center w-32">
+              <p className="text-[10px] font-black text-slate-300 uppercase mb-1 tracking-widest">الرصيد الحالي</p>
+              <div className="flex items-center justify-center gap-2">
+                <p className={`text-3xl font-black ${product.StockQuantity <= product.MinLevel ? 'text-red-500' : 'text-[#1E4D4D]'}`}>{product.StockQuantity}</p>
+                <span className="text-[10px] font-bold text-slate-400 uppercase">{product.DefaultUnit || 'حبة'}</span>
+              </div>
+          </div>
+          <div className="w-12 h-12 bg-slate-50 text-slate-300 rounded-2xl flex items-center justify-center group-hover:bg-[#1E4D4D] group-hover:text-white transition-all shadow-sm">
+            <ChevronRight size={24} />
+          </div>
+        </div>
+    </motion.div>
+  );
+});
 
   return (
     <div className="flex flex-col min-h-screen bg-[#F8FAFA] font-['Cairo']" dir="rtl">
@@ -223,30 +250,21 @@ const InventoryModule: React.FC<{ onNavigate?: (view: any) => void }> = ({ onNav
             <Search className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-300" size={24} />
             <input 
               className="w-full h-16 bg-slate-50 border border-slate-100 rounded-[24px] pr-16 pl-6 text-sm font-black focus:bg-white focus:border-[#1E4D4D] outline-none shadow-inner transition-all" 
-              placeholder="ابحث عن صنف بالاسم، الكود، أو الباركود..." 
-              value={searchTerm} 
-              onChange={e => setSearchTerm(e.target.value)} 
+              placeholder="بحث عن صنف..." 
+              value={search} 
+              onChange={e => setSearch(e.target.value)} 
             />
           </div>
           
-          <div className="flex items-center gap-3 bg-slate-50 p-2 rounded-[24px] border border-slate-100">
-            <button 
-              onClick={() => setFilterBy('all')}
-              className={`px-6 h-12 rounded-[18px] text-[11px] font-black transition-all flex items-center gap-2 ${filterBy === 'all' ? 'bg-[#1E4D4D] text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'}`}
-            >
-              <Layers size={14} /> الكل
+          <div className="flex items-center gap-3">
+            <button onClick={() => setSortAsc(!sortAsc)} className="h-16 px-6 bg-white border border-slate-100 rounded-[24px] font-black text-xs text-[#1E4D4D] shadow-sm hover:bg-slate-50 transition-all">
+              فرز حسب الاسم {sortAsc ? "⬆️" : "⬇️"}
             </button>
-            <button 
-              onClick={() => setFilterBy('low')}
-              className={`px-6 h-12 rounded-[18px] text-[11px] font-black transition-all flex items-center gap-2 ${filterBy === 'low' ? 'bg-amber-500 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'}`}
-            >
-              <AlertCircle size={14} /> نواقص
+            <button onClick={exportCSV} className="h-16 px-6 bg-white border border-slate-100 rounded-[24px] font-black text-xs text-[#1E4D4D] shadow-sm hover:bg-slate-50 transition-all">
+              تصدير
             </button>
-            <button 
-              onClick={() => setFilterBy('out')}
-              className={`px-6 h-12 rounded-[18px] text-[11px] font-black transition-all flex items-center gap-2 ${filterBy === 'out' ? 'bg-red-500 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'}`}
-            >
-              <Package size={14} /> منتهي
+            <button onClick={printInventory} className="h-16 px-6 bg-white border border-slate-100 rounded-[24px] font-black text-xs text-[#1E4D4D] shadow-sm hover:bg-slate-50 transition-all">
+              طباعة
             </button>
           </div>
         </div>
@@ -273,15 +291,27 @@ const InventoryModule: React.FC<{ onNavigate?: (view: any) => void }> = ({ onNav
 
       {/* List Area */}
       <div className="flex-1 bg-[#F8FAFA] pt-6" ref={containerRef}>
-        <List 
-          height={containerRef.current?.offsetHeight || 600} 
-          itemCount={filteredAndSorted.length} 
-          itemSize={120} 
-          width="100%" 
-          className="custom-scrollbar"
-        >
-          {ProductRow}
-        </List>
+        {loading ? (
+          <div className="flex items-center justify-center h-full text-slate-400 font-black">جاري التحميل...</div>
+        ) : (
+          <List 
+            height={containerRef.current?.offsetHeight || 600} 
+            itemCount={filteredProducts.length} 
+            itemSize={120} 
+            width="100%" 
+            className="custom-scrollbar"
+          >
+            {({ index, style }) => (
+              <div style={style} className="px-8 py-3">
+                <ProductItem 
+                  product={filteredProducts[index]} 
+                  currency={currency} 
+                  onClick={() => { setEditingProduct(filteredProducts[index]); setActiveTab('details'); }}
+                />
+              </div>
+            )}
+          </List>
+        )}
       </div>
 
       {/* Edit Modal */}

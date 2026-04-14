@@ -9,7 +9,7 @@ import {
   Plus, Minus, ArrowLeft, CheckCircle2, AlertCircle, Package, Clock, Calendar,
   ShoppingCart, User, CreditCard, Wallet, Tag, Trash2, ChevronRight, Save, Search,
   RotateCcw, Camera, Edit3, Home, History, Printer, FileSpreadsheet, ArrowRight,
-  Percent, ChevronDown, LayoutList
+  Percent, ChevronDown, LayoutList, Sparkles
 } from 'lucide-react';
 import { useSales } from '../hooks/useSales';
 import { useAppStore } from '../store/useAppStore';
@@ -68,8 +68,17 @@ const SalesModule: React.FC<{ onNavigate?: (view: any, params?: any) => void }> 
     selectCustomer,
     handleCustomerBlur,
     confirmAddCustomer,
-    cancelAddCustomer
+    cancelAddCustomer,
+    isProcessingAI, setIsProcessingAI,
+    hasUnsavedAI,
+    showAIConfirmModal,
+    setShowAIConfirmModal,
+    handleAIImport,
+    applyAIParsedData,
+    resetInvoiceState
   } = useSales(onNavigate);
+
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const handleAddItem = (item: any) => {
     // Logic to add item to sales list
@@ -114,6 +123,30 @@ const SalesModule: React.FC<{ onNavigate?: (view: any, params?: any) => void }> 
               <h2 className="text-lg font-black text-[#1E4D4D] whitespace-nowrap">مبيعات</h2>
               <div className="mr-1">
                 <PrintMenu data={printData} type="SALE" items={items} />
+              </div>
+              <div className="mr-2 flex items-center gap-2">
+                <input 
+                  type="file" 
+                  ref={fileInputRef} 
+                  className="hidden" 
+                  accept=".jpg,.jpeg,.png,.pdf,.doc,.docx,.xls,.xlsx"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handleAIImport(file);
+                  }}
+                />
+                <button 
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isProcessingAI}
+                  className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-lg text-[11px] font-black hover:bg-emerald-100 transition-all active:scale-95 disabled:opacity-50"
+                >
+                  {isProcessingAI ? (
+                    <div className="w-4 h-4 border-2 border-emerald-700/30 border-t-emerald-700 rounded-full animate-spin" />
+                  ) : (
+                    <Sparkles size={14} />
+                  )}
+                  الاستيراد الذكي
+                </button>
               </div>
             </div>
 
@@ -240,7 +273,7 @@ const SalesModule: React.FC<{ onNavigate?: (view: any, params?: any) => void }> 
       <CameraModule 
         isOpen={isCameraOpen} 
         onClose={() => setIsCameraOpen(false)} 
-        onCapture={(base64) => setHeader({ ...header, attachment: base64 })}
+        onCapture={(base64) => handleAIImport(base64)}
       />
 
       {header.attachment && (
@@ -408,6 +441,56 @@ const SalesModule: React.FC<{ onNavigate?: (view: any, params?: any) => void }> 
           </button>
         </div>
       </div>
+
+      {/* AI CONFIRMATION MODAL */}
+      <Modal
+        isOpen={showAIConfirmModal}
+        onClose={() => setShowAIConfirmModal(false)}
+        title="المدير الذكي للمبيعات"
+      >
+        <div className="space-y-6 text-center p-4">
+          <div className="w-20 h-20 bg-emerald-50 rounded-full flex items-center justify-center mx-auto text-emerald-600">
+            <Sparkles size={40} />
+          </div>
+          <div className="space-y-2">
+            <h3 className="text-lg font-black text-[#1E4D4D]">تم تحليل المستند بنجاح</h3>
+            <p className="text-sm font-bold text-slate-500">
+              تم تعبئة البيانات، هل تريد التعديل؟
+            </p>
+          </div>
+          <div className="flex flex-col gap-3">
+            <button 
+              onClick={() => applyAIParsedData()}
+              className="w-full h-12 bg-[#1E4D4D] text-white rounded-xl font-black text-sm flex items-center justify-center gap-2"
+            >
+              <Edit3 size={18} />
+              نعم (تعديل يدوي)
+            </button>
+            <button 
+              onClick={() => {
+                applyAIParsedData();
+                setTimeout(() => handlePost(), 500);
+              }}
+              className="w-full h-12 bg-emerald-600 text-white rounded-xl font-black text-sm flex items-center justify-center gap-2"
+            >
+              <CheckCircle2 size={18} />
+              لا (حفظ فوراً)
+            </button>
+            <button 
+              onClick={() => {
+                setShowAIConfirmModal(false);
+                resetInvoiceState();
+                setIsProcessingAI(false);
+                onNavigate?.('dashboard');
+              }}
+              className="w-full h-12 bg-red-50 text-red-600 rounded-xl font-black text-sm flex items-center justify-center gap-2"
+            >
+              <Trash2 size={18} />
+              حذف وإلغاء العملية
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       {/* POPUP ITEM ENTRY */}
       <ItemEntryModal 

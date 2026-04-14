@@ -101,8 +101,16 @@ export const authService = {
   },
 
   login: async (email: string, password: string): Promise<boolean> => {
+    const { BehaviorMonitor } = await import('./BehaviorMonitor');
     const user = await db.users.get(email);
-    if (!user || !user.password_hash || !user.salt) return false;
+    
+    if (!user || !user.password_hash || !user.salt) {
+      await BehaviorMonitor.trackAction(email || 'UNKNOWN', 'SECURITY_BREACH', { 
+        message: `محاولة دخول فاشلة لمستخدم غير موجود: ${email}`,
+        type: 'INVALID_USER'
+      });
+      return false;
+    }
 
     const inputHash = authService.hashPassword(password, user.salt);
     if (inputHash === user.password_hash) {
@@ -111,8 +119,22 @@ export const authService = {
       
       // Update last login
       await db.users.update(email, { lastLogin: new Date().toISOString() });
+      
+      // Track successful login
+      await BehaviorMonitor.trackAction(user.user_id, 'LOGIN', { 
+        message: `دخول ناجح للمستخدم: ${user.User_Name}`,
+        email: user.User_Email
+      });
+      
       return true;
     }
+    
+    // Track failed login attempt
+    await BehaviorMonitor.trackAction(user.user_id, 'SECURITY_BREACH', { 
+      message: `كلمة مرور خاطئة للمستخدم: ${user.User_Name}`,
+      type: 'INVALID_PASSWORD'
+    });
+    
     return false;
   },
 

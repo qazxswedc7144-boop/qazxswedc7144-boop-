@@ -3,22 +3,22 @@ import { db } from './database';
 import { ValidationService as validationService } from './ValidationService';
 import { TransactionService } from './TransactionService';
 import { ErrorService } from './ErrorService';
-import { FIFOEngine as fifoEngine } from '../engines/fifoEngine';
-import { StockMovementEngine as stockEngine } from '../engines/stockMovementEngine';
-import { AccountingEngine as accountingEngine } from '../engines/accountingEngine';
-import { ReportEngine as reportEngine } from '../engines/reportEngine';
-import { InvoiceItem, InvoiceStatus, Sale, Purchase } from '../types';
-import { InvoiceRepository } from '../repositories/invoice.repository';
-import { AccountRepository } from '../repositories/account.repository';
+import { FIFOEngine as fifoEngine } from '@/core/engines/fifoEngine';
+import { StockMovementEngine as stockEngine } from '@/core/engines/stockMovementEngine';
+import { AccountingEngine as accountingEngine } from '@/core/engines/accountingEngine';
+import { ReportEngine as reportEngine } from '@/core/engines/reportEngine';
+import { InvoiceItem, InvoiceStatus, Sale, Purchase } from '@/types';
+import { InvoiceRepository } from '@/repositories/invoice.repository';
+import { AccountRepository } from '@/repositories/account.repository';
 import { authService } from './auth.service';
 import { GlobalGuard } from './GlobalGuard';
 import { SharedAutomationActions } from './logic/SharedAutomationActions';
 import { BackupService } from './backupService';
 import { LockService } from './LockService';
 import { PeriodLockEngine } from './PeriodLockEngine';
-import { FinancialTransactionRepository } from '../repositories/FinancialTransactionRepository';
-import { SupplierRepository } from '../repositories/SupplierRepository';
-import { ProductRepository } from '../repositories/ProductRepository';
+import { FinancialTransactionRepository } from '@/repositories/FinancialTransactionRepository';
+import { SupplierRepository } from '@/repositories/SupplierRepository';
+import { ProductRepository } from '@/repositories/ProductRepository';
 
 export interface InvoiceProcessingRequest {
   type: 'SALE' | 'PURCHASE';
@@ -182,40 +182,11 @@ export class SystemOrchestrator {
         await BackupService.createBackup(`Auto Backup before Unpost #${invoiceId}`, 'PRE_UNPOST', true);
 
         // 2. Reverse Journal Entries
-        const entries = await db.getJournalEntries();
-        const originalEntries = entries.filter(e => e.sourceId === invoiceId);
-        
-        for (const entry of originalEntries) {
-          if (entry.sourceType === 'AUTO_REVERSAL') continue; 
-          
-          const reversalEntry = {
-            id: db.generateId('REV'),
-            date: new Date().toISOString(),
-            description: `Reversal of ${entry.id} for Invoice #${invoiceId}`,
-            TotalAmount: entry.TotalAmount,
-            status: 'Posted',
-            sourceId: invoiceId,
-            sourceType: 'AUTO_REVERSAL',
-            branchId: entry.branchId,
-            lines: entry.lines.map(l => ({
-              ...l,
-              lineId: db.generateId('DET'),
-              debit: l.credit,
-              credit: l.debit,
-              type: l.type === 'DEBIT' ? 'CREDIT' : 'DEBIT',
-            }))
-          };
-          await AccountRepository.addEntry(reversalEntry as any);
-        }
+        await AccountRepository.deleteEntriesBySource(invoiceId);
 
-        // 3. Reverse Stock Movements
-        const items = (invoice as any).items || [];
-        const isReturn = type === 'SALE' ? !!(invoice as any).isReturn : (invoice as any).invoiceType === 'مرتجع';
-        
-        for (const item of items) {
-          const changeQty = type === 'SALE' ? (isReturn ? -item.qty : item.qty) : (isReturn ? item.qty : -item.qty);
-          await ProductRepository.updateStock(item.product_id, changeQty, type as any, invoiceId, 'REVERSAL');
-        }
+        // 3. Reverse Stock Movements & FIFO
+        await stockEngine.reverseMovements(invoiceId);
+        await fifoEngine.reverseFIFO(invoiceId);
 
         // 4. Reverse Financial Impact
         const total = (invoice as any).finalTotal || (invoice as any).totalAmount;

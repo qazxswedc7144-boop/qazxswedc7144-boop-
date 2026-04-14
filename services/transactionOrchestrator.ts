@@ -15,13 +15,14 @@ import { FinancialIntegrityValidator } from './validators/FinancialIntegrityVali
 import { ReconciliationEngine } from './logic/ReconciliationEngine';
 import { BusinessRulesEngine } from './logic/BusinessRulesEngine';
 import { BackupService } from './backupService';
+import { pushData, pushChanges } from './syncService';
 import { LockService } from './LockService';
 import { AIAuditEngine } from './AIAuditEngine';
 import { InventoryService } from './InventoryService';
 import { AccountingEngine } from './AccountingEngine';
 import { PeriodLockEngine } from './PeriodLockEngine';
 import { FIFOEngine } from './FIFOEngine';
-import { AIInsightsEngine } from '../engines/aiInsightsEngine';
+import { AIInsightsEngine } from '@/core/engines/aiInsightsEngine';
 
 export interface SaleOptions {
   isCash: boolean;
@@ -54,37 +55,79 @@ import { SystemOrchestrator } from './SystemOrchestrator';
 // We'll modify the existing transactionOrchestrator to use SystemOrchestrator
 export const transactionOrchestrator = {
   async processInvoiceTransaction(invoice: InvoiceRequest): Promise<{ success: boolean; refId?: string }> {
-    return await SystemOrchestrator.processInvoice(invoice as any);
+    const result = await SystemOrchestrator.processInvoice(invoice as any);
+    if (result.success) {
+      try {
+        await pushChanges();
+      } catch (err) {
+        console.error("Auto-sync failed:", err);
+      }
+    }
+    return result;
   },
 
   async unpostInvoice(invoiceId: string, type: 'SALE' | 'PURCHASE'): Promise<{ success: boolean }> {
-    return await SystemOrchestrator.unpostInvoice(invoiceId, type);
+    const result = await SystemOrchestrator.unpostInvoice(invoiceId, type);
+    if (result.success) {
+      try {
+        await pushChanges();
+      } catch (err) {
+        console.error("Auto-sync failed:", err);
+      }
+    }
+    return result;
   },
 
   async deleteInvoice(invoiceId: string, type: 'SALE' | 'PURCHASE'): Promise<{ success: boolean }> {
-    return await SystemOrchestrator.deleteInvoice(invoiceId, type);
+    const result = await SystemOrchestrator.deleteInvoice(invoiceId, type);
+    if (result.success) {
+      try {
+        await pushChanges();
+      } catch (err) {
+        console.error("Auto-sync failed:", err);
+      }
+    }
+    return result;
   },
 
   /**
    * Central execution layer for ERP transactions.
    */
   async processTransaction(type: 'purchase' | 'purchase_return' | 'sale' | 'sale_return' | 'supplier_payment' | 'customer_payment', data: any): Promise<{ success: boolean; refId?: string }> {
+    let result: { success: boolean; refId?: string };
     switch(type) {
       case 'purchase':
-        return await this.handlePurchase(data);
+        result = await this.handlePurchase(data);
+        break;
       case 'purchase_return':
-        return await this.handlePurchaseReturn(data);
+        result = await this.handlePurchaseReturn(data);
+        break;
       case 'sale':
-        return await this.handleSale(data);
+        result = await this.handleSale(data);
+        break;
       case 'sale_return':
-        return await this.handleSalesReturn(data);
+        result = await this.handleSalesReturn(data);
+        break;
       case 'supplier_payment':
-        return await this.settleSupplier(data);
+        result = await this.settleSupplier(data);
+        break;
       case 'customer_payment':
-        return await this.settleCustomer(data);
+        result = await this.settleCustomer(data);
+        break;
       default:
         throw new Error(`Unknown transaction type: ${type}`);
     }
+
+    // 3. AUTO PUSH AFTER ANY CHANGE
+    if (result.success) {
+      try {
+        await pushChanges();
+      } catch (err) {
+        console.error("Auto-sync failed:", err);
+      }
+    }
+
+    return result;
   },
 
   async handlePurchase(data: any) {

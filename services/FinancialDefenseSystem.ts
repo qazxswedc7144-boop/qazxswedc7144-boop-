@@ -40,6 +40,8 @@ export class FinancialDefenseSystem {
       const now = Date.now();
       const oneHourAgo = new Date(now - 3600000).toISOString();
       
+      if (!oneHourAgo) return 0;
+
       // 1. Rapid sequence of deletions or updates
       const suspiciousActions = await db.db.Audit_Log
         .where('Modified_At').above(oneHourAgo)

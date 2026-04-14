@@ -6,11 +6,26 @@ import { BackupService } from './backupService';
  */
 
 let timer: any = null;
-const CHECK_INTERVAL = 60 * 60 * 1000; // Check every hour
+const CHECK_INTERVAL = 12 * 60 * 60 * 1000; // 11. AUTO BACKUP: every 12 hours
 
 export const backupService = {
   async createAutoSnapshot() {
-    await BackupService.runScheduledBackup();
+    // Use internal secure key for auto-backups
+    const internalKey = 'pharmaflow-internal-secure-key-2026';
+    await BackupService.createBackup('Auto Backup', 'AUTO', false, internalKey);
+    
+    // Also try to sync with Google Apps Script
+    try {
+      await BackupService.uploadBackup(internalKey);
+    } catch (e) {
+      console.warn("Auto sync failed (likely script URL not configured)");
+    }
+  },
+
+  async handleAppClose() {
+    // 11. AUTO BACKUP: app close
+    const internalKey = 'pharmaflow-internal-secure-key-2026';
+    await BackupService.createBackup('App Close Backup', 'AUTO', false, internalKey);
   },
 
   startAutoTimer() {

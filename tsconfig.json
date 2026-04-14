@@ -21,7 +21,16 @@
     "jsx": "react-jsx",
     "paths": {
       "@/*": [
-        "./*"
+        "./src/*"
+      ],
+      "@/services/*": [
+        "./services/*"
+      ],
+      "@/repositories/*": [
+        "./repositories/*"
+      ],
+      "@/types": [
+        "./types.ts"
       ]
     },
     "allowImportingTsExtensions": true,

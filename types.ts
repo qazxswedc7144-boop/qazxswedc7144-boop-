@@ -147,6 +147,7 @@ export interface UserBehavior extends SyncableEntity {
   repostFrequency: number;
   deleteAttempts: number;
   afterHoursActions: number;
+  failedLogins: number;
   lastActionAt: string;
 }
 
@@ -218,12 +219,15 @@ export interface SyncableEntity {
   id: string;
   lastModified?: string;
   updated_at?: string; // Alias for lastModified
+  updatedAt?: string;  // Alias for lastModified
+  isSynced?: boolean;
   version?: number;    // Alias for syncVersion
   syncStatus?: SyncStatus;
   syncVersion?: number;
   isDeleted?: boolean;
   Created_By?: string;
   Created_At?: string;
+  lastSync?: string;
   tenant_id?: string;
 }
 
@@ -466,6 +470,14 @@ export interface ExpiringItemEntry extends SyncableEntity {
   location: string;
 }
 
+export interface InventoryLog extends SyncableEntity {
+  id: string;
+  productId: string;
+  type: 'add' | 'remove' | 'return';
+  qty: number;
+  date: number;
+}
+
 export interface Product extends SyncableEntity {
   id: string;
   Name: string;      
@@ -486,6 +498,12 @@ export interface Product extends SyncableEntity {
   ProfitMargin?: number;
   Is_Active?: boolean;
   branchId?: string;
+  
+  // NEW 🔥
+  avgCost?: number;
+  totalValue?: number;
+  minStock?: number;
+  lastUpdated?: number;
 }
 
 export interface InvoiceItem extends SyncableEntity {
@@ -677,6 +695,13 @@ export interface CashFlow extends SyncableEntity {
   branchId: string;
 }
 
+export interface CashLog extends SyncableEntity {
+  id: string;
+  type: string;
+  amount: number;
+  date: number;
+}
+
 export interface ItemUsageLog extends SyncableEntity {
   id: string;
   productId: string;
@@ -784,7 +809,10 @@ export interface Account extends SyncableEntity {
   description?: string;
   isSystem: boolean;
   isActive: boolean;
-  balance?: number;
+  balance: number;
+  debit: number;
+  credit: number;
+  updatedAt: string;
 }
 
 export interface BackupSnapshot extends SyncableEntity {
@@ -840,7 +868,7 @@ export interface ReconciliationPoint extends SyncableEntity {
 export interface AuditLogEntry extends SyncableEntity {
   id: string;
   user_id: string;
-  action: 'CREATE' | 'UPDATE' | 'DELETE' | 'POST' | 'CANCEL' | 'SYSTEM';
+  action: 'CREATE' | 'UPDATE' | 'DELETE' | 'POST' | 'CANCEL' | 'SYSTEM' | 'RESTORE';
   target_type: 'SALE' | 'PURCHASE' | 'VOUCHER' | 'PRODUCT' | 'SYSTEM' | 'OTHER';
   target_id: string;
   timestamp: string;

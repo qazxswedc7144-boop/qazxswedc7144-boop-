@@ -2,7 +2,6 @@
 import { db } from './database';
 import { AccountingPeriod, PeriodLockLog } from '../types';
 import { authService } from './auth.service';
-import { SyncEngine } from './SyncEngine';
 
 export class PeriodLockEngine {
   
@@ -21,12 +20,11 @@ export class PeriodLockEngine {
         Start_Date: startOfYear,
         End_Date: endOfYear,
         Is_Locked: false,
-        tenant_id: SyncEngine.getTenantId() || 'TEN-DEV-001',
+        tenant_id: 'TEN-DEV-001',
         lastModified: new Date().toISOString()
       };
       
       await db.Accounting_Periods.put(defaultPeriod);
-      await SyncEngine.saveDoc('Accounting_Periods', defaultPeriod.id, defaultPeriod);
     }
   }
 
@@ -95,10 +93,6 @@ export class PeriodLockEngine {
     };
 
     await db.Accounting_Periods.update(periodId, update);
-    const period = await db.Accounting_Periods.get(periodId);
-    if (period) {
-      await SyncEngine.saveDoc('Accounting_Periods', periodId, period);
-    }
   }
 
   /**
@@ -114,9 +108,5 @@ export class PeriodLockEngine {
     };
 
     await db.Accounting_Periods.update(periodId, update);
-    const period = await db.Accounting_Periods.get(periodId);
-    if (period) {
-      await SyncEngine.saveDoc('Accounting_Periods', periodId, period);
-    }
   }
 }

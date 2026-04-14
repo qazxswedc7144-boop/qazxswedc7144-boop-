@@ -1,5 +1,5 @@
 
-import { Sale, Purchase, CashFlow, AccountingEntry, Product, Supplier, InvoiceAdjustment, JournalLine } from '../types';
+import { Sale, Purchase, CashFlow, AccountingEntry, Product, Supplier, InvoiceAdjustment, JournalLine } from '@/types';
 
 export class AccountingEngine {
   /**
@@ -117,59 +117,34 @@ export class AccountingEngine {
    * POST INVOICE TO ACCOUNTING
    */
   static async postInvoice(invoice: any, costResult: { totalCost: number }): Promise<void> {
-    const { db } = await import('../services/database');
-    const { AccountRepository } = await import('../repositories/account.repository');
+    const { AccountingEngine: robustEngine } = await import('@/services/AccountingEngine');
+    const { AccountRepository } = await import('@/repositories/account.repository');
     
     const type = invoice.type || (invoice.customerId ? 'SALE' : 'PURCHASE');
-    const total = invoice.total || invoice.TotalAmount;
-    const cost = costResult.totalCost;
+    const isReturn = invoice.isReturn || invoice.invoiceType === 'مرتجع';
+
+    let entry: AccountingEntry | AccountingEntry[];
 
     if (type === 'SALE') {
-      const entries = this.generateSaleEntries(invoice, total);
-      // Add COGS entry
-      const cogsEntryId = `ENT-COGS-${invoice.id || invoice.invoiceId}`;
-      const cogsEntry: AccountingEntry = {
-        id: cogsEntryId,
-        date: new Date().toISOString(),
-        TotalAmount: cost,
-        status: 'Posted',
-        sourceId: invoice.id || invoice.invoiceId,
-        sourceType: 'COGS',
-        lines: [
-          {
-            id: `${cogsEntryId}-DR`,
-            lineId: `${cogsEntryId}-DR`,
-            entryId: cogsEntryId,
-            accountId: 'AC-COGS',
-            accountName: 'Cost of Goods Sold',
-            debit: cost,
-            credit: 0,
-            type: 'DEBIT',
-            amount: cost
-          },
-          {
-            id: `${cogsEntryId}-CR`,
-            lineId: `${cogsEntryId}-CR`,
-            entryId: cogsEntryId,
-            accountId: 'AC-INV',
-            accountName: 'Inventory',
-            debit: 0,
-            credit: cost,
-            type: 'CREDIT',
-            amount: cost
-          }
-        ]
-      };
-      
-      for (const entry of entries) {
-        await AccountRepository.addEntry(entry);
+      if (isReturn) {
+        entry = await robustEngine.generateReturnEntry(invoice, invoice.items);
+      } else {
+        entry = await robustEngine.generateSalesEntry(invoice, invoice.items);
       }
-      await AccountRepository.addEntry(cogsEntry);
-    } else if (type === 'PURCHASE') {
-      const entries = this.generatePurchaseEntries(invoice, total);
-      for (const entry of entries) {
-        await AccountRepository.addEntry(entry);
+    } else {
+      if (isReturn) {
+        entry = await robustEngine.generatePurchaseReturnEntry(invoice);
+      } else {
+        entry = await robustEngine.generatePurchaseEntry(invoice);
       }
+    }
+
+    if (Array.isArray(entry)) {
+      for (const e of entry) {
+        await AccountRepository.addEntry(e);
+      }
+    } else {
+      await AccountRepository.addEntry(entry);
     }
   }
 }

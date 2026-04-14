@@ -36,6 +36,7 @@ class AppLockService {
     };
 
     await db.security_settings.put(settings);
+    localStorage.setItem("app_lock_enabled", "true");
   }
 
   async disableSecurity(): Promise<void> {
@@ -44,6 +45,7 @@ class AppLockService {
       settings.is_enabled = false;
       await db.security_settings.put(settings);
     }
+    localStorage.removeItem("app_lock_enabled");
   }
 
   async updateActivity(): Promise<void> {

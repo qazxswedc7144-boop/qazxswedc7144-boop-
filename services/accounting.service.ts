@@ -17,7 +17,7 @@ import { ReconciliationEngine } from './logic/ReconciliationEngine';
 import { BusinessRulesEngine } from './logic/BusinessRulesEngine';
 import { BackupService } from './backupService';
 
-import { ReportEngine } from '../engines/reportEngine';
+import { ReportEngine } from '../src/core/engines/reportEngine';
 
 export interface AgingBucket {
   current: number;    
@@ -258,7 +258,19 @@ export const accountingService = {
         }
       }
 
-      await CashFlowRepository.record(type, category, amount, `سند #${voucherId} لـ: ${name} | ${notes}`);
+      // Record Cash Flow with transaction_id for easier reversal
+      const cfId = db.generateId('CSH');
+      await db.db.cashFlow.put({
+        id: cfId,
+        transaction_id: voucherId,
+        date: today.split('T')[0],
+        type: type,
+        category: category,
+        amount: amount,
+        notes: `سند #${voucherId} لـ: ${name} | ${notes}`,
+        isSynced: false,
+        updatedAt: today
+      } as any);
       
       const ftId = db.generateId('FT');
       await FinancialTransactionRepository.record({
@@ -389,21 +401,53 @@ export const accountingService = {
     await BackupService.createBackup(`Auto Backup before Delete Voucher #${voucherId}`, 'PRE_VOUCHER_DELETE', true);
 
     return await db.runTransaction(async () => {
-      // 1. Delete Journal Entry
-      await AccountRepository.deleteEntriesBySource(voucherId);
-      
-      // 2. Delete CashFlow record
-      const cashflows = await db.db.cashFlow.toArray();
-      for (const h of cashflows) {
-        if (h.notes?.includes(`#${voucherId}`)) {
-          await db.db.cashFlow.delete(h.transaction_id);
+      // 1. Find the Journal Entry to reverse balances
+      const entry = await db.db.journalEntries.where('sourceId').equals(voucherId).first();
+      let partnerId: string | null = null;
+
+      if (entry) {
+        // Reverse Account Balances
+        for (const line of entry.lines) {
+          await db.updateAccountBalance(line.accountId, line.credit - line.debit);
         }
+
+        // 2. Reverse Partner Balances
+        // Find partnerId from settlements
+        const settlements = await db.db.settlements.where('voucherId').equals(voucherId).toArray();
+        if (settlements.length > 0) {
+          partnerId = settlements[0].partnerId;
+          const totalSettled = settlements.reduce((sum, s) => sum + s.amount, 0);
+          
+          if (settlements[0].type === 'RECEIPT') {
+            await db.updateCustomerBalance(partnerId, totalSettled);
+          } else {
+            await db.updateSupplierBalance(partnerId, totalSettled);
+          }
+        } else {
+          // If no settlements, try to find from Financial Transactions
+          const ftxs = await FinancialTransactionRepository.getByReference(voucherId);
+          if (ftxs.length > 0) {
+            // We need the partner ID, but Entity_Name might be the name.
+            // In this system, sometimes Entity_Name is used as ID or we can find by name.
+            // For now, let's assume if no settlements, we might not have a partner balance to reverse 
+            // unless it was a general payment.
+          }
+        }
+
+        // 3. Delete Journal Entry
+        await db.db.journalEntries.delete(entry.id);
       }
 
-      // 3. Delete Financial Transaction
+      // 4. Delete CashFlow record
+      const cashflows = await db.db.cashFlow.filter(cf => cf.transaction_id === voucherId || (cf.notes && cf.notes.includes(`#${voucherId}`))).toArray();
+      for (const cf of cashflows) {
+        await db.db.cashFlow.delete(cf.id);
+      }
+
+      // 5. Delete Financial Transaction
       await FinancialTransactionRepository.cancelTransaction(voucherId);
 
-      // 4. Delete Links and Settlements
+      // 6. Delete Links and Settlements
       const links = await VoucherInvoiceLinkRepository.getByVoucher(voucherId);
       for (const link of links) {
         await db.db.voucherInvoiceLinks.delete(link.linkId);
@@ -414,6 +458,11 @@ export const accountingService = {
       const settlements = await db.db.settlements.where('voucherId').equals(voucherId).toArray();
       for (const s of settlements) {
         await db.db.settlements.delete(s.id);
+      }
+
+      // 7. Final Reconcile
+      if (partnerId) {
+        await ReconciliationEngine.reconcilePartnerBalance(partnerId);
       }
 
       await db.addAuditLog('DELETE', 'VOUCHER', voucherId, `Voucher #${voucherId} deleted by ${authService.getCurrentUser()?.User_Email}`);

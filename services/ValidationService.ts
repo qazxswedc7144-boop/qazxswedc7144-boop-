@@ -72,9 +72,14 @@ export class ValidationService {
    */
   static async validateStock(warehouseId: string, productId: string, quantity: number) {
     try {
-      await InventoryService.validateStockAvailability(warehouseId, productId, quantity);
+      const isAvailable = await InventoryService.validateStockAvailability(warehouseId, productId, quantity);
+      if (!isAvailable) {
+        const currentStock = await InventoryService.getWarehouseStock(warehouseId, productId);
+        throw new ValidationError(`نقص في المخزون: الكمية المتاحة هي ${currentStock} فقط.`);
+      }
     } catch (error: any) {
-      throw new ValidationError(`نقص في المخزون: ${error.message || "الكمية المطلوبة غير متوفرة."}`);
+      if (error instanceof ValidationError) throw error;
+      throw new ValidationError(`خطأ في التحقق من المخزون: ${error.message || "الكمية المطلوبة غير متوفرة."}`);
     }
   }
 

@@ -25,7 +25,7 @@ export const syncService = {
       return true;
     }
 
-    logger.info("مزامنة دفعات", "SyncEngine", `جاري معالجة وتأكيد ${queue.length} سجلات معلقة...`);
+    logger.info("مزامنة دفعات", "SyncService", `جاري معالجة وتأكيد ${queue.length} سجلات معلقة...`);
 
     // معالجة الدفعة بالكامل
     for (const op of queue) {
@@ -33,9 +33,9 @@ export const syncService = {
         await syncService.processOperation(op);
       } catch (error: any) {
         // TRIGGER: Log automation error on sync failure
-        ErrorManager.logAutomationError('Sync Engine', error.message, op.id);
+        ErrorManager.logAutomationError('Sync Service', error.message, op.id);
         
-        logger.error("فشل مزامنة سجل", "SyncEngine", `خطأ في العملية ${op.id}`, error);
+        logger.error("فشل مزامنة سجل", "SyncService", `خطأ في العملية ${op.id}`, error);
         if (!navigator.onLine) break;
       }
     }
@@ -60,7 +60,7 @@ export const syncService = {
       // جلب الرقم التسلسلي العالمي القادم (بناءً على الحالة الحالية للسجلات) بالتنسيق الجديد
       const finalId = await SalesRepository.getSafeUniqueNumber(isReturn);
       
-      logger.info("تأكيد رقم فاتورة", "SyncEngine", `تحويل الرقم المؤقت ${provId} إلى الرقم النهائي ${finalId}`);
+      logger.info("تأكيد رقم فاتورة", "SyncService", `تحويل الرقم المؤقت ${provId} إلى الرقم النهائي ${finalId}`);
 
       // 1. تحديث السجل المحلي والقيود المحاسبية التابعة له
       await SalesRepository.promoteToFinalNumber(internalId, finalId);

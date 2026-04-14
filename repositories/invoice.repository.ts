@@ -7,7 +7,8 @@ import { SharedCalculations } from '../services/logic/SharedCalculations';
 import { InvoiceValidationEngine } from '../services/logic/InvoiceValidationEngine';
 import { InvoiceWorkflowEngine } from '../services/logic/InvoiceWorkflowEngine';
 import { LockService } from '../services/LockService';
-import { PostingEngine } from '../engines/postingEngine';
+import { PostingEngine } from '@/core/engines/postingEngine';
+import { createSafeDateRange, safeBetweenQuery } from '../utils/safeRange';
 
 export const InvoiceRepository = {
   
@@ -121,10 +122,18 @@ export const InvoiceRepository = {
     let purchaseQuery = db.db.purchases.orderBy('date').reverse();
 
     if (year) {
-      const startDate = `${year}-01-01T00:00:00.000Z`;
-      const endDate = `${year}-12-31T23:59:59.999Z`;
-      salesQuery = db.db.sales.where('date').between(startDate, endDate).reverse();
-      purchaseQuery = db.db.purchases.where('date').between(startDate, endDate).reverse();
+      try {
+        const start = `${year}-01-01T00:00:00.000Z`;
+        const end = `${year}-12-31T23:59:59.999Z`;
+        
+        const sQuery = await safeBetweenQuery('sales', 'date', start, end);
+        if (sQuery) salesQuery = sQuery.reverse();
+        
+        const pQuery = await safeBetweenQuery('purchases', 'date', start, end);
+        if (pQuery) purchaseQuery = pQuery.reverse();
+      } catch (err) {
+        console.error("❌ Archive query failed:", err);
+      }
     }
 
     const [allSales, allPurchases] = await Promise.all([
@@ -300,12 +309,30 @@ export const InvoiceRepository = {
       await LockService.releaseLock('purchases', id);
     }
   },
-  getPurchaseById: async (id: string) => await db.db.purchases.where('invoiceId').equals(id).first() || await db.db.purchases.where('purchase_id').equals(id).first() || await db.db.purchases.get(id),
+  getPurchaseById: async (id: string) => {
+    if (!id) return null;
+    return await db.db.purchases.where('invoiceId').equals(id).first() || 
+           await db.db.purchases.where('purchase_id').equals(id).first() || 
+           await db.db.purchases.get(id);
+  },
   getArchiveSales: async () => await db.db.sales.where('InvoiceStatus').equals('Posted').toArray(),
   getArchivePurchases: async () => await db.db.purchases.where('invoiceStatus').equals('Posted').toArray(),
   getSavedInvoices: async () => await db.db.sales.where('InvoiceStatus').equals('Saved').toArray(),
   getRecentInvoices: async (limit: number = 20) => {
     return await InvoiceRepository.getInvoicesArchive({ limit });
+  },
+  getInvoicesByDateRange: async (start: any, end: any) => {
+    const query = await safeBetweenQuery('invoices', 'date', start, end);
+    if (!query) {
+      console.warn("🚫 Query stopped due to invalid date range");
+      return [];
+    }
+    try {
+      return await query.toArray();
+    } catch (err) {
+      console.error("❌ Date range query failed:", err);
+      return [];
+    }
   },
   getSalesArchive: async () => await db.getSales()
 };

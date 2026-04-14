@@ -1,6 +1,7 @@
 
 import { db } from './database';
 import { IS_PREVIEW } from '../constants';
+import { safeWhereEqual, safeWhereAbove } from '../utils/dexieSafe';
 
 export interface AnomalyReport {
   riskScore: number;
@@ -119,11 +120,15 @@ export class AnomalyScoringEngine {
     
     let missing = 0;
     for (const s of sales) {
-      const entry = await db.db.journalEntries.where('sourceId').equals(s.id).first();
+      if (!s.id) continue;
+      const entries = await safeWhereEqual(db.db.journalEntries, 'sourceId', s.id);
+      const entry = entries[0] || null;
       if (!entry) missing++;
     }
     for (const p of purchases) {
-      const entry = await db.db.journalEntries.where('sourceId').equals(p.id).first();
+      if (!p.id) continue;
+      const entries = await safeWhereEqual(db.db.journalEntries, 'sourceId', p.id);
+      const entry = entries[0] || null;
       if (!entry) missing++;
     }
     
@@ -135,16 +140,22 @@ export class AnomalyScoringEngine {
   private static async checkVolumeSpike(): Promise<number> {
     const now = new Date();
     const oneHourAgo = new Date(now.getTime() - 3600000).toISOString();
-    const recentSales = await db.db.sales.where('date').above(oneHourAgo).count();
+    if (!db.db.sales) {
+      console.error("[AnomalyScoringEngine] sales table not found");
+      return 0;
+    }
+    if (!oneHourAgo) return 0;
+    const recentSales = await safeWhereAbove(db.db.sales, 'date', oneHourAgo);
+    const count = recentSales.length;
     
     // Threshold: > 100 transactions per hour is a spike (increased for development)
-    if (recentSales > 100) return 100;
-    if (recentSales > 50) return 50;
+    if (count > 100) return 100;
+    if (count > 50) return 50;
     return 0;
   }
 
   private static async checkSecurityFlags(): Promise<number> {
-    const logs = await db.db.Audit_Log.where('Change_Type').equals('UPDATE').toArray();
+    const logs = await db.db.Audit_Log.filter(l => l.Change_Type === 'UPDATE').toArray();
     // Check for unauthorized modification attempts (e.g. non-admin trying to edit posted invoices)
     // This is a simplified check based on audit logs
     const suspicious = logs.filter(l => l.Table_Name === 'Audit_Log').length; // Audit log itself shouldn't be updated

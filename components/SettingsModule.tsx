@@ -25,7 +25,7 @@ interface InvoiceConfig {
 }
 
 const SettingsModule: React.FC<{ onNavigate?: (view: any) => void }> = ({ onNavigate }) => {
-  const [activeTab, setActiveTab] = useState<'ux' | 'invoice' | 'periods' | 'backup' | 'security'>('ux');
+  const [currentView, setCurrentView] = useState<'main' | 'ux' | 'invoice' | 'periods' | 'backup' | 'security'>('main');
   const [uxSettings, setUxSettings] = useState({ delayedSync: false });
   const [invoiceConfig, setInvoiceConfig] = useState<InvoiceConfig>({
     pharmacyName: 'صيدلية فارما فلو',
@@ -40,10 +40,7 @@ const SettingsModule: React.FC<{ onNavigate?: (view: any) => void }> = ({ onNavi
   const [periods, setPeriods] = useState<any[]>([]);
   const [newPeriod, setNewPeriod] = useState({ start: '', end: '' });
 
-  const [isImporting, setIsImporting] = useState(false);
-  const [importJson, setImportJson] = useState('');
   const { refreshGlobal, addToast, version } = useUI();
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const user = authService.getCurrentUser();
 
   useEffect(() => {
@@ -87,74 +84,112 @@ const SettingsModule: React.FC<{ onNavigate?: (view: any) => void }> = ({ onNavi
     refreshGlobal();
   };
 
-  const handleImportExecute = async () => {
-    if (!importJson.trim()) {
-      addToast("يرجى اختيار ملف أو لصق كود JSON صالح أولاً", "warning");
-      return;
-    }
-    setIsImporting(true);
-    try {
-      await db.importFullState(importJson);
-      addToast("تمت استعادة البيانات بنجاح 🚀", "success");
-      setImportJson('');
-      refreshGlobal();
-    } catch (e: any) {
-      addToast(`فشل الاستيراد: تأكد من صيغة الملف`, "error");
-    } finally {
-      setIsImporting(false);
-    }
-  };
+  const renderHeader = (title: string, subtitle: string, onBack?: () => void) => (
+    <div className="flex items-center justify-between bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm mb-6">
+      <div className="flex items-center gap-4">
+        {onBack ? (
+          <button 
+            onClick={onBack}
+            className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center shadow-sm active:scale-90 transition-all"
+          >
+            <Plus size={20} className="rotate-45" />
+          </button>
+        ) : (
+          <div className="w-12 h-12 bg-[#1E4D4D] text-white rounded-2xl flex items-center justify-center shadow-lg">
+            <Settings size={24} />
+          </div>
+        )}
+        <div>
+          <h2 className="text-xl font-black text-[#1E4D4D]">{title}</h2>
+          <p className="text-slate-400 font-bold text-[10px]">{subtitle}</p>
+        </div>
+      </div>
+      {!onBack && (
+        <button 
+          onClick={() => onNavigate?.('dashboard')} 
+          className="w-10 h-10 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-center text-[#1E4D4D] text-xl font-black shadow-sm active:scale-90 transition-all"
+        >
+          ➦
+        </button>
+      )}
+    </div>
+  );
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => setImportJson(event.target?.result as string);
-    reader.readAsText(file);
-  };
+  const SettingsCard = ({ id, title, desc, icon, color }: { id: any, title: string, desc: string, icon: React.ReactNode, color: string }) => (
+    <Card 
+      onClick={() => setCurrentView(id)}
+      className="!p-6 border-r-8 hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer group"
+      style={{ borderRightColor: color }}
+    >
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-5">
+          <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-white shadow-lg transition-transform group-hover:scale-110" style={{ backgroundColor: color }}>
+            {icon}
+          </div>
+          <div className="text-right">
+            <h3 className="text-lg font-black text-[#1E4D4D]">{title}</h3>
+            <p className="text-xs text-slate-400 font-bold mt-1">{desc}</p>
+          </div>
+        </div>
+        <div className="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center text-slate-300 group-hover:bg-emerald-50 group-hover:text-emerald-500 transition-all">
+          <Plus size={20} />
+        </div>
+      </div>
+    </Card>
+  );
 
-  const handleBackupExport = async () => {
-    const data = await db.getFullState();
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `PharmaFlow_Backup_${new Date().toISOString().split('T')[0]}.json`;
-    a.click();
-  };
+  if (currentView === 'main') {
+    return (
+      <div className="space-y-6 pb-32 text-right px-4 md:px-0 animate-in fade-in duration-500" dir="rtl">
+        {renderHeader("إعدادات النظام", "إدارة السجلات وخيارات النظام")}
+        
+        <div className="grid grid-cols-1 gap-4">
+          <SettingsCard 
+            id="ux" 
+            title="تثبيت الجوال" 
+            desc="ربط الأجهزة ومزامنة المتصفح" 
+            icon={<Smartphone size={24} />} 
+            color="#10b981" 
+          />
+          <SettingsCard 
+            id="invoice" 
+            title="تخصيص الفواتير" 
+            desc="تصميم الفاتورة وشعار الصيدلية" 
+            icon={<FileText size={24} />} 
+            color="#3b82f6" 
+          />
+          <SettingsCard 
+            id="periods" 
+            title="الفترات المحاسبية" 
+            desc="إدارة السنوات المالية والإغلاق" 
+            icon={<Clock size={24} />} 
+            color="#f59e0b" 
+          />
+          <SettingsCard 
+            id="security" 
+            title="أمان التطبيق" 
+            desc="كلمات المرور وقفل الشاشة التلقائي" 
+            icon={<Lock size={24} />} 
+            color="#6366f1" 
+          />
+          <SettingsCard 
+            id="backup" 
+            title="البيانات والنسخ الاحتياطي" 
+            desc="تصدير واسترجاع البيانات محلياً ومع Drive" 
+            icon={<Database size={24} />} 
+            color="#1E4D4D" 
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-6 pb-32 text-right px-4 md:px-0 animate-in fade-in duration-500" dir="rtl">
-      {/* Header */}
-      <div className="flex items-center justify-between bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 bg-[#1E4D4D] text-white rounded-2xl flex items-center justify-center shadow-lg"><Settings size={24} /></div>
-          <div><h2 className="text-xl font-black text-[#1E4D4D]">لوحة التحكم</h2><p className="text-slate-400 font-bold text-[10px]">إدارة السجلات وخيارات النظام</p></div>
-        </div>
-        <button onClick={() => onNavigate?.('dashboard')} className="w-10 h-10 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-center text-[#1E4D4D] text-xl font-black shadow-sm active:scale-90 transition-all">➦</button>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex p-1.5 bg-white border border-slate-100 rounded-[24px] shadow-sm w-fit overflow-x-auto no-scrollbar">
-        {[
-          { id: 'ux', label: 'تثبيت الجوال', icon: <Smartphone size={14} /> },
-          { id: 'invoice', label: 'تخصيص الفواتير', icon: <FileText size={14} /> },
-          { id: 'periods', label: 'الفترات المحاسبية', icon: <Clock size={14} /> },
-          { id: 'security', label: 'أمان التطبيق', icon: <Lock size={14} /> },
-          { id: 'backup', label: 'البيانات والنسخ', icon: <Database size={14} /> },
-        ].map(tab => (
-          <button 
-            key={tab.id} 
-            onClick={() => setActiveTab(tab.id as any)} 
-            className={`px-6 py-2.5 rounded-xl text-[10px] font-black transition-all whitespace-nowrap flex items-center gap-2 ${activeTab === tab.id ? 'bg-[#1E4D4D] text-white shadow-lg' : 'text-slate-400 hover:text-[#1E4D4D]'}`}
-          >
-            {tab.icon}{tab.label}
-          </button>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-1 gap-6">
-        {activeTab === 'ux' && (
-          <Card className="!p-6 border-l-8 border-l-blue-500 space-y-8">
+    <div className="space-y-6 pb-32 text-right px-4 md:px-0 animate-in slide-in-from-left-4 duration-500" dir="rtl">
+      {currentView === 'ux' && (
+        <>
+          {renderHeader("تثبيت الجوال", "ربط الأجهزة ومزامنة المتصفح", () => setCurrentView('main'))}
+          <Card className="!p-6 border-l-8 border-l-emerald-500 space-y-8">
              <div className="flex items-center justify-between">
                 <h3 className="text-base font-black text-[#1E4D4D]">إعدادات الاستقرار والسرعة</h3>
                 <Badge variant="info">Mobile Optimized</Badge>
@@ -185,9 +220,12 @@ const SettingsModule: React.FC<{ onNavigate?: (view: any) => void }> = ({ onNavi
                 <CurrencySelector />
              </div>
           </Card>
-        )}
+        </>
+      )}
 
-        {activeTab === 'invoice' && (
+      {currentView === 'invoice' && (
+        <>
+          {renderHeader("تخصيص الفواتير", "تصميم الفاتورة وشعار الصيدلية", () => setCurrentView('main'))}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 space-y-6">
               <Card className="!p-6 space-y-6">
@@ -228,9 +266,12 @@ const SettingsModule: React.FC<{ onNavigate?: (view: any) => void }> = ({ onNavi
               </Card>
             </div>
           </div>
-        )}
+        </>
+      )}
 
-        {activeTab === 'periods' && (
+      {currentView === 'periods' && (
+        <>
+          {renderHeader("الفترات المحاسبية", "إدارة السنوات المالية والإغلاق", () => setCurrentView('main'))}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
              <div className="lg:col-span-4 space-y-6">
                 <Card className="!p-8 space-y-6">
@@ -291,25 +332,48 @@ const SettingsModule: React.FC<{ onNavigate?: (view: any) => void }> = ({ onNavi
                 </div>
              </div>
           </div>
-        )}
+        </>
+      )}
 
-        {activeTab === 'backup' && (
+      {currentView === 'backup' && (
+        <>
+          {renderHeader("البيانات والنسخ الاحتياطي", "تصدير واسترجاع البيانات محلياً ومع Drive", () => setCurrentView('main'))}
           <BackupManagement />
-        )}
+        </>
+      )}
 
-        {activeTab === 'security' && (
+      {currentView === 'security' && (
+        <>
+          {renderHeader("أمان التطبيق", "كلمات المرور وقفل الشاشة التلقائي", () => setCurrentView('main'))}
           <SecuritySettingsTab />
-        )}
-      </div>
+        </>
+      )}
     </div>
   );
 };
 
 const SecuritySettingsTab: React.FC = () => {
   const [settings, setSettings] = useState<any>(null);
+  const [appLockEnabled, setAppLockEnabled] = useState(
+    localStorage.getItem("app_lock_enabled") === "true"
+  );
   const [form, setForm] = useState({ username: '', password: '', confirm: '', mode: '5m' as any });
   const { addToast, refreshGlobal } = useUI();
   const [loading, setLoading] = useState(false);
+
+  const toggleAppLock = (value: boolean) => {
+    setAppLockEnabled(value);
+    if (value) {
+      localStorage.setItem("app_lock_enabled", "true");
+    } else {
+      localStorage.removeItem("app_lock_enabled");
+    }
+  };
+
+  const setPassword = (newPass: string) => {
+    localStorage.setItem("app_lock_pass", newPass);
+    refreshGlobal();
+  };
 
   useEffect(() => {
     const load = async () => {
@@ -318,6 +382,7 @@ const SecuritySettingsTab: React.FC = () => {
       setSettings(s);
       if (s) {
         setForm(f => ({ ...f, username: s.username, mode: s.lock_mode }));
+        toggleAppLock(s.is_enabled);
       }
     };
     load();
@@ -339,6 +404,7 @@ const SecuritySettingsTab: React.FC = () => {
       addToast("تم تفعيل أمان التطبيق بنجاح ✅", "success");
       const s = await appLockService.getSettings();
       setSettings(s);
+      toggleAppLock(true);
       refreshGlobal();
     } catch (e) {
       addToast("فشل تفعيل الأمان", "error");
@@ -355,6 +421,7 @@ const SecuritySettingsTab: React.FC = () => {
       addToast("تم تعطيل أمان التطبيق", "info");
       const s = await appLockService.getSettings();
       setSettings(s);
+      toggleAppLock(false);
       refreshGlobal();
     } catch (e) {
       addToast("فشل تعطيل الأمان", "error");
@@ -370,8 +437,29 @@ const SecuritySettingsTab: React.FC = () => {
           <h3 className="text-lg font-black text-[#1E4D4D] flex items-center gap-2 border-b border-slate-50 pb-4">
             <Lock size={20} className="text-blue-500" /> {settings?.is_enabled ? 'تعديل الأمان' : 'تفعيل قفل التطبيق'}
           </h3>
+          
+          <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
+            <div className="flex items-center gap-3">
+              <ShieldCheck className="text-[#1E4D4D]" size={20} />
+              <span className="text-sm font-black text-[#1E4D4D]">تفعيل قفل التطبيق</span>
+            </div>
+            <input
+              type="checkbox"
+              className="w-5 h-5 accent-[#1E4D4D] cursor-pointer"
+              checked={appLockEnabled}
+              onChange={(e) => toggleAppLock(e.target.checked)}
+            />
+          </div>
+
           <div className="space-y-4">
             <Input label="اسم المستخدم" value={form.username} onChange={e => setForm({...form, username: e.target.value})} icon={<Users size={14}/>} />
+            <Input 
+              label="رمز القفل السريع (localStorage)" 
+              type="text" 
+              value={localStorage.getItem("app_lock_pass") || "1234"} 
+              onChange={e => setPassword(e.target.value)} 
+              icon={<ShieldCheck size={14}/>} 
+            />
             <Input label="كلمة المرور" type="password" value={form.password} onChange={e => setForm({...form, password: e.target.value})} icon={<Lock size={14}/>} />
             <Input label="تأكيد كلمة المرور" type="password" value={form.confirm} onChange={e => setForm({...form, confirm: e.target.value})} icon={<Lock size={14}/>} />
             

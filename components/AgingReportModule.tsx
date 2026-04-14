@@ -3,6 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useUI } from '../store/AppContext';
 import { accountingService, PartnerAging } from '../services/accounting.service';
 import { Card, Badge, Button } from './SharedUI';
+import { useSafeNavigation } from '../utils/navigation';
 import { 
   History, ArrowRight, User, Search, 
   Calendar, ArrowUpRight, BarChart3, Clock,
@@ -14,10 +15,20 @@ import { motion, AnimatePresence } from 'motion/react';
 
 const AgingReportModule: React.FC<{ onNavigate?: (v: any) => void }> = ({ onNavigate }) => {
   const { currency, version } = useUI();
+  const { goDashboard } = useSafeNavigation();
   const [activeTab, setActiveTab] = useState<'CUSTOMER' | 'SUPPLIER'>('CUSTOMER');
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<PartnerAging[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
+
+  useEffect(() => {
+    const handlePopState = (e: PopStateEvent) => {
+      e.preventDefault();
+      goDashboard();
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [goDashboard]);
 
   useEffect(() => {
     const loadAging = async () => {
@@ -79,7 +90,7 @@ const AgingReportModule: React.FC<{ onNavigate?: (v: any) => void }> = ({ onNavi
       <div className="bg-white border-b border-slate-100 px-4 py-3 flex items-center justify-between sticky top-0 z-30 shadow-sm">
         <div className="flex items-center gap-3">
           <button 
-            onClick={() => onNavigate?.('reports')} 
+            onClick={goDashboard} 
             className="p-2 hover:bg-slate-50 rounded-lg transition-colors text-slate-500"
           >
             <ArrowRight size={20} />

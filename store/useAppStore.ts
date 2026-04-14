@@ -56,7 +56,7 @@ export const useAppStore = create<AppState>()(
   subscribeWithSelector((set, get) => {
     
     eventBus.subscribe(EVENTS.DATA_REFRESHED, () => {
-      console.log("[Store] Reactive Update Triggered by SyncEngine");
+      console.log("[Store] Reactive Update Triggered by Data Refresh");
       get().refreshData();
     });
 

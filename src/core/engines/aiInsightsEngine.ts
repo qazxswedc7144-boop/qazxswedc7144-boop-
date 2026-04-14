@@ -1,6 +1,5 @@
 
-import { db } from '../services/database';
-import { SyncEngine } from '../services/SyncEngine';
+import { db } from '../../../services/database';
 import { 
   AIInsight, 
   FinancialHealthSnapshot, 
@@ -10,7 +9,7 @@ import {
   Account,
   StockMovement,
   JournalLine
-} from '../types';
+} from '@/types';
 import { ReportEngine } from './reportEngine';
 
 export class AIInsightsEngine {
@@ -24,7 +23,7 @@ export class AIInsightsEngine {
     this.isRunning = true;
 
     try {
-      const tenantId = SyncEngine.getTenantId();
+      const tenantId = 'TEN-DEV-001';
       
       // 1. KPI Calculations
       const kpis = await this.calculateKPIs();
@@ -198,7 +197,7 @@ export class AIInsightsEngine {
    * 11. SMART ALERTS & 12. STORAGE
    */
   private static async generateAndStoreInsights(kpis: any, anomalies: string[], inventory: any, partners: any, cashFlow: any, score: number) {
-    const tenantId = SyncEngine.getTenantId();
+    const tenantId = 'TEN-DEV-001';
     const batch: any[] = [];
 
     // Clear old insights for this tenant (optional, or just add new ones)
@@ -223,8 +222,6 @@ export class AIInsightsEngine {
     // Save to database
     for (const insight of batch) {
       await db.db.aiInsights.put(insight);
-      // Also sync to Firestore
-      await SyncEngine.saveDoc('aiInsights', insight.id, insight);
     }
   }
 
@@ -236,7 +233,7 @@ export class AIInsightsEngine {
       message,
       severity,
       timestamp: new Date().toISOString(),
-      tenant_id: SyncEngine.getTenantId(),
+      tenant_id: 'TEN-DEV-001',
       lastModified: new Date().toISOString()
     };
   }
@@ -274,6 +271,5 @@ export class AIInsightsEngine {
     };
 
     await db.db.financialHealthSnapshots.put(snapshot);
-    await SyncEngine.saveDoc('financialHealthSnapshots', snapshot.id, snapshot);
   }
 }

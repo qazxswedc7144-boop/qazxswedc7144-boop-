@@ -6,20 +6,17 @@ import { SystemBackup } from '../types';
 import { 
   Database, Download, RotateCcw, ShieldCheck, 
   History, AlertTriangle, CheckCircle2, XCircle,
-  FileJson, Lock, Shield, Search, Trash2, AlertCircle
+  FileJson, Lock, Shield, Search, Trash2, AlertCircle,
+  Cloud, RefreshCw, Upload
 } from 'lucide-react';
 import { Card, Button, Badge, Modal, Input } from './SharedUI';
 import { useUI } from '../store/AppContext';
 import { authService } from '../services/auth.service';
 import { ProductionCleanupService } from '../services/ProductionCleanupService';
 
-import { Cloud, CloudOff, RefreshCw, Upload } from 'lucide-react';
-import { GoogleDriveService } from '../services/GoogleDriveService';
-
 const BackupManagement: React.FC = () => {
   const [backups, setBackups] = useState<SystemBackup[]>([]);
   const [loading, setLoading] = useState(false);
-  const [isGoogleConnected, setIsGoogleConnected] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [showCleanupModal, setShowCleanupModal] = useState(false);
   const [cleanupConfirmText, setCleanupConfirmText] = useState('');
@@ -28,38 +25,35 @@ const BackupManagement: React.FC = () => {
 
   useEffect(() => {
     loadBackups();
-    // Initialize Google Drive Service
-    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
-    if (clientId) {
-      GoogleDriveService.init(clientId).catch(console.error);
-    }
   }, []);
 
-  const handleGoogleConnect = async () => {
-    try {
-      setLoading(true);
-      await GoogleDriveService.authenticate();
-      setIsGoogleConnected(true);
-      addToast('تم ربط حساب Google Drive بنجاح ✅', 'success');
-    } catch (error: any) {
-      addToast(`فشل الربط: ${error.message}`, 'error');
-    } finally {
-      setLoading(false);
+  const handleCloudBackup = async () => {
+    const backupUrl = import.meta.env.VITE_BACKUP_SCRIPT_URL;
+    if (!backupUrl || backupUrl === "PUT_YOUR_APPS_SCRIPT_URL_HERE") {
+      // If no env var, check if we have the hardcoded fallback in the service
+      // But since we are in the UI, we can just check if it's still the placeholder
+      if (backupUrl === "PUT_YOUR_APPS_SCRIPT_URL_HERE") {
+        addToast('رابط المزامنة السحابية غير معدّ. يرجى إضافته في ملف .env أولاً.', 'warning');
+        return;
+      }
     }
-  };
 
-  const handleGoogleSync = async () => {
     try {
       setLoading(true);
-      const password = window.prompt('يرجى إدخال كلمة مرور التشفير للنسخة الاحتياطية:');
-      if (!password) return;
-
-      const blob = await BackupService.exportBackupToFile(password);
-      const fileName = `PharmaFlow_Backup_${new Date().toISOString().split('T')[0]}.enc`;
-      await GoogleDriveService.uploadFile(blob, fileName);
-      addToast('تم رفع النسخة الاحتياطية إلى Google Drive بنجاح ✅', 'success');
+      const { pushData, syncFromCloud } = await import('../services/syncService');
+      
+      // 7. ADD MANUAL SYNC BUTTON: Push then Pull
+      const appData = await BackupService.exportDatabase();
+      await pushData(appData);
+      addToast('تم رفع البيانات للسحابة بنجاح ✅', 'success');
+      
+      await syncFromCloud();
+      addToast('تمت المزامنة مع السحابة بنجاح 🚀', 'success');
+      
+      refreshGlobal();
+      await loadBackups();
     } catch (error: any) {
-      addToast(`فشل المزامنة: ${error.message}`, 'error');
+      addToast(error.message || 'فشل المزامنة السحابية', 'error');
     } finally {
       setLoading(false);
     }
@@ -121,7 +115,7 @@ const BackupManagement: React.FC = () => {
 
     setLoading(true);
     try {
-      await BackupService.importBackupFromFile(file, password);
+      await BackupService.restoreBackup(file, password);
       addToast('تم استيراد البيانات وفك التشفير بنجاح 🚀', 'success');
       refreshGlobal();
     } catch (error: any) {
@@ -230,35 +224,24 @@ const BackupManagement: React.FC = () => {
           <div className="absolute -right-10 -bottom-10 w-40 h-40 bg-emerald-500/10 rounded-full blur-3xl"></div>
         </Card>
 
-        <Card className="!p-6 flex flex-col items-center justify-center text-center space-y-3 bg-blue-50 border-blue-100">
-          <div className={`w-12 h-12 rounded-xl flex items-center justify-center shadow-sm ${isGoogleConnected ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-400'}`}>
-            {isGoogleConnected ? <Cloud size={24} /> : <CloudOff size={24} />}
+        <Card className="!p-6 flex flex-col items-center justify-center text-center space-y-3 bg-blue-50 border-blue-100 relative group">
+          <div className="w-12 h-12 rounded-xl flex items-center justify-center shadow-sm bg-blue-100 text-blue-600">
+            <Cloud size={24} />
           </div>
           <div>
             <h4 className="text-sm font-black text-[#1E4D4D]">المزامنة السحابية</h4>
             <p className="text-[10px] text-blue-700 font-bold mb-2">
-              {isGoogleConnected ? 'متصل بجوجل درايف' : 'غير متصل بالسحابة'}
+              نسخ احتياطي عبر Google Apps Script
             </p>
-            {isGoogleConnected ? (
-              <Button 
-                size="sm" 
-                variant="secondary" 
-                className="h-8 text-[10px] !rounded-lg w-full"
-                onClick={handleGoogleSync}
-                isLoading={loading}
-              >
-                <RefreshCw size={12} className="ml-1" /> مزامنة الآن
-              </Button>
-            ) : (
-              <Button 
-                size="sm" 
-                variant="primary" 
-                className="h-8 text-[10px] !rounded-lg w-full"
-                onClick={handleGoogleConnect}
-              >
-                ربط الحساب
-              </Button>
-            )}
+            <Button 
+              size="sm" 
+              variant="primary" 
+              className="h-10 text-xs !rounded-lg w-full bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-200"
+              onClick={handleCloudBackup}
+              isLoading={loading}
+            >
+              <RefreshCw size={14} className="ml-2" /> نسخ احتياطي سحابي
+            </Button>
           </div>
         </Card>
       </div>

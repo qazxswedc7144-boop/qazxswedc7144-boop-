@@ -17,6 +17,7 @@ export const FinancialTransactionRepository = {
   },
 
   getByReference: async (refId: string): Promise<FinancialTransaction[]> => {
+    if (!refId) return [];
     return await db.db.financialTransactions.where('Reference_ID').equals(refId).toArray();
   },
 

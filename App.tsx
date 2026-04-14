@@ -7,7 +7,6 @@ import { db } from './services/database';
 import { heartbeatService } from './services/heartbeat.service';
 import { backupService } from './services/backup.service';
 import { BackupService } from './services/backupService';
-import { SyncService } from './services/SyncService';
 import { FinancialHealthService } from './services/FinancialHealthService';
 import { CurrencyService } from './services/CurrencyService';
 import { LoadTestService } from './services/LoadTestService';
@@ -21,7 +20,7 @@ import NotificationCenter from './components/NotificationCenter';
 import RoleGuard from './components/RoleGuard';
 import { IS_PREVIEW } from './constants';
 import { motion, AnimatePresence } from 'motion/react';
-import { AIInsightsEngine } from './engines/aiInsightsEngine';
+import { AIInsightsEngine } from './src/core/engines/aiInsightsEngine';
 import { 
   Home, Settings, Menu, X, Database, TableProperties, ArrowRight, 
   ShieldCheck, FolderArchive, History, Tag, BarChart3, Fingerprint,
@@ -68,7 +67,6 @@ const MODULES: {id: any, label: string, icon: any, group: string, permission?: P
   { id: 'dashboard', label: 'الرئيسية', icon: <Home size={20} />, group: 'core' },
   { id: 'partners', label: 'العملاء والموردين', icon: <Users size={20} />, group: 'core', permission: 'MANAGE_PARTNERS' },
   { id: 'reports', label: 'التقارير', icon: <BarChart3 size={20} />, group: 'admin', permission: 'VIEW_REPORTS' },
-  { id: 'advanced-reports', label: 'Gemini AI Insights', icon: <AutoAwesome size={20} />, group: 'admin', permission: 'VIEW_REPORTS' },
   { id: 'system-health', label: 'صحة النظام', icon: <ShieldCheck size={20} />, group: 'admin', permission: 'MANAGE_SYSTEM' },
   { id: 'settings', label: 'إعدادات النظام', icon: <Settings size={20} />, group: 'settings', permission: 'MANAGE_SYSTEM' },
 ];
@@ -111,88 +109,124 @@ function MainLayout() {
     };
   }, []);
 
-  // 2. Lock Logic (Interval & Visibility)
-  useEffect(() => {
-    const checkLock = async () => {
-      const { appLockService } = await import('./services/AppLockService');
-      const settings = await appLockService.getSettings();
-      if (settings?.is_enabled && settings.lock_mode !== 'instant') {
-        const shouldLock = await appLockService.shouldLock();
-        if (shouldLock) setIsLocked(true);
-      }
-    };
-
-    const handleVisibilityChange = async () => {
-      const { appLockService } = await import('./services/AppLockService');
-      const settings = await appLockService.getSettings();
-      
-      if (document.visibilityState === 'hidden') {
-        if (settings?.is_enabled && settings.lock_mode === 'instant') {
-          setIsLocked(true);
-        }
-      } else if (document.visibilityState === 'visible') {
+    // 2. Lock Logic (Interval & Visibility)
+    useEffect(() => {
+      const syncLockFlag = async () => {
+        const { appLockService } = await import('./services/AppLockService');
+        const settings = await appLockService.getSettings();
         if (settings?.is_enabled) {
-          if (settings.lock_mode === 'instant') {
-            setIsLocked(true);
-          } else {
-            const shouldLock = await appLockService.shouldLock();
-            if (shouldLock) setIsLocked(true);
-          }
-        }
-      }
-    };
-
-    const interval = setInterval(checkLock, 30000); // 30s as requested
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('focus', checkLock);
-    window.addEventListener('blur', () => {
-       import('./services/AppLockService').then(async ({ appLockService }) => {
-         const settings = await appLockService.getSettings();
-         if (settings?.is_enabled && settings.lock_mode === 'instant') {
-           setIsLocked(true);
-         }
-       });
-    });
-
-    // Initial check on mount (App Resume)
-    const initialCheck = async () => {
-      const { appLockService } = await import('./services/AppLockService');
-      const settings = await appLockService.getSettings();
-      if (settings?.is_enabled) {
-        if (settings.lock_mode === 'instant') {
-          setIsLocked(true);
+          localStorage.setItem("app_lock_enabled", "true");
         } else {
+          localStorage.removeItem("app_lock_enabled");
+        }
+      };
+      syncLockFlag();
+
+      const checkLock = async () => {
+        const { appLockService } = await import('./services/AppLockService');
+        const settings = await appLockService.getSettings();
+        if (settings?.is_enabled && settings.lock_mode !== 'instant') {
           const shouldLock = await appLockService.shouldLock();
           if (shouldLock) setIsLocked(true);
         }
-      }
-    };
-    initialCheck();
+      };
+  
+      const handleVisibilityChange = async () => {
+        const { appLockService } = await import('./services/AppLockService');
+        const settings = await appLockService.getSettings();
+        
+        if (document.visibilityState === 'hidden') {
+          if (settings?.is_enabled && settings.lock_mode === 'instant') {
+            setIsLocked(true);
+          }
+        } else if (document.visibilityState === 'visible') {
+          if (settings?.is_enabled) {
+            if (settings.lock_mode === 'instant') {
+              setIsLocked(true);
+            } else {
+              const shouldLock = await appLockService.shouldLock();
+              if (shouldLock) setIsLocked(true);
+            }
+          }
+        }
+      };
+  
+      const interval = setInterval(checkLock, 30000); // 30s as requested
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+      window.addEventListener('focus', checkLock);
+      window.addEventListener('blur', () => {
+         import('./services/AppLockService').then(async ({ appLockService }) => {
+           const settings = await appLockService.getSettings();
+           if (settings?.is_enabled && settings.lock_mode === 'instant') {
+             setIsLocked(true);
+           }
+         });
+      });
+  
+      // Initial check on mount (App Resume)
+      const initialCheck = async () => {
+        const isLockEnabled = localStorage.getItem("app_lock_enabled") === "true";
+        if (!isLockEnabled) return; // دخول طبيعي
 
-    return () => {
-      clearInterval(interval);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('focus', checkLock);
-    };
-  }, []);
+        const { appLockService } = await import('./services/AppLockService');
+        const settings = await appLockService.getSettings();
+        
+        if (settings?.is_enabled) {
+          // في البداية نفتح مباشرة إلا إذا كان هناك سبب قوي للقفل
+          const shouldLock = await appLockService.shouldLock();
+          if (shouldLock) setIsLocked(true);
+        }
+      };
+      initialCheck();
+  
+      return () => {
+        clearInterval(interval);
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+        window.removeEventListener('focus', checkLock);
+      };
+    }, []);
+
+  useEffect(() => {
+    console.log("PAGE MOUNTED")
+    return () => console.log("PAGE UNMOUNTED")
+  }, [])
 
   const parseRoute = useCallback(() => {
     const hash = window.location.hash.replace('#/', '');
-    if (!hash) return;
     const parts = hash.split('/');
-    const view = parts[0];
+    let view = parts[0] || 'dashboard';
     const id = parts[1];
+
+    // List of valid views (based on the lazy loaded components)
+    const validViews = [
+      'dashboard', 'purchases', 'sales', 'inventory', 'inventory-audit',
+      'suppliers', 'logs', 'audit-history', 'settings', 'accounting',
+      'reconciliation', 'system-health', 'invoices-archive', 'invoice-history',
+      'adjustments-archive', 'supplier-payment', 'customer-receipt', 'vouchers',
+      'aging-report'
+    ];
+
+    if (!validViews.includes(view)) {
+      view = 'dashboard';
+      window.location.hash = '#/dashboard';
+    }
+
     startTransition(() => {
       setCurrentView(view);
       if (id) {
         setEditingInvoiceId(id);
         setViewParams({ id });
+      } else {
+        setEditingInvoiceId(null);
+        setViewParams(null);
       }
     });
   }, [setEditingInvoiceId]);
 
   useEffect(() => {
     let stopCurrencyObserver: (() => void) | null = null;
+    let syncTimer: any;
+    let cloudSyncInterval: any;
 
     const init = async () => { 
       await db.init();
@@ -212,6 +246,20 @@ function MainLayout() {
       heartbeatService.start(); 
       backupService.startAutoTimer();
       
+      // 8. CLOUD BACKUP: Initial sync
+      const session = authService.validateSession();
+      if (session) {
+        try {
+          const { syncFromCloud } = await import('./services/syncService');
+          await syncFromCloud();
+          
+          const internalKey = 'pharmaflow-internal-secure-key-2026';
+          await BackupService.uploadBackup(internalKey);
+        } catch (e) {
+          console.warn("Initial cloud sync/backup failed:", e);
+        }
+      }
+      
       // Reset security system for development as requested
       await FinancialDefenseSystem.resetSecuritySystem();
       
@@ -224,10 +272,21 @@ function MainLayout() {
       await FinancialHealthService.refreshHealthMonitor();
       AIInsightsEngine.runAnalysis();
 
-      const syncTimer = setInterval(async () => {
+      syncTimer = setInterval(async () => {
         const threat = await db.getSetting('SYSTEM_THREAT_LEVEL', '0');
         setRiskScore(parseInt(threat));
       }, 5000);
+
+      // Background Sync Interval (Every 15s)
+      cloudSyncInterval = setInterval(async () => {
+        try {
+          const { pushChanges, pullChanges } = await import('./services/syncService');
+          await pushChanges();
+          await pullChanges();
+        } catch (e) {
+          console.warn("SYNC ERROR:", e);
+        }
+      }, 15000);
       
       let health = await BackupService.runIntegrityChecks();
       const savedStatus = await db.getSetting('SYSTEM_STATUS', 'ACTIVE');
@@ -261,7 +320,8 @@ function MainLayout() {
     return () => {
       heartbeatService.stop();
       backupService.stopAutoTimer();
-      SyncService.stopWorker();
+      clearInterval(syncTimer);
+      clearInterval(cloudSyncInterval);
       if (stopCurrencyObserver) stopCurrencyObserver();
       window.removeEventListener('hashchange', parseRoute);
     };
@@ -537,9 +597,14 @@ const LockScreen: React.FC<{ onUnlock: () => void }> = ({ onUnlock }) => {
     if (!password) return;
     setLoading(true);
     try {
+      const simplePass = localStorage.getItem("app_lock_pass") || "1234";
       const { appLockService } = await import('./services/AppLockService');
-      const valid = await appLockService.verifyPassword(password);
-      if (valid) {
+      
+      // Check simple pass first, then secure service
+      const isSimpleValid = password === simplePass;
+      const isSecureValid = await appLockService.verifyPassword(password);
+
+      if (isSimpleValid || isSecureValid) {
         await appLockService.updateActivity();
         onUnlock();
       } else {

@@ -2,6 +2,7 @@
 import { db } from './database';
 import { AccountingEntry, JournalLine } from '../types';
 import { AccountingEngine } from './AccountingEngine';
+import { createSafeDateRange, safeBetween } from '../utils/safeRange';
 
 export class YearEndClosingService {
   
@@ -15,7 +16,10 @@ export class YearEndClosingService {
       if (period?.Is_Locked) throw new Error("السنة المالية مقفلة بالفعل.");
 
       // 2. Calculate Net Profit for the year
-      const entries = await db.db.journalEntries.where('date').between(startDate, endDate, true, true).toArray();
+      const range = createSafeDateRange(`${year}-01-01`, `${year}-12-31`);
+      if (!range) throw new Error("نطاق تاريخ غير صالح للسنة المالية.");
+
+      const entries = await safeBetween('journalEntries', 'date', `${year}-01-01`, `${year}-12-31`);
       const revenueAcc = await AccountingEngine.getCoreAccount('SALES_REVENUE');
       const expenseAcc = await AccountingEngine.getCoreAccount('EXPENSE');
       const retainedEarningsAcc = 'ACC-RETAINED-EARNINGS';

@@ -39,5 +39,22 @@ export const SharedCalculations = {
    */
   calculateAdjustmentImpact: (adjustments: any[]): number => {
     return adjustments.reduce((acc, adj) => acc + (adj.Value || 0), 0);
+  },
+
+  /**
+   * حساب أعمار الفواتير (Aging Analysis)
+   * يضيف خاصية aging لكل فاتورة بناءً على تاريخها
+   */
+  calculateAging: (invoices: any[]): any[] => {
+    const now = Date.now();
+    return invoices.map(inv => {
+      const date = inv.date || inv.Date || new Date().toISOString();
+      const days = (now - new Date(date).getTime()) / (1000 * 60 * 60 * 24);
+
+      if (days <= 30) return { ...inv, aging: '0-30' };
+      if (days <= 60) return { ...inv, aging: '30-60' };
+
+      return { ...inv, aging: '60+' };
+    });
   }
 };

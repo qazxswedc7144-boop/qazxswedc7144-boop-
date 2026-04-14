@@ -1,7 +1,8 @@
-import { db } from './database';
-import { authService } from './auth.service';
+
+import { db } from '../services/database';
+import { authService } from '../services/auth.service';
 import { SystemBackup, AuditLogEntry } from '../types';
-import { EncryptionService } from './EncryptionService';
+import { EncryptionService } from '../services/EncryptionService';
 
 const BACKUP_URL = import.meta.env.VITE_BACKUP_SCRIPT_URL || "PUT_YOUR_APPS_SCRIPT_URL_HERE";
 
@@ -484,7 +485,7 @@ export const BackupService = {
     });
 
     if (Math.abs(totalDebit - totalCredit) > 0.01) {
-      throw new Error('RESTORE_VALIDATION_FAILED: Accounting imbalance detected (Debit != Credit).');
+      throw new Error('RESTORE_VALIDATION_FAILED: Accounting inequality detected.');
     }
 
     // no negative stock
@@ -560,7 +561,7 @@ export const BackupService = {
       await db.ensureOpen();
       
       // Use the specialized IntegritySweepService for deep checks
-      const { IntegritySweepService } = await import('./IntegritySweepService');
+      const { IntegritySweepService } = await import('../services/IntegritySweepService');
       const isHealthy = await IntegritySweepService.runSweep(false);
       
       if (!isHealthy) {

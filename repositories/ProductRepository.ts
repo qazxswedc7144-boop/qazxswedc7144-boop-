@@ -103,6 +103,7 @@ export const ProductRepository = {
   },
 
   calculateCurrentBalance: async (productId: string): Promise<number> => {
+    if (!productId) return 0;
     const txs = await db.db.inventoryTransactions.where('productId').equals(productId).toArray();
     return txs.reduce((sum, tx) => sum + (tx.QuantityChange || 0), 0);
   },
@@ -116,6 +117,7 @@ export const ProductRepository = {
   },
 
   getItemAutoFillDetails: async (productId: string) => {
+    if (!productId) return null;
     const product = await ProductRepository.getById(productId);
     if (!product) return null;
 

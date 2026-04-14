@@ -62,6 +62,15 @@ export class IntegritySweepService {
         }
       } catch (e) { console.error("Voucher check failed", e); }
 
+      // 6. Validate Date Formats (New)
+      try {
+        const datesHealthy = await this.validateDates(autoFix);
+        if (!datesHealthy) {
+          isHealthy = false;
+          errors.push("Malformed date strings detected in records");
+        }
+      } catch (e) { console.error("Date check failed", e); }
+
       if (!isHealthy) {
         await this.handleCriticalError(errors);
       }
@@ -99,6 +108,7 @@ export class IntegritySweepService {
     const products = await db.getProducts();
     let healthy = true;
     for (const p of products) {
+      if (!p.id) continue;
       const transactions = await db.db.inventoryTransactions.where('productId').equals(p.id).toArray();
       const calculatedStock = transactions.reduce((sum, t) => sum + (t.QuantityChange || 0), 0);
       
@@ -198,6 +208,55 @@ export class IntegritySweepService {
             healthy = false;
           }
         }
+      }
+    }
+    return healthy;
+  }
+
+  private static async validateDates(autoFix = false): Promise<boolean> {
+    const tables = [
+      'sales', 'purchases', 'journalEntries', 'Audit_Log', 'financialTransactions', 
+      'inventoryTransactions', 'cashFlow', 'settlements', 'Accounting_Periods',
+      'systemAlerts', 'systemPerformanceLog', 'userBehavior', 'historicalMetrics'
+    ] as const;
+    let healthy = true;
+
+    for (const tableName of tables) {
+      const table = (db.db as any)[tableName];
+      if (!table) continue;
+
+      try {
+        const records = await table.toArray();
+        for (const record of records) {
+          // Check common date fields
+          const dateFields = ['date', 'TransactionDate', 'timestamp', 'Created_At', 'Modified_At', 'Last_Updated', 'deleted_at', 'updatedAt', 'Start_Date', 'End_Date'];
+          
+          for (const field of dateFields) {
+            const dateVal = record[field];
+            if (dateVal === undefined || dateVal === null) continue;
+
+            let d: Date;
+            if (typeof dateVal === 'number') {
+              d = new Date(dateVal);
+            } else {
+              d = new Date(dateVal);
+            }
+
+            if (isNaN(d.getTime())) {
+              healthy = false;
+              if (autoFix) {
+                console.warn(`AUTO_FIX: Repairing invalid date in ${tableName}.${field} for record ${record.id || record.TransactionID || record.Log_ID}`);
+                const now = new Date().toISOString();
+                const update: any = {};
+                update[field] = typeof dateVal === 'number' ? Date.now() : now;
+                
+                await table.update(record.id || record.TransactionID || record.Log_ID || record.id, update);
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.error(`Failed to validate dates in table ${tableName}:`, e);
       }
     }
     return healthy;

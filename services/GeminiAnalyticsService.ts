@@ -1,5 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
-import { ReportEngine } from "../engines/reportEngine";
+import { ReportEngine } from '../src/core/engines/reportEngine';
 
 export class GeminiAnalyticsService {
   private static ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
@@ -82,6 +82,10 @@ export class GeminiAnalyticsService {
 
   static async predictSales(historicalData: any) {
     return this.analyzeData("توقع اتجاه المبيعات للفترة القادمة واقترح كميات الطلب المثالية.", historicalData);
+  }
+
+  static async analyze(summary: any) {
+    return this.analyzeData("قم بتحليل ملخص البيانات التالي وتقديم رؤى سريعة وتوصيات.", summary);
   }
 
   static async detectAnomalies(transactions: any) {

@@ -4,7 +4,7 @@ import { UserBehavior } from '../types';
 import { AlertCenter } from './AlertCenter';
 
 export class BehaviorMonitor {
-  static async trackAction(userId: string, action: 'EDIT' | 'UNLOCK' | 'REPOST' | 'DELETE') {
+  static async trackAction(userId: string, action: 'EDIT' | 'UNLOCK' | 'REPOST' | 'DELETE' | 'LOGIN' | 'SECURITY_BREACH', metadata?: any) {
     const today = new Date().toISOString().split('T')[0];
     const now = new Date();
     const isAfterHours = now.getHours() < 7 || now.getHours() > 21;
@@ -22,6 +22,7 @@ export class BehaviorMonitor {
         repostFrequency: 0,
         deleteAttempts: 0,
         afterHoursActions: 0,
+        failedLogins: 0,
         lastActionAt: now.toISOString()
       };
     }
@@ -31,9 +32,21 @@ export class BehaviorMonitor {
     if (action === 'UNLOCK') behavior.unlockAttempts++;
     if (action === 'REPOST') behavior.repostFrequency++;
     if (action === 'DELETE') behavior.deleteAttempts++;
+    if (action === 'SECURITY_BREACH' && metadata?.type === 'INVALID_PASSWORD') behavior.failedLogins++;
     if (isAfterHours) behavior.afterHoursActions++;
     
     behavior.lastActionAt = now.toISOString();
+    
+    // Log specific actions to audit log for high-level tracking
+    if (action === 'LOGIN' || action === 'SECURITY_BREACH') {
+      await db.addAuditLog(
+        action === 'LOGIN' ? 'INFO' : 'SECURITY',
+        'USER_ACTIVITY',
+        userId,
+        `${action}: ${metadata?.message || 'User action tracked'}`,
+        metadata
+      );
+    }
     
     // Check for after-hours activity (10 PM - 6 AM)
     const hour = new Date().getHours();
@@ -81,6 +94,16 @@ export class BehaviorMonitor {
         severity: 'WARNING',
         message: `نشاط خارج ساعات العمل للمستخدم [${behavior.userId}] 🌙`,
         metadata: { userId: behavior.userId, actions: behavior.afterHoursActions }
+      });
+    }
+
+    // 4. Multiple failed logins
+    if (behavior.failedLogins > 5) {
+      await AlertCenter.addAlert({
+        type: 'SECURITY',
+        severity: 'CRITICAL',
+        message: `محاولات دخول فاشلة متكررة للمستخدم [${behavior.userId}] 🔐`,
+        metadata: { userId: behavior.userId, attempts: behavior.failedLogins }
       });
     }
   }

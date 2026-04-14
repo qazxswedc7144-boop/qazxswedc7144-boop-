@@ -1,10 +1,9 @@
 
-import { db } from '../services/database';
-import { AccountingEntry, JournalLine, Sale, Purchase, InvoiceItem } from '../types';
-import { AccountingEngine } from '../services/AccountingEngine';
+import { db } from '@/services/database';
+import { AccountingEntry, JournalLine, Sale, Purchase, InvoiceItem } from '@/types';
+import { AccountingEngine } from '@/services/AccountingEngine';
 import { FIFOEngine } from './fifoEngine';
 import { StockMovementEngine } from './stockMovementEngine';
-import { SyncEngine } from '../services/SyncEngine';
 import { AIInsightsEngine } from './aiInsightsEngine';
 
 export class PostingEngine {
@@ -20,7 +19,7 @@ export class PostingEngine {
     const items = invoice.items;
     const total = isSale ? (invoice as Sale).finalTotal : (invoice as Purchase).totalAmount;
     const date = invoice.date;
-    const tenantId = SyncEngine.getTenantId();
+    const tenantId = 'TEN-DEV-001';
 
     // 1. VALIDATION
     if (isPosted) {
@@ -56,37 +55,36 @@ export class PostingEngine {
     const entryId = db.generateId('JE');
     let calculatedTotalCost = 0;
 
-    await SyncEngine.executeBatch(async (batch) => {
-      // 3. FIFO & STOCK MOVEMENTS
-      if (isSale) {
+    // 3. FIFO & STOCK MOVEMENTS
+    if (isSale) {
         if (isReturn) {
           // SALE RETURN: Increase Stock, Add FIFO Layer
           for (const item of items) {
             // We treat sale return as a purchase to restore stock
-            await FIFOEngine.addPurchaseLayer(item.product_id, item.qty, item.price, invoiceId, batch);
-            await StockMovementEngine.recordPurchaseMovement(item.product_id, item.qty, item.price, invoiceId, batch);
+            await FIFOEngine.addPurchaseLayer(item.product_id, item.qty, item.price, invoiceId);
+            await StockMovementEngine.recordPurchaseMovement(item.product_id, item.qty, item.price, invoiceId);
           }
         } else {
           // NORMAL SALE: Decrease Stock, Consume FIFO
           for (const item of items) {
-            const { totalCost: itemCost } = await FIFOEngine.consumeFIFO(invoiceId, item.product_id, item.qty, batch);
+            const { totalCost: itemCost } = await FIFOEngine.consumeFIFO(invoiceId, item.product_id, item.qty);
             calculatedTotalCost += itemCost;
-            await StockMovementEngine.recordSaleMovement(item.product_id, item.qty, itemCost, invoiceId, batch);
+            await StockMovementEngine.recordSaleMovement(item.product_id, item.qty, itemCost, invoiceId);
           }
         }
       } else {
         if (isReturn) {
           // PURCHASE RETURN: Decrease Stock, Consume FIFO
           for (const item of items) {
-            const { totalCost: itemCost } = await FIFOEngine.consumeFIFO(invoiceId, item.product_id, item.qty, batch);
+            const { totalCost: itemCost } = await FIFOEngine.consumeFIFO(invoiceId, item.product_id, item.qty);
             calculatedTotalCost += itemCost;
-            await StockMovementEngine.recordSaleMovement(item.product_id, item.qty, itemCost, invoiceId, batch);
+            await StockMovementEngine.recordSaleMovement(item.product_id, item.qty, itemCost, invoiceId);
           }
         } else {
           // NORMAL PURCHASE: Increase Stock, Add FIFO Layer
           for (const item of items) {
-            await FIFOEngine.addPurchaseLayer(item.product_id, item.qty, item.price, invoiceId, batch);
-            await StockMovementEngine.recordPurchaseMovement(item.product_id, item.qty, item.price, invoiceId, batch);
+            await FIFOEngine.addPurchaseLayer(item.product_id, item.qty, item.price, invoiceId);
+            await StockMovementEngine.recordPurchaseMovement(item.product_id, item.qty, item.price, invoiceId);
           }
         }
       }
@@ -180,7 +178,6 @@ export class PostingEngine {
 
       // 8. SAVE TO DATABASE
       await db.db.journalEntries.add(entry);
-      SyncEngine.addToBatch(batch, 'journal_entries', entry.id, entry);
 
       // 9. UPDATE ACCOUNT BALANCES
       for (const line of lines) {
@@ -188,7 +185,6 @@ export class PostingEngine {
         if (account) {
           const newBalance = (account.balance || 0) + (line.debit - line.credit);
           await db.db.accounts.update(line.account_id, { balance: newBalance });
-          SyncEngine.addToBatch(batch, 'accounts', line.account_id, { balance: newBalance });
         }
       }
 
@@ -202,7 +198,6 @@ export class PostingEngine {
           tenant_id: tenantId
         };
         await db.db.sales.update(invoiceId, update);
-        SyncEngine.addToBatch(batch, 'sales', invoiceId, update);
       } else {
         const update = { 
           invoiceStatus: 'POSTED',
@@ -211,10 +206,8 @@ export class PostingEngine {
           tenant_id: tenantId
         };
         await db.db.purchases.update(invoiceId, update);
-        SyncEngine.addToBatch(batch, 'purchases', invoiceId, update);
       }
-    });
-
+    // End of posting logic
     AIInsightsEngine.runAnalysis();
     return entryId;
   }

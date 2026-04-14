@@ -49,6 +49,10 @@ export const useSales = (onNavigate?: (view: any, params?: any) => void) => {
   const [isAdjustmentsOpen, setIsAdjustmentsOpen] = useState(false);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [isViewerOpen, setIsViewerOpen] = useState(false);
+  const [isProcessingAI, setIsProcessingAI] = useState(false);
+  const [hasUnsavedAI, setHasUnsavedAI] = useState(false);
+  const [showAIConfirmModal, setShowAIConfirmModal] = useState(false);
+  const [aiParsedData, setAIParsedData] = useState<any>(null);
 
   const [customerSearchTerm, setCustomerSearchTerm] = useState('');
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
@@ -90,6 +94,10 @@ export const useSales = (onNavigate?: (view: any, params?: any) => void) => {
     setAdjData({ discountPercent: 0, otherFees: 0, tax: 0 });
     setCustomerSearchTerm('');
     setEditingInvoiceId(null);
+    setAIParsedData(null);
+    setShowAIConfirmModal(false);
+    setIsProcessingAI(false);
+    setHasUnsavedAI(false);
   }, [setEditingInvoiceId]);
 
   // Smart Prediction for Products
@@ -176,6 +184,103 @@ export const useSales = (onNavigate?: (view: any, params?: any) => void) => {
     setIsAddCustomerModalOpen(false);
     setCustomerSearchTerm('');
     setHeader(prev => ({ ...prev, customer_id: '' }));
+  };
+
+  const handleAIImport = async (file: File | string) => {
+    setIsProcessingAI(true);
+    try {
+      const { processInvoice } = await import('../services/smartImportEngine');
+      const parsed = await processInvoice(file);
+
+      if (!parsed || !parsed.items || parsed.items.length === 0) {
+        addToast("لم يتم التعرف على بيانات الفاتورة", "warning");
+        setIsProcessingAI(false);
+        return;
+      }
+
+      setAIParsedData(parsed);
+      setShowAIConfirmModal(true);
+      
+      // Handle attachment preview
+      if (typeof file === 'string') {
+        setHeader(prev => ({ ...prev, attachment: file }));
+      } else {
+        const reader = new FileReader();
+        const base64 = await new Promise<string>((resolve) => {
+          reader.onload = () => resolve(reader.result as string);
+          reader.readAsDataURL(file);
+        });
+        setHeader(prev => ({ ...prev, attachment: base64 }));
+      }
+    } catch (error: any) {
+      console.error("AI Import Error:", error);
+      addToast("فشل تحليل الفاتورة", "error");
+      setIsProcessingAI(false);
+    }
+  };
+
+  const applyAIParsedData = async () => {
+    if (!aiParsedData) return;
+
+    const { matchProductName } = await import('../services/productMatcher');
+
+    // Find or create customer
+    const customerName = aiParsedData.customer || '';
+    let customer = customers.find(c => 
+      c.Supplier_Name.toLowerCase().includes(customerName.toLowerCase()) || 
+      customerName.toLowerCase().includes(c.Supplier_Name.toLowerCase())
+    );
+    
+    if (!customer && customerName) {
+      setNewCustomerName(customerName);
+      setIsAddCustomerModalOpen(true);
+      // We don't return here because we want to continue mapping items
+      // The user will confirm the customer in the modal
+    }
+
+    setHeader(prev => ({
+      ...prev,
+      invoice_number: prev.invoice_number || aiParsedData.invoice_number || '',
+      customer_id: prev.customer_id || customer?.id || '',
+      payment_method: prev.payment_method === 'Cash' && aiParsedData.type === 'credit' ? 'Credit' : prev.payment_method,
+      isReturn: prev.isReturn || aiParsedData.type === 'return',
+      date: prev.date || aiParsedData.date || new Date().toISOString().split('T')[0],
+      notes: prev.notes ? `${prev.notes}\n${aiParsedData.notes || ''}` : (aiParsedData.notes || '')
+    }));
+    
+    if (!customerSearchTerm && (customer?.Supplier_Name || customerName)) {
+      setCustomerSearchTerm(customer?.Supplier_Name || customerName);
+    }
+
+    const mappedItems: InvoiceItem[] = [];
+    for (const item of aiParsedData.items) {
+      let product = matchProductName(item.name, products);
+      if (!product) {
+        product = products.find(p => 
+          p.Name.toLowerCase().includes(item.name.toLowerCase()) || 
+          item.name.toLowerCase().includes(p.Name.toLowerCase())
+        );
+      }
+      
+      mappedItems.push({
+        id: db.generateId('SALE_DET'),
+        parent_id: header.invoice_number || aiParsedData.invoice_number || '',
+        product_id: product?.id || db.generateId('NEW'),
+        name: item.name,
+        qty: item.quantity || 1,
+        price: item.price || 0,
+        sum: (item.quantity || 1) * (item.price || 0),
+        row_order: items.length + mappedItems.length + 1,
+        expiryDate: item.expiryDate
+      } as any);
+    }
+    
+    setItems(prev => [...prev, ...mappedItems]);
+    setShowAIConfirmModal(false);
+    setIsProcessingAI(false);
+    setHasUnsavedAI(true);
+    
+    addToast("تم استخراج البيانات بنجاح، يرجى مراجعتها وتعديلها قبل الحفظ", "success");
   };
 
   const [isPeriodLockedStatus, setIsPeriodLockedStatus] = useState(false);
@@ -485,6 +590,13 @@ export const useSales = (onNavigate?: (view: any, params?: any) => void) => {
     selectCustomer,
     handleCustomerBlur,
     confirmAddCustomer,
-    cancelAddCustomer
+    cancelAddCustomer,
+    isProcessingAI, setIsProcessingAI,
+    hasUnsavedAI,
+    showAIConfirmModal,
+    setShowAIConfirmModal,
+    handleAIImport,
+    applyAIParsedData,
+    resetInvoiceState
   };
 };
