@@ -34,8 +34,8 @@ export const integrationService = {
   /**
    * جلب البوابات المفعلة
    */
-  getActiveGateways: (): PaymentGateway[] => {
-    return db.getPaymentGateways().filter(g => g.isActive);
+  getActiveGateways: async (): Promise<PaymentGateway[]> => {
+    return (await db.getPaymentGateways()).filter((g: any) => g.isActive);
   },
 
   /**

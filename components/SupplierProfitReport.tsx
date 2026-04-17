@@ -1,6 +1,6 @@
 
 import React from 'react';
-import BaseReportPage from './BaseReportPage';
+import BaseReportPage from './reports/BaseReportPage';
 
 const SupplierProfitReport: React.FC<{ onNavigate?: (view: any) => void }> = ({ onNavigate }) => {
   return (

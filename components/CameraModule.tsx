@@ -53,12 +53,25 @@ export const CameraModule: React.FC<CameraModuleProps> = ({ isOpen, onClose, onC
     if (videoRef.current && canvasRef.current) {
       const video = videoRef.current;
       const canvas = canvasRef.current;
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      const ctx = canvas.getContext('2d');
+      
+      // Use intrinsic video dimensions to avoid stretching
+      const width = video.videoWidth;
+      const height = video.videoHeight;
+      
+      canvas.width = width;
+      canvas.height = height;
+      
+      const ctx = canvas.getContext('2d', { alpha: false });
       if (ctx) {
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const base64 = canvas.toDataURL('image/jpeg');
+        // High quality settings
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        
+        // Draw the full frame
+        ctx.drawImage(video, 0, 0, width, height);
+        
+        // Convert to high quality JPEG
+        const base64 = canvas.toDataURL('image/jpeg', 0.92);
         setCapturedImage(base64);
       }
     }
@@ -84,22 +97,29 @@ export const CameraModule: React.FC<CameraModuleProps> = ({ isOpen, onClose, onC
 
           <div className="flex-1 relative flex items-center justify-center overflow-hidden p-4">
             {!capturedImage ? (
-              <div className="relative w-full max-w-md aspect-[3/4] border-4 border-[#1E4D4D] rounded-2xl overflow-hidden shadow-2xl">
+              <div className="relative w-full max-w-md aspect-[3/4] border-4 border-[#1E4D4D] rounded-2xl overflow-hidden shadow-2xl bg-black">
                 <video 
                   ref={videoRef} 
                   autoPlay 
                   playsInline 
-                  className="w-full h-full object-cover"
+                  className="w-full h-full object-contain"
                 />
                 {error && (
                   <div className="absolute inset-0 flex items-center justify-center bg-black/80 p-6 text-center">
                     <p className="text-red-400 text-sm font-bold">{error}</p>
                   </div>
                 )}
+                {/* Overlay for document alignment */}
+                <div className="absolute inset-8 border-2 border-white/20 rounded-lg pointer-events-none flex items-center justify-center">
+                   <div className="w-8 h-8 border-t-2 border-l-2 border-emerald-500 absolute top-0 left-0" />
+                   <div className="w-8 h-8 border-t-2 border-r-2 border-emerald-500 absolute top-0 right-0" />
+                   <div className="w-8 h-8 border-b-2 border-l-2 border-emerald-500 absolute bottom-0 left-0" />
+                   <div className="w-8 h-8 border-b-2 border-r-2 border-emerald-500 absolute bottom-0 right-0" />
+                </div>
               </div>
             ) : (
-              <div className="relative w-full max-w-md aspect-[3/4] border-4 border-[#1E4D4D] rounded-2xl overflow-hidden shadow-2xl">
-                <img src={capturedImage} className="w-full h-full object-cover" alt="Captured" />
+              <div className="relative w-full max-w-md aspect-[3/4] border-4 border-[#1E4D4D] rounded-2xl overflow-hidden shadow-2xl bg-black">
+                <img src={capturedImage} className="w-full h-full object-contain" alt="Captured" />
               </div>
             )}
           </div>

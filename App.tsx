@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect, Suspense, lazy, useCallback, useTransition } from 'react';
 import Dashboard from './components/Dashboard';
+import { Logo, BrandName, Tagline } from './components/Logo';
 import { useUI } from './store/AppContext';
 import { authService } from './services/auth.service';
 import { db } from './services/database';
@@ -16,11 +17,9 @@ import { FinancialDefenseSystem } from './services/FinancialDefenseSystem';
 import { useAppStore } from './store/useAppStore';
 import { Permission } from './types';
 import { Toast } from './components/SharedUI';
-import NotificationCenter from './components/NotificationCenter'; 
 import RoleGuard from './components/RoleGuard';
 import { IS_PREVIEW } from './constants';
 import { motion, AnimatePresence } from 'motion/react';
-import { AIInsightsEngine } from './src/core/engines/aiInsightsEngine';
 import { 
   Home, Settings, Menu, X, Database, TableProperties, ArrowRight, 
   ShieldCheck, FolderArchive, History, Tag, BarChart3, Fingerprint,
@@ -34,8 +33,6 @@ const PurchasesView = lazy(() => import('./components/PurchasesInvoice'));
 const SalesModule = lazy(() => import('./components/SalesModule'));
 const InventoryModule = lazy(() => import('./components/InventoryModule'));
 const InventoryAuditModule = lazy(() => import('./components/InventoryAuditModule'));
-const SupplierManagement = lazy(() => import('./components/SupplierManagement'));
-const AuditLogModule = lazy(() => import('./components/AuditLogModule'));
 const AuditHistoryModule = lazy(() => import('./components/AuditHistoryModule')); 
 const SettingsModule = lazy(() => import('./components/SettingsModule'));
 const AccountingModule = lazy(() => import('./components/AccountingModule'));
@@ -56,9 +53,9 @@ const AdvancedReportsModule = lazy(() => import('./components/AdvancedReportsMod
 const RemainingStockReport = lazy(() => import('./components/reports/RemainingStockReport'));
 const ItemProfitsReport = lazy(() => import('./components/reports/ItemProfitsReport'));
 const CustomerProfitReport = lazy(() => import('./components/reports/CustomerProfitReport'));
-const SupplierProfitReport = lazy(() => import('./components/reports/SupplierProfitReport'));
-const AccountMovementReport = lazy(() => import('./components/reports/AccountMovementReport'));
-const PurchasesByItemReport = lazy(() => import('./components/reports/PurchasesByItemReport'));
+const SupplierProfitReport = lazy(() => import('./components/SupplierProfitReport'));
+const AccountMovementReport = lazy(() => import('./components/AccountMovementReport'));
+const PurchasesByItemReport = lazy(() => import('./components/PurchasesByItemReport'));
 const SalesByItemReport = lazy(() => import('./components/reports/SalesByItemReport'));
 const ItemMovementDetailsReport = lazy(() => import('./components/reports/ItemMovementDetailsReport'));
 const ExpiryItemsReport = lazy(() => import('./components/reports/ExpiryItemsReport'));
@@ -229,7 +226,31 @@ function MainLayout() {
     let cloudSyncInterval: any;
 
     const init = async () => { 
-      await db.init();
+      // Clear DB to resolve IDBKeyRange error if requested (one-time fix)
+      if (!localStorage.getItem('pharmaflow_db_reset_v4')) {
+        try {
+          console.log("🧹 Clearing IndexedDB to resolve IDBKeyRange error...");
+          const databases = await window.indexedDB.databases();
+          for (const dbInfo of databases) {
+            if (dbInfo.name) {
+              console.log(`Deleting: ${dbInfo.name}`);
+              window.indexedDB.deleteDatabase(dbInfo.name);
+            }
+          }
+        } catch (e) {
+          window.indexedDB.deleteDatabase("pharmaflow");
+        }
+        localStorage.setItem('pharmaflow_db_reset_v4', 'true');
+        window.location.reload();
+        return;
+      }
+
+      try {
+        await db.open();
+      } catch (e) {
+        console.error("Failed to open DB:", e);
+      }
+
       const { AccountingEngine } = await import('./services/AccountingEngine');
       const { PeriodLockEngine } = await import('./services/PeriodLockEngine');
       const { authService } = await import('./services/auth.service');
@@ -250,8 +271,8 @@ function MainLayout() {
       const session = authService.validateSession();
       if (session) {
         try {
-          const { syncFromCloud } = await import('./services/syncService');
-          await syncFromCloud();
+          const { cloudSync } = await import('./services/cloudSync');
+          await cloudSync.syncAll();
           
           const internalKey = 'pharmaflow-internal-secure-key-2026';
           await BackupService.uploadBackup(internalKey);
@@ -270,23 +291,21 @@ function MainLayout() {
       });
 
       await FinancialHealthService.refreshHealthMonitor();
-      AIInsightsEngine.runAnalysis();
 
       syncTimer = setInterval(async () => {
         const threat = await db.getSetting('SYSTEM_THREAT_LEVEL', '0');
         setRiskScore(parseInt(threat));
       }, 5000);
 
-      // Background Sync Interval (Every 15s)
-      cloudSyncInterval = setInterval(async () => {
-        try {
-          const { pushChanges, pullChanges } = await import('./services/syncService');
-          await pushChanges();
-          await pullChanges();
-        } catch (e) {
-          console.warn("SYNC ERROR:", e);
-        }
-      }, 15000);
+      // Background Sync Engine (Supabase Professional Sync)
+      import('./services/cloudSync').then(({ cloudSync }) => {
+        cloudSyncInterval = cloudSync.startSyncEngine();
+      });
+
+      // NEW: Supabase Realtime Listeners
+      import('./services/realtimeSync').then(({ realtimeSync }) => {
+        realtimeSync.startRealtimeSync();
+      });
       
       let health = await BackupService.runIntegrityChecks();
       const savedStatus = await db.getSetting('SYSTEM_STATUS', 'ACTIVE');
@@ -378,14 +397,15 @@ function MainLayout() {
 
       <aside className={`fixed inset-y-0 right-0 w-64 bg-white border-l border-slate-100 z-[210] transition-all duration-500 lg:translate-x-0 lg:static ${isSidebarOpen ? 'translate-x-0 shadow-2xl' : 'translate-x-full'}`}>
         <div className="flex flex-col h-full">
-          <div className="px-8 py-8 flex justify-between items-center">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-[#1E4D4D] rounded-xl flex items-center justify-center shadow-lg shadow-emerald-900/20">
-                <PackageIcon className="text-white" size={20} />
+          <div className="px-6 py-8 flex flex-col gap-4">
+            <div className="flex justify-between items-center w-full">
+              <div className="flex items-center gap-3">
+                <Logo size={40} />
+                <BrandName className="text-xl" />
               </div>
-              <span className="text-xl font-black text-[#1E4D4D] tracking-tighter">PharmaFlow</span>
+              <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden w-10 h-10 flex items-center justify-center bg-slate-50 rounded-xl text-slate-400 hover:bg-slate-100 transition-all"><X size={20} /></button>
             </div>
-            <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden w-10 h-10 flex items-center justify-center bg-slate-50 rounded-xl text-slate-400 hover:bg-slate-100 transition-all"><X size={20} /></button>
+            <Tagline className="px-1 text-[8px]" />
           </div>
 
           <nav className="flex-1 px-4 py-4 space-y-6 overflow-y-auto custom-scrollbar">
@@ -537,13 +557,11 @@ function MainLayout() {
                   case 'supplier-payment': return <RoleGuard permission="CREATE_VOUCHER"><SupplierPaymentModule onNavigate={handleNav} /></RoleGuard>;
                   case 'customer-receipt': return <RoleGuard permission="CREATE_VOUCHER"><CustomerReceiptModule onNavigate={handleNav} /></RoleGuard>;
                   case 'vouchers': return <RoleGuard permission="CREATE_VOUCHER"><VouchersModule onNavigate={handleNav} initialType={viewParams?.type} /></RoleGuard>;
-                  case 'partners': return <RoleGuard permission="FINANCIAL_ACCESS"><SupplierManagement lang="ar" onNavigate={handleNav} /></RoleGuard>;
                   case 'inventory': return <InventoryModule onNavigate={handleNav} />;
                   case 'inventory-audit': return <InventoryAuditModule lang="ar" onNavigate={handleNav} />;
                   case 'accounting': return <RoleGuard permission="FINANCIAL_ACCESS"><AccountingModule onNavigate={handleNav} /></RoleGuard>;
                   case 'audit-history': return <RoleGuard permission="MANAGE_SYSTEM"><AuditHistoryModule onNavigate={handleNav} recordId={viewParams?.id} /></RoleGuard>;
                   case 'settings': return <RoleGuard permission="MANAGE_SYSTEM"><SettingsModule onNavigate={handleNav} /></RoleGuard>;
-                  case 'logs': return <RoleGuard permission="MANAGE_SYSTEM"><AuditLogModule onNavigate={handleNav} /></RoleGuard>;
                   case 'reconciliation': return <RoleGuard permission="FINANCIAL_ACCESS"><ReconciliationModule onNavigate={handleNav} /></RoleGuard>;
                   case 'system-health': return <RoleGuard permission="MANAGE_SYSTEM"><SystemHealthModule onNavigate={handleNav} /></RoleGuard>;
                   case 'invoices-archive': return <InvoicesArchiveModule onNavigate={handleNav} initialFilter={viewParams?.filter} />;
@@ -633,11 +651,9 @@ const LockScreen: React.FC<{ onUnlock: () => void }> = ({ onUnlock }) => {
         className="w-full max-w-md bg-white rounded-[40px] p-10 shadow-2xl space-y-8"
       >
         <div className="flex flex-col items-center gap-4">
-          <div className="w-20 h-20 bg-blue-50 text-blue-600 rounded-3xl flex items-center justify-center shadow-inner">
-            <Fingerprint size={40} />
-          </div>
+          <Logo size={80} />
           <div className="text-center">
-            <h2 className="text-2xl font-black text-[#1E4D4D]">التطبيق مقفل</h2>
+            <BrandName className="text-2xl justify-center" />
             <p className="text-slate-400 font-bold text-xs mt-1">يرجى إدخال كلمة المرور للمتابعة</p>
           </div>
         </div>

@@ -1,18 +1,18 @@
 
 import React, { useState, useEffect } from 'react';
-import { db } from '../services/database';
-import { BackupService } from '../services/backupService';
-import { SystemBackup } from '../types';
+import { db } from '@/services/database';
+import { BackupService } from '@/services/backupService';
+import { SystemBackup } from '@/types';
 import { 
   Database, Download, RotateCcw, ShieldCheck, 
   History, AlertTriangle, CheckCircle2, XCircle,
   FileJson, Lock, Shield, Search, Trash2, AlertCircle,
   Cloud, RefreshCw, Upload
 } from 'lucide-react';
-import { Card, Button, Badge, Modal, Input } from './SharedUI';
-import { useUI } from '../store/AppContext';
-import { authService } from '../services/auth.service';
-import { ProductionCleanupService } from '../services/ProductionCleanupService';
+import { Card, Button, Badge, Modal, Input } from '@/components/SharedUI';
+import { useUI } from '@/store/AppContext';
+import { authService } from '@/services/auth.service';
+import { ProductionCleanupService } from '@/services/ProductionCleanupService';
 
 const BackupManagement: React.FC = () => {
   const [backups, setBackups] = useState<SystemBackup[]>([]);
@@ -40,15 +40,10 @@ const BackupManagement: React.FC = () => {
 
     try {
       setLoading(true);
-      const { pushData, syncFromCloud } = await import('../services/syncService');
+      const { cloudSync } = await import('../services/cloudSync');
       
-      // 7. ADD MANUAL SYNC BUTTON: Push then Pull
-      const appData = await BackupService.exportDatabase();
-      await pushData(appData);
-      addToast('تم رفع البيانات للسحابة بنجاح ✅', 'success');
-      
-      await syncFromCloud();
-      addToast('تمت المزامنة مع السحابة بنجاح 🚀', 'success');
+      await cloudSync.syncAll();
+      addToast('تمت المزامنة السحابية الكاملة بنجاح ✅', 'success');
       
       refreshGlobal();
       await loadBackups();

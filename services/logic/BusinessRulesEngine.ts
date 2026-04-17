@@ -15,15 +15,15 @@ export const BusinessRulesEngine = {
     /**
      * توليد القيود المحاسبية بناءً على نوع العملية
      */
-    generateEntries: (type: 'SALE' | 'PURCHASE', payload: any) => {
-      if (type === 'SALE') return AutoJournalMapper.mapSaleToEntries(payload);
-      return AutoJournalMapper.mapPurchaseToEntries(payload);
+    generateEntries: async (type: 'SALE' | 'PURCHASE', payload: any) => {
+      if (type === 'SALE') return await AutoJournalMapper.mapSaleToEntries(payload);
+      return await AutoJournalMapper.mapPurchaseToEntries(payload);
     },
     
     /**
      * حساب التأثير المالي للسندات
      */
-    mapVoucherToJournal: (vData: any) => AutoJournalMapper.mapVoucherToEntries(vData)
+    mapVoucherToJournal: async (vData: any) => await AutoJournalMapper.mapVoucherToEntries(vData)
   },
 
   // --- 2. قواعد المرتجعات (Return Logic) ---

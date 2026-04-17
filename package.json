@@ -1,5 +1,5 @@
 {
-  "name": "pharmaflow",
+  "name": "PharmaFlow",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -15,9 +15,11 @@
     "@google/genai": "^1.44.0",
     "@mui/icons-material": "^7.3.9",
     "@mui/material": "^7.3.9",
+    "@supabase/supabase-js": "^2.103.3",
     "chart.js": "4.4.1",
     "crypto-js": "^4.2.0",
     "dexie": "3.2.4",
+    "dexie-react-hooks": "^4.4.0",
     "lucide-react": "0.460.0",
     "motion": "^12.35.0",
     "pdfjs-dist": "^5.6.205",

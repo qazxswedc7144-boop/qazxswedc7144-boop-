@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
-import BaseReportPage from './BaseReportPage';
-import { db } from '../../services/database';
+import BaseReportPage from './reports/BaseReportPage';
+import { db } from '@/services/database';
 
 const PurchasesByItemReport: React.FC<{ onNavigate?: (view: any) => void }> = ({ onNavigate }) => {
   const [data, setData] = useState<any[]>([]);
@@ -12,7 +12,7 @@ const PurchasesByItemReport: React.FC<{ onNavigate?: (view: any) => void }> = ({
     const fetchData = async () => {
       try {
         const purchases = await db.getPurchases();
-        const supps = db.getSuppliers();
+        const supps = await db.getSuppliers();
         setSuppliers(supps.map(s => ({ id: s.Supplier_ID, name: s.Supplier_Name })));
 
         // Aggregate by item

@@ -1,5 +1,5 @@
 
-import { db } from './database';
+import { db } from '../services/database';
 import { ReportEngine } from '@/core/engines/reportEngine';
 
 export class AccountingReportsService {

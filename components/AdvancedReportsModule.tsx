@@ -5,11 +5,11 @@ import {
   Download, FilterList, Refresh
 } from '@mui/icons-material';
 import { ArrowRight } from 'lucide-react';
-import { db } from '../services/database';
-import { useUI } from '../store/AppContext';
-import { Card, Button, Badge, Modal, Input } from './SharedUI';
-import { GeminiAnalyticsService } from '../services/GeminiAnalyticsService';
-import { AccountingReportsService } from '../services/AccountingReportsService';
+import { db } from '@/services/database';
+import { useUI } from '@/store/AppContext';
+import { Card, Button, Badge, Modal, Input } from '@/components/SharedUI';
+import { GeminiAnalyticsService } from '@/services/GeminiAnalyticsService';
+import { AccountingReportsService } from '@/services/AccountingReportsService';
 import Markdown from 'react-markdown';
 
 const AdvancedReportsModule: React.FC<{ onBack: () => void }> = ({ onBack }) => {

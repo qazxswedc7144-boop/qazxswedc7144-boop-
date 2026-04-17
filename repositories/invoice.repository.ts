@@ -9,13 +9,15 @@ import { InvoiceWorkflowEngine } from '../services/logic/InvoiceWorkflowEngine';
 import { LockService } from '../services/LockService';
 import { PostingEngine } from '@/core/engines/postingEngine';
 import { createSafeDateRange, safeBetweenQuery } from '../utils/safeRange';
+import { safeWhereEqual, safeCount, safeGetById } from '../utils/dexieSafe';
 
 export const InvoiceRepository = {
   
   getUnifiedInvoice: async (id: string): Promise<UnifiedInvoice | null> => {
     const paidTotal = await VoucherInvoiceLinkRepository.getTotalPaidForInvoice(id);
 
-    const sale = await db.db.sales.where('SaleID').equals(id).first() || await db.db.sales.get(id);
+    const sales = await safeWhereEqual(db.db.sales, 'SaleID', id);
+    const sale = sales[0] || await safeGetById(db.db.sales, id);
     if (sale) {
       const actualPaid = Math.max(paidTotal, sale.paidAmount || 0);
       const total = sale.finalTotal;
@@ -39,7 +41,8 @@ export const InvoiceRepository = {
       };
     }
 
-    const purchase = await db.db.purchases.where('invoiceId').equals(id).first() || await db.db.purchases.where('purchase_id').equals(id).first() || await db.db.purchases.get(id);
+    const purchases = await safeWhereEqual(db.db.purchases, 'invoiceId', id);
+    const purchase = purchases[0] || (await safeWhereEqual(db.db.purchases, 'purchase_id', id))[0] || await safeGetById(db.db.purchases, id);
     if (purchase) {
       const actualPaid = Math.max(paidTotal, purchase.paidAmount || 0);
       const total = purchase.totalAmount;
@@ -73,10 +76,10 @@ export const InvoiceRepository = {
     if (paidViaLinks > 0) return true;
 
     if (type === 'SALE') {
-      const hasReturns = await db.db.sales.where('originalProvisionalId').equals(id).count() > 0;
+      const hasReturns = await safeCount(db.db.sales, 'originalProvisionalId', id) > 0;
       if (hasReturns) return true;
     } else {
-      const hasReturns = await db.db.purchases.filter(p => p.invoiceType === 'مرتجع' && (p as any).originalInvoiceId === id).count() > 0;
+      const hasReturns = await db.db.purchases.filter((p: any) => p.invoiceType === 'مرتجع' && (p as any).originalInvoiceId === id).count() > 0;
       if (hasReturns) return true;
     }
     return false;
@@ -86,9 +89,9 @@ export const InvoiceRepository = {
     if (!num) return false;
     const normalized = num.trim().toUpperCase();
     if (type === 'SALE') {
-      return await db.db.sales.where('SaleID').equals(normalized).filter(s => s.id !== excludeId).count() > 0;
+      return await db.db.sales.where('SaleID').equals(normalized).filter((s: any) => s.id !== excludeId).count() > 0;
     } else {
-      return await db.db.purchases.where('invoiceId').equals(normalized).filter(p => p.id !== excludeId).count() > 0;
+      return await db.db.purchases.where('invoiceId').equals(normalized).filter((p: any) => p.id !== excludeId).count() > 0;
     }
   },
 
@@ -311,9 +314,9 @@ export const InvoiceRepository = {
   },
   getPurchaseById: async (id: string) => {
     if (!id) return null;
-    return await db.db.purchases.where('invoiceId').equals(id).first() || 
-           await db.db.purchases.where('purchase_id').equals(id).first() || 
-           await db.db.purchases.get(id);
+    const p1 = await safeWhereEqual(db.db.purchases, 'invoiceId', id);
+    const p2 = await safeWhereEqual(db.db.purchases, 'purchase_id', id);
+    return p1[0] || p2[0] || await safeGetById(db.db.purchases, id);
   },
   getArchiveSales: async () => await db.db.sales.where('InvoiceStatus').equals('Posted').toArray(),
   getArchivePurchases: async () => await db.db.purchases.where('invoiceStatus').equals('Posted').toArray(),

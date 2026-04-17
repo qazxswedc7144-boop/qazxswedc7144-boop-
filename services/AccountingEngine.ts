@@ -44,19 +44,19 @@ export class AccountingEngine {
 
     // 1. Revenue Impact
     if (sale.paymentStatus === 'Cash') {
-      lines.push(this.createLine(entryId, cashAcc, baseAmount, 0));
+      lines.push(await this.createLine(entryId, cashAcc, baseAmount, 0));
     } else {
-      lines.push(this.createLine(entryId, arAcc, baseAmount, 0));
+      lines.push(await this.createLine(entryId, arAcc, baseAmount, 0));
     }
-    lines.push(this.createLine(entryId, revenueAcc, 0, baseAmount));
+    lines.push(await this.createLine(entryId, revenueAcc, 0, baseAmount));
 
     // 2. COGS Impact
     const totalCost = sale.totalCost || 0;
     const { baseAmount: baseCost } = await CurrencyService.convertToBase(totalCost, currencyCode, sale.date);
     
     if (baseCost > 0) {
-      lines.push(this.createLine(entryId, cogsAcc, baseCost, 0));
-      lines.push(this.createLine(entryId, invAcc, 0, baseCost));
+      lines.push(await this.createLine(entryId, cogsAcc, baseCost, 0));
+      lines.push(await this.createLine(entryId, invAcc, 0, baseCost));
     }
 
     this.validateEntryBalance(lines);
@@ -91,13 +91,13 @@ export class AccountingEngine {
     const { baseAmount, rate } = await CurrencyService.convertToBase(purchase.totalAmount, currencyCode, purchase.date);
 
     // Debit Inventory
-    lines.push(this.createLine(entryId, invAcc, baseAmount, 0));
+    lines.push(await this.createLine(entryId, invAcc, baseAmount, 0));
 
     // Credit Cash or Payable
     if (purchase.status === 'PAID') {
-      lines.push(this.createLine(entryId, cashAcc, 0, baseAmount));
+      lines.push(await this.createLine(entryId, cashAcc, 0, baseAmount));
     } else {
-      lines.push(this.createLine(entryId, apAcc, 0, baseAmount));
+      lines.push(await this.createLine(entryId, apAcc, 0, baseAmount));
     }
 
     this.validateEntryBalance(lines);
@@ -134,11 +134,11 @@ export class AccountingEngine {
 
     // Reverse Revenue: Debit Revenue, Credit Cash/AR
     // Note: In some systems, we use a "Sales Returns" account. Here we debit the revenue account directly.
-    lines.push(this.createLine(entryId, revenueAcc, baseAmount, 0));
+    lines.push(await this.createLine(entryId, revenueAcc, baseAmount, 0));
     if (sale.paymentStatus === 'Cash') {
-      lines.push(this.createLine(entryId, cashAcc, 0, baseAmount));
+      lines.push(await this.createLine(entryId, cashAcc, 0, baseAmount));
     } else {
-      lines.push(this.createLine(entryId, arAcc, 0, baseAmount));
+      lines.push(await this.createLine(entryId, arAcc, 0, baseAmount));
     }
 
     // Reverse COGS: Debit Inventory, Credit COGS
@@ -146,8 +146,8 @@ export class AccountingEngine {
     const { baseAmount: baseCost } = await CurrencyService.convertToBase(totalCost, currencyCode, sale.date);
     
     if (baseCost > 0) {
-      lines.push(this.createLine(entryId, invAcc, baseCost, 0));
-      lines.push(this.createLine(entryId, cogsAcc, 0, baseCost));
+      lines.push(await this.createLine(entryId, invAcc, baseCost, 0));
+      lines.push(await this.createLine(entryId, cogsAcc, 0, baseCost));
     }
 
     this.validateEntryBalance(lines);
@@ -181,11 +181,11 @@ export class AccountingEngine {
 
     // Debit Cash or Payable, Credit Inventory
     if (purchase.status === 'PAID') {
-      lines.push(this.createLine(entryId, cashAcc, baseAmount, 0));
+      lines.push(await this.createLine(entryId, cashAcc, baseAmount, 0));
     } else {
-      lines.push(this.createLine(entryId, apAcc, baseAmount, 0));
+      lines.push(await this.createLine(entryId, apAcc, baseAmount, 0));
     }
-    lines.push(this.createLine(entryId, invAcc, 0, baseAmount));
+    lines.push(await this.createLine(entryId, invAcc, 0, baseAmount));
 
     this.validateEntryBalance(lines);
 
@@ -226,12 +226,12 @@ export class AccountingEngine {
 
     if (params.type === 'RECEIPT') {
       // Receipt: Debit Cash/Bank, Credit Customer (AR)
-      lines.push(this.createLine(entryId, fundAcc, params.amount, 0));
-      lines.push(this.createLine(entryId, arAcc, 0, params.amount));
+      lines.push(await this.createLine(entryId, fundAcc, params.amount, 0));
+      lines.push(await this.createLine(entryId, arAcc, 0, params.amount));
     } else {
       // Payment: Debit Supplier (AP), Credit Cash/Bank
-      lines.push(this.createLine(entryId, apAcc, params.amount, 0));
-      lines.push(this.createLine(entryId, fundAcc, 0, params.amount));
+      lines.push(await this.createLine(entryId, apAcc, params.amount, 0));
+      lines.push(await this.createLine(entryId, fundAcc, 0, params.amount));
     }
 
     this.validateEntryBalance(lines);
@@ -260,9 +260,9 @@ export class AccountingEngine {
     }
   }
 
-  private static createLine(entryId: string, accountId: string, debit: number, credit: number): JournalLine {
+  private static async createLine(entryId: string, accountId: string, debit: number, credit: number): Promise<JournalLine> {
     const id = db.generateId('JL');
-    const account = db.getAccounts().find(a => a.id === accountId);
+    const account = (await db.getAccounts()).find((a: any) => a.id === accountId);
     
     return {
       id,

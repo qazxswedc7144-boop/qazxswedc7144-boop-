@@ -1,16 +1,16 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Supplier, SupplierLedgerEntry } from '../types';
-import { db } from '../services/database';
-import { SupplierRepository } from '../repositories/SupplierRepository';
-import { useAccounting, useUI } from '../store/AppContext';
+import { Supplier, SupplierLedgerEntry } from '@/types';
+import { db } from '@/services/database';
+import { SupplierRepository } from '@/repositories/SupplierRepository';
+import { useAccounting, useUI } from '@/store/AppContext';
 import { 
   ChevronDown, ChevronUp, Phone, ArrowLeftRight, Search, Plus, ExternalLink, 
   ArrowRight, MapPin, Filter, Calendar, Link as LinkIcon, TrendingUp,
   Users, Truck, ShoppingBag, ArrowLeft, MoreHorizontal, Save, X, Home,
   FileText, Wallet, CreditCard
 } from 'lucide-react';
-import { Badge, Card, Button, Modal } from './SharedUI';
+import { Badge, Card, Button, Modal } from '@/components/SharedUI';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface SupplierManagementProps {

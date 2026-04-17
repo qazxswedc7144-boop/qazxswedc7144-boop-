@@ -47,7 +47,7 @@ export const createJournalEntry = async (lines: { account: string, debit: number
     createdAt: Date.now()
   };
 
-  await db.db.journal_entries.add(entry as any);
+  await db.db.journalEntries.add(entry as any);
 
   for (const l of lines) {
     await updateLedger(l.account, l.debit || 0, l.credit || 0);

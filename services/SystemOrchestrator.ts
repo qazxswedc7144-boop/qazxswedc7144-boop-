@@ -18,7 +18,7 @@ import { LockService } from './LockService';
 import { PeriodLockEngine } from './PeriodLockEngine';
 import { FinancialTransactionRepository } from '@/repositories/FinancialTransactionRepository';
 import { SupplierRepository } from '@/repositories/SupplierRepository';
-import { ProductRepository } from '@/repositories/ProductRepository';
+import { ProductRepository } from '@/core/engines/ProductRepository';
 
 export interface InvoiceProcessingRequest {
   type: 'SALE' | 'PURCHASE';

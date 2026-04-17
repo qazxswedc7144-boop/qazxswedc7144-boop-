@@ -314,9 +314,10 @@ export const BackupService = {
       financialTransactions: await db.db.financialTransactions.toArray(),
       voucherInvoiceLinks: await db.db.voucherInvoiceLinks.toArray(),
       settlements: await db.db.settlements.toArray(),
-      Audit_Log: await db.db.Audit_Log.toArray(),
+      Audit_Log: await db.db.audit_log.toArray(),
       audit_log: await db.db.audit_log.toArray(),
       accounts: await db.db.accounts.toArray(),
+      warehouseStock: (await db.db.warehouseStock?.toArray()) || [],
       settings: {
         app_lock_enabled: localStorage.getItem("app_lock_enabled"),
         app_lock_pass: localStorage.getItem("app_lock_pass")
@@ -341,8 +342,9 @@ export const BackupService = {
       financialTransactions: (await db.db.financialTransactions.toArray()).filter(filterSince),
       voucherInvoiceLinks: (await db.db.voucherInvoiceLinks.toArray()).filter(filterSince),
       settlements: (await db.db.settlements.toArray()).filter(filterSince),
-      Audit_Log: (await db.db.Audit_Log.toArray()).filter(filterSince),
+      Audit_Log: (await db.db.audit_log.toArray()).filter(filterSince),
       audit_log: (await db.db.audit_log.toArray()).filter(filterSince),
+      warehouseStock: (await db.db.warehouseStock?.toArray() || []).filter(filterSince),
       settings: {
         app_lock_enabled: localStorage.getItem("app_lock_enabled"),
         app_lock_pass: localStorage.getItem("app_lock_pass")
@@ -411,8 +413,8 @@ export const BackupService = {
       await db.db.financialTransactions.clear();
       await db.db.voucherInvoiceLinks.clear();
       await db.db.settlements.clear();
-      await db.db.Audit_Log.clear();
       await db.db.audit_log.clear();
+      if (db.db.warehouseStock) await db.db.warehouseStock.clear();
       
       // Optional: Clear master data if it's a full restore
       if (!isIncremental) {

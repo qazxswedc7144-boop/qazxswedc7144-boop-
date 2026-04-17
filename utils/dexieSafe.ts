@@ -56,6 +56,22 @@ export const safeWhereStartsWith = async (table: any, field: string, value: stri
   return await table.where(field).startsWith(value).toArray();
 };
 
+export const safeCount = async (table: any, field: string, value: any) => {
+  if (!isValidKey(value)) {
+    console.warn(`Invalid value provided to safeCount for field ${field}:`, value);
+    return 0;
+  }
+  return await table.where(field).equals(value).count();
+};
+
+export const safeEquals = async (table: any, field: string, value: any) => {
+  if (!value) {
+    console.warn("⚠️ SKIPPED QUERY:", field);
+    return null;
+  }
+  return await table.where(field).equals(value).first();
+};
+
 export const safeInsert = async (table: any, data: any) => {
   if (!isValidKey(data.id)) {
     // Fallback to a generated ID if missing

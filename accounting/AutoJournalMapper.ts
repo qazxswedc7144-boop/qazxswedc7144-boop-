@@ -6,8 +6,8 @@ import { ChartOfAccounts } from './ChartOfAccounts';
 
 export const AutoJournalMapper = {
   
-  createLine(entryId: string, accId: string, amount: number, type: 'DEBIT' | 'CREDIT'): JournalLine {
-    const account = ChartOfAccounts.getAccountById(accId);
+  async createLine(entryId: string, accId: string, amount: number, type: 'DEBIT' | 'CREDIT'): Promise<JournalLine> {
+    const account = await ChartOfAccounts.getAccountById(accId);
     const accName = account ? account.name : "حساب غير معرف";
     
     const id = db.generateId('DET');
@@ -24,14 +24,14 @@ export const AutoJournalMapper = {
     };
   },
 
-  generateEntryFromRule(
+  async generateEntryFromRule(
     ruleKey: string, 
     amount: number, 
     sourceId: string, 
     sourceType: any, 
     date: string,
     customDescription?: string
-  ): AccountingEntry {
+  ): Promise<AccountingEntry> {
     const rule = JournalRulesProvider.getRule(ruleKey);
     const entryId = db.generateId('ENT');
     
@@ -45,13 +45,13 @@ export const AutoJournalMapper = {
       description: customDescription || `${rule.description} #${sourceId}`,
       branchId: db.getCurrentBranchId(),
       lines: [
-        this.createLine(entryId, rule.debit, amount, 'DEBIT'),
-        this.createLine(entryId, rule.credit, amount, 'CREDIT')
+        await this.createLine(entryId, rule.debit, amount, 'DEBIT'),
+        await this.createLine(entryId, rule.credit, amount, 'CREDIT')
       ]
     };
   },
 
-  mapSaleToEntries(saleData: any): AccountingEntry[] {
+  async mapSaleToEntries(saleData: any): Promise<AccountingEntry[]> {
     const entries: AccountingEntry[] = [];
     const date = new Date().toISOString();
     const isReturn = saleData.isReturn === true;
@@ -72,8 +72,8 @@ export const AutoJournalMapper = {
       branchId: db.getCurrentBranchId(),
       lines: [
         // في المرتجع نعكس الحسابات: المدين يصبح دائن والدائن يصبح مدين
-        this.createLine(entryId, isReturn ? rule.credit : rule.debit, saleData.total, 'DEBIT'),
-        this.createLine(entryId, isReturn ? rule.debit : rule.credit, saleData.total, 'CREDIT')
+        await this.createLine(entryId, isReturn ? rule.credit : rule.debit, saleData.total, 'DEBIT'),
+        await this.createLine(entryId, isReturn ? rule.debit : rule.credit, saleData.total, 'CREDIT')
       ]
     });
 
@@ -89,15 +89,15 @@ export const AutoJournalMapper = {
         description: `إثبات تكلفة ${isReturn ? 'مرتجع' : ''} #${saleData.id}`,
         lines: [
           // المرتجع يعيد البضاعة للمخزن (Dr Inventory, Cr COGS)
-          this.createLine(cogsId, isReturn ? cogsRule.credit : cogsRule.debit, saleData.cost, 'DEBIT'),
-          this.createLine(cogsId, isReturn ? cogsRule.debit : cogsRule.credit, saleData.cost, 'CREDIT')
+          await this.createLine(cogsId, isReturn ? cogsRule.credit : cogsRule.debit, saleData.cost, 'DEBIT'),
+          await this.createLine(cogsId, isReturn ? cogsRule.debit : cogsRule.credit, saleData.cost, 'CREDIT')
         ]
       });
     }
     return entries;
   },
 
-  mapPurchaseToEntries(purData: any): AccountingEntry[] {
+  async mapPurchaseToEntries(purData: any): Promise<AccountingEntry[]> {
     const date = new Date().toISOString();
     const entryId = db.generateId('ENT');
     const isReturn = purData.isReturn === true;
@@ -111,14 +111,14 @@ export const AutoJournalMapper = {
     
     if (isReturn) {
       // قيد مرتجع مشتريات (يعكس المشتريات): Dr Cash/Supplier, Cr Inventory
-      lines.push(this.createLine(entryId, creditAcc, total, 'DEBIT'));
-      lines.push(this.createLine(entryId, 'ACC-102', subtotal, 'CREDIT'));
-      if (tax > 0) lines.push(this.createLine(entryId, 'ACC-210', tax, 'CREDIT'));
+      lines.push(await this.createLine(entryId, creditAcc, total, 'DEBIT'));
+      lines.push(await this.createLine(entryId, 'ACC-102', subtotal, 'CREDIT'));
+      if (tax > 0) lines.push(await this.createLine(entryId, 'ACC-210', tax, 'CREDIT'));
     } else {
       // قيد مشتريات عادي: Dr Inventory, Dr Tax, Cr Cash/Supplier
-      lines.push(this.createLine(entryId, 'ACC-102', subtotal, 'DEBIT'));
-      if (tax > 0) lines.push(this.createLine(entryId, 'ACC-210', tax, 'DEBIT'));
-      lines.push(this.createLine(entryId, creditAcc, total, 'CREDIT'));
+      lines.push(await this.createLine(entryId, 'ACC-102', subtotal, 'DEBIT'));
+      if (tax > 0) lines.push(await this.createLine(entryId, 'ACC-210', tax, 'DEBIT'));
+      lines.push(await this.createLine(entryId, creditAcc, total, 'CREDIT'));
     }
 
     return [{
@@ -134,7 +134,7 @@ export const AutoJournalMapper = {
     }];
   },
 
-  mapVoucherToEntries(vData: any): AccountingEntry {
+  async mapVoucherToEntries(vData: any): Promise<AccountingEntry> {
     const isIncome = vData.type === 'دخل';
     const debitAcc = isIncome ? 'ACC-101' : 'ACC-502'; 
     const creditAcc = isIncome ? 'ACC-401' : 'ACC-101'; 
@@ -147,13 +147,13 @@ export const AutoJournalMapper = {
       description: `سند ${vData.type} #${vData.id} - ${vData.name}`,
       branchId: db.getCurrentBranchId(),
       lines: [
-        this.createLine(entryId, debitAcc, vData.amount, 'DEBIT'),
-        this.createLine(entryId, creditAcc, vData.amount, 'CREDIT')
+        await this.createLine(entryId, debitAcc, vData.amount, 'DEBIT'),
+        await this.createLine(entryId, creditAcc, vData.amount, 'CREDIT')
       ]
     };
   }
 };
 
-export const createSaleJournal = (d: any) => AutoJournalMapper.mapSaleToEntries(d);
-export const createPurchaseJournal = (d: any) => AutoJournalMapper.mapPurchaseToEntries(d);
-export const createVoucherJournal = (d: any) => AutoJournalMapper.mapVoucherToEntries(d);
+export const createSaleJournal = async (d: any) => await AutoJournalMapper.mapSaleToEntries(d);
+export const createPurchaseJournal = async (d: any) => await AutoJournalMapper.mapPurchaseToEntries(d);
+export const createVoucherJournal = async (d: any) => await AutoJournalMapper.mapVoucherToEntries(d);

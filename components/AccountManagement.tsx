@@ -13,7 +13,10 @@ const AccountManagement: React.FC<AccountManagementProps> = ({ onNavigate }) => 
   const [editingAccount, setEditingAccount] = useState<Partial<Account> | null>(null);
 
   useEffect(() => {
-    setAccounts(db.getAccounts());
+    const load = async () => {
+      setAccounts(await db.getAccounts());
+    };
+    load();
   }, []);
 
   const handleSave = async () => {
@@ -35,7 +38,7 @@ const AccountManagement: React.FC<AccountManagementProps> = ({ onNavigate }) => 
     };
 
     await db.saveAccount(account);
-    setAccounts(db.getAccounts());
+    setAccounts(await db.getAccounts());
     setIsModalOpen(false);
     setEditingAccount(null);
   };
@@ -111,7 +114,7 @@ const AccountManagement: React.FC<AccountManagementProps> = ({ onNavigate }) => 
                     <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button onClick={() => { setEditingAccount(account); setIsModalOpen(true); }} className="text-xs font-black text-blue-600 hover:underline">تعديل</button>
                       {!account.isSystem && (
-                        <button onClick={async () => { if(confirm('حذف الحساب؟')) { await db.deleteAccount(account.id); setAccounts(db.getAccounts()); } }} className="text-xs font-black text-red-500 hover:underline">حذف</button>
+                        <button onClick={async () => { if(confirm('حذف الحساب؟')) { await db.deleteAccount(account.id); setAccounts(await db.getAccounts()); } }} className="text-xs font-black text-red-500 hover:underline">حذف</button>
                       )}
                     </div>
                   </td>

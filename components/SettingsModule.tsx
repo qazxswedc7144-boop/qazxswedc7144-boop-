@@ -1,18 +1,18 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { db } from '../services/database';
+import { db } from '@/services/database';
 import { 
   Settings, Database, Sliders, CloudLightning, CheckCircle2, 
   Upload, FileJson, Smartphone, Save, FileText, Layout, 
   Type, MapPin, Phone, Info, Clock, Calendar, Lock, Unlock, Plus,
-  Users, ShieldCheck
+  Users, ShieldCheck, Download, Shield
 } from 'lucide-react';
-import { Card, Button, Badge, Input } from './SharedUI';
-import { useUI } from '../store/AppContext';
-import { AccountingPeriodRepository } from '../repositories/AccountingPeriodRepository';
-import { authService } from '../services/auth.service';
-import BackupManagement from './BackupManagement';
-import { CurrencySelector } from './CurrencySelector';
+import { Card, Button, Badge, Input } from '@/components/SharedUI';
+import { useUI } from '@/store/AppContext';
+import { AccountingPeriodRepository } from '@/repositories/AccountingPeriodRepository';
+import { authService } from '@/services/auth.service';
+import BackupManagement from '@/repositories/BackupManagement';
+import { CurrencySelector } from '@/components/CurrencySelector';
 
 interface InvoiceConfig {
   pharmacyName: string;
@@ -179,6 +179,48 @@ const SettingsModule: React.FC<{ onNavigate?: (view: any) => void }> = ({ onNavi
             icon={<Database size={24} />} 
             color="#1E4D4D" 
           />
+        </div>
+
+        {/* قسم النسخ الاحتياطي السريع */}
+        <div className="mt-8">
+          <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest mr-2 mb-4 flex items-center gap-2">
+            <Download size={16} /> تصدير نسخة احتياطية سريعة
+          </h3>
+          <Card className="!p-6 border-l-8 border-l-[#1E4D4D] bg-emerald-50/30">
+            <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 bg-[#1E4D4D] text-white rounded-2xl flex items-center justify-center shadow-lg">
+                  <Shield size={28} />
+                </div>
+                <div>
+                  <h4 className="font-black text-[#1E4D4D] text-sm">تنزيل نسخة مشفرة (.enc)</h4>
+                  <p className="text-[10px] text-slate-500 font-bold leading-relaxed max-w-[300px]">
+                    قم بتنزيل ملف يحتوي على كافة بيانات النظام مشفرة بكلمة مرور. يمكنك استعادة هذه النسخة في أي وقت.
+                  </p>
+                </div>
+              </div>
+              <Button 
+                variant="primary" 
+                className="h-12 px-8 !rounded-xl shadow-lg bg-[#1E4D4D] hover:bg-slate-800"
+                onClick={async () => {
+                  const password = window.prompt('يرجى تعيين كلمة مرور لتشفير ملف النسخة الاحتياطية (.enc):');
+                  if (!password) return;
+                  try {
+                    const blob = await (await import('@/services/backupService')).BackupService.exportBackupToFile(password);
+                    const a = document.createElement('a');
+                    a.href = URL.createObjectURL(blob);
+                    a.download = `pharmaflow_backup_${new Date().toISOString().split('T')[0]}.enc`;
+                    a.click();
+                    addToast('تم تصدير ملف النسخة المشفرة بنجاح ✅', 'success');
+                  } catch (error: any) {
+                    addToast(`فشل التصدير: ${error.message}`, 'error');
+                  }
+                }}
+              >
+                <Download className="ml-2" size={18} /> تنزيل النسخة الآن
+              </Button>
+            </div>
+          </Card>
         </div>
       </div>
     );

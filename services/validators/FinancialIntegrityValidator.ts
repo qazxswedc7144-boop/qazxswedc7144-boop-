@@ -18,7 +18,7 @@ export const FinancialIntegrityValidator = {
     if (!partnerId || partnerId === 'عميل نقدي') return;
 
     const type = partnerId.startsWith('S') ? 'S' : 'C';
-    const partner = SupplierRepository.getById(partnerId, type);
+    const partner = await SupplierRepository.getById(partnerId, type);
     if (!partner) return;
 
     const statement = await AccountStatementRepository.getStatement(

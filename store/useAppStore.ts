@@ -2,7 +2,7 @@
 import React from 'react';
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
-import { ProductRepository } from '../repositories/ProductRepository';
+import { InventoryService } from '../services/InventoryService';
 import { PurchaseRepository } from '../repositories/PurchaseRepository';
 import { AccountingRepository } from '../repositories/AccountingRepository';
 import { SupplierRepository } from '../repositories/SupplierRepository';
@@ -37,7 +37,7 @@ interface AppState {
   editingInvoiceId: string | null; 
 
   refreshData: () => Promise<void>;
-  addInvoice: (invoice: InvoiceRequest) => Promise<{ success: boolean; error?: string }>;
+  addInvoice: (invoice: InvoiceRequest) => Promise<{ success: boolean; error?: string; refId?: string }>;
   updateStockDirectly: (productId: string, delta: number) => Promise<void>;
   addPartner: (partner: Supplier, type: 'S' | 'C') => Promise<void>;
   addCategory: (category: Category) => Promise<void>;
@@ -82,13 +82,15 @@ export const useAppStore = create<AppState>()(
 
       // Fix: refreshData now awaits all repository calls to resolve promises
       refreshData: async () => {
-        const [products, categories, sales, purchases, journalEntries, cashFlow] = await Promise.all([
-          ProductRepository.getAll(),
+        const [products, categories, sales, purchases, journalEntries, cashFlow, suppliers, customers] = await Promise.all([
+          InventoryService.getProducts(),
           db.getCategories(),
           SalesRepository.getAll(),
           PurchaseRepository.getAll(),
           AccountingRepository.getEntries(),
-          AccountingRepository.getCashFlow()
+          AccountingRepository.getCashFlow(),
+          SupplierRepository.getSuppliers(),
+          SupplierRepository.getCustomers(),
         ]);
 
         set({
@@ -98,8 +100,8 @@ export const useAppStore = create<AppState>()(
           purchases,
           journalEntries,
           cashFlow,
-          suppliers: SupplierRepository.getSuppliers(),
-          customers: SupplierRepository.getCustomers(),
+          suppliers,
+          customers,
           accounts: journalEntries.length > 0 ? get().accounts : [], 
           version: get().version + 1
         });
@@ -125,7 +127,7 @@ export const useAppStore = create<AppState>()(
       },
 
       updateStockDirectly: async (productId: string, delta: number) => {
-        await ProductRepository.updateStock(productId, delta);
+        await InventoryService.updateStock(productId, delta);
         await get().refreshData();
         get().addToast("تم تحديث الرصيد المخزني 📦", "success");
       },

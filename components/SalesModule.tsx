@@ -11,8 +11,8 @@ import {
   RotateCcw, Camera, Edit3, Home, History, Printer, FileSpreadsheet, ArrowRight,
   Percent, ChevronDown, LayoutList, Sparkles
 } from 'lucide-react';
-import { useSales } from '../hooks/useSales';
-import { useAppStore } from '../store/useAppStore';
+import { useSales } from '@/hooks/useSales';
+import { useAppStore } from '@/store/useAppStore';
 import { motion, AnimatePresence } from 'motion/react';
 import { CameraModule } from './CameraModule';
 import { DocumentViewer } from './DocumentViewer';

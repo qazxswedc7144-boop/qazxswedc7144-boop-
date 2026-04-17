@@ -1,23 +1,20 @@
-
-import { db } from '../services/database';
-import { InventoryService } from '../services/InventoryService';
-import { Product, InventoryError, InventoryTransaction, PriceHistory, Purchase } from '../types';
-import { ReferentialIntegrityGuard } from '../services/validators/ReferentialIntegrityGuard';
-import { authService } from '../services/auth.service';
-import { useAppStore } from '../store/useAppStore';
-import { PriceHistoryRepository } from './PriceHistoryRepository';
-import { PurchaseRepository } from './PurchaseRepository';
+import { db } from '@/services/database';
+import { InventoryService } from '@/services/InventoryService';
+import { Product, PriceHistory, Purchase } from '@/types';
+import { ReferentialIntegrityGuard } from '@/services/validators/ReferentialIntegrityGuard';
+import { authService } from '@/services/auth.service';
+import { useAppStore } from '@/store/useAppStore';
+import { PriceHistoryRepository } from '@/repositories/PriceHistoryRepository';
+import { PurchaseRepository } from '@/repositories/PurchaseRepository';
 
 export const ProductRepository = {
-  getAll: async (options: { limit?: number, offset?: number, branchId?: string } = {}): Promise<Product[]> => {
+  getAll: async (options: { limit?: number; offset?: number; branchId?: string } = {}): Promise<Product[]> => {
     const { limit = 20, offset = 0, branchId } = options;
     const all = await db.getProducts();
     let filtered = all.filter(p => p.Is_Active !== false);
-    
     if (branchId) {
       filtered = filtered.filter(p => p.branchId === branchId || !p.branchId);
     }
-
     return filtered.slice(offset, offset + limit);
   },
 
@@ -38,25 +35,29 @@ export const ProductRepository = {
     const lowerTerm = term.toLowerCase();
     const all = await db.getProducts();
     return all
-      .filter(p => 
-        p.Is_Active !== false && (
-          p.Name.toLowerCase().includes(lowerTerm) || 
-          p.id.toLowerCase().includes(lowerTerm) ||
-          (p.barcode && p.barcode.includes(term))
-        )
-      )
+      .filter(p => {
+        if (p.Is_Active === false) return false;
+        const name = (p.Name || '').toLowerCase();
+        const id = (p.id || '').toLowerCase();
+        const barcode = p.barcode || '';
+        return name.includes(lowerTerm) || id.includes(lowerTerm) || barcode.includes(term);
+      })
       .slice(0, limit);
   },
 
-  updateStock: async (productId: string, quantityChange: number, sourceDocType: any = 'ADJUSTMENT', sourceDocId: string = 'SYS-ADJ', txType: any = 'ADJUSTMENT') => {
+  updateStock: async (
+    productId: string,
+    quantityChange: number,
+    sourceDocType: "SALE" | "PURCHASE" | "RETURN" | "ADJUSTMENT" | "TRANSFER" = 'ADJUSTMENT',
+    sourceDocId: string = 'SYS-ADJ',
+    txType: "SALE" | "PURCHASE" | "RETURN" | "ADJUSTMENT" | "TRANSFER" = 'ADJUSTMENT'
+  ): Promise<void> => {
     if (!productId) return;
     const user = authService.getCurrentUser();
-    
-    // Use InventoryService to record the movement and update stock
     await InventoryService.recordMovement({
-      type: txType as any,
+      type: txType,
       productId: productId,
-      warehouseId: 'WH-MAIN', // Default warehouse
+      warehouseId: 'WH-MAIN',
       quantity: quantityChange,
       sourceId: sourceDocId,
       sourceType: sourceDocType,
@@ -64,42 +65,32 @@ export const ProductRepository = {
     });
   },
 
-  save: async (product: Product) => {
+  save: async (product: Product): Promise<void> => {
     if (product.Is_Active === undefined) product.Is_Active = true;
-    
-    // التحقق من وجود فرق بين الرصيد المدخل والرصيد الحالي لإنشاء حركة تسوية آليا
+
     const existing = await ProductRepository.getById(product.id);
     if (existing) {
       const diff = (product.StockQuantity || 0) - (existing.StockQuantity || 0);
       if (Math.abs(diff) > 0.001) {
-        await ProductRepository.updateStock(product.id, diff, 'ADJUSTMENT', 'MANUAL-EDIT', 'INITIAL');
+        await ProductRepository.updateStock(product.id, diff, 'ADJUSTMENT', 'MANUAL-EDIT', 'ADJUSTMENT');
       }
     } else {
-      // صنف جديد برصيد افتتاحي
-      if (product.StockQuantity > 0) {
-        await ProductRepository.updateStock(product.id, product.StockQuantity, 'ADJUSTMENT', 'INITIAL-SETUP', 'INITIAL');
+      if ((product.StockQuantity || 0) > 0) {
+        await ProductRepository.updateStock(product.id, product.StockQuantity!, 'ADJUSTMENT', 'INITIAL-SETUP', 'ADJUSTMENT');
       }
     }
 
     await db.saveProduct(product);
   },
 
-  delete: async (id: string) => {
+  delete: async (id: string): Promise<void> => {
     if (!id) return;
     const product = await ProductRepository.getById(id);
     if (!product) return;
 
-    const hasRefs = await ReferentialIntegrityGuard.checkProductReferences(product.id);
-    
-    if (hasRefs) {
-      product.Is_Active = false as any; // logical delete
-      product.lastModified = new Date().toISOString();
-      await db.db.products.put(product);
-      useAppStore.getState().addToast(`تم تعطيل الصنف [${product.Name}] بدلاً من حذفه لوجود ارتباطات سجلية 🛡️`, 'info');
-    } else {
-      await db.db.products.delete(id);
-      useAppStore.getState().addToast(`تم حذف الصنف بنجاح`, 'success');
-    }
+    // We always use soft delete now for professional sync
+    await db.softDeleteProduct(id);
+    useAppStore.getState().addToast('تم حذف الصنف بنجاح (حذف آمن)', 'success');
   },
 
   calculateCurrentBalance: async (productId: string): Promise<number> => {
@@ -116,7 +107,12 @@ export const ProductRepository = {
     return await PurchaseRepository.getItemPurchaseHistory(productId, limit);
   },
 
-  getItemAutoFillDetails: async (productId: string) => {
+  getItemAutoFillDetails: async (productId: string): Promise<{
+    lastPrice: number;
+    category: string;
+    supplierId: string;
+    supplierName: string;
+  } | null> => {
     if (!productId) return null;
     const product = await ProductRepository.getById(productId);
     if (!product) return null;
@@ -131,7 +127,7 @@ export const ProductRepository = {
       lastPrice: lastPurchase?.unitCost || product.UnitPrice || 0,
       category: product.categoryName || 'General',
       supplierId: lastPurchase?.supplierId || product.supplierId || '',
-      supplierName: lastPurchase?.supplierId || '' 
+      supplierName: lastPurchase?.supplierName || product.supplierName || ''
     };
   },
 
@@ -139,7 +135,7 @@ export const ProductRepository = {
     const today = new Date();
     const limitDate = new Date();
     limitDate.setDate(today.getDate() + days);
-    
+
     const all = await db.getProducts();
     return all
       .filter(p => {

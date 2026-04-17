@@ -124,7 +124,7 @@ export const accountingService = {
     const result: PartnerAging[] = [];
 
     if (type === 'CUSTOMER') {
-      const customers = db.getCustomers();
+      const customers = await db.getCustomers();
       const unpaidSales = (await db.getSales()).filter(s => s.paymentStatus === 'Credit' && s.InvoiceStatus !== 'DRAFT' && s.InvoiceStatus !== 'CANCELLED' && (s.paidAmount || 0) < s.finalTotal);
 
       customers.forEach(c => {
@@ -155,7 +155,7 @@ export const accountingService = {
         }
       });
     } else {
-      const suppliers = db.getSuppliers();
+      const suppliers = await db.getSuppliers();
       const unpaidPurchases = (await db.getPurchases()).filter(p => p.status === 'UNPAID' && p.invoiceStatus !== 'DRAFT' && p.invoiceStatus !== 'CANCELLED');
 
       suppliers.forEach(s => {
@@ -240,7 +240,7 @@ export const accountingService = {
       const voucherId = db.generateId('V');
       
       // استخدام BRE للحصول على قيد السند
-      const journalEntry = BusinessRulesEngine.accounting.mapVoucherToJournal({ id: voucherId, type, amount, name, category, notes });
+      const journalEntry = await BusinessRulesEngine.accounting.mapVoucherToJournal({ id: voucherId, type, amount, name, category, notes });
       await dataValidator.validateAccountingEntry(journalEntry);
       
       await AccountRepository.addEntry(journalEntry);

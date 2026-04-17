@@ -21,13 +21,23 @@
     "jsx": "react-jsx",
     "paths": {
       "@/*": [
-        "./src/*"
+        "./src/*",
+        "./*"
       ],
       "@/services/*": [
         "./services/*"
       ],
       "@/repositories/*": [
         "./repositories/*"
+      ],
+      "@/core/engines/*": [
+        "./src/core/engines/*"
+      ],
+      "@/store/*": [
+        "./store/*"
+      ],
+      "@/hooks/*": [
+        "./src/core/engines/hooks/*"
       ],
       "@/types": [
         "./types.ts"

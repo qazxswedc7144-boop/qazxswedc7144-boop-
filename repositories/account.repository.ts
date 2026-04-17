@@ -1,6 +1,7 @@
 
 import { db } from '../services/database';
 import { Account, AccountingEntry } from '../types';
+import { safeWhereEqual } from '../utils/dexieSafe';
 
 const MAX_ACCOUNTING_SLICE = 200;
 let ACCOUNTS_CACHE: Account[] | null = null;
@@ -9,17 +10,17 @@ const CACHE_TTL = 30000; // 30 ثانية لدليل الحسابات
 
 export const AccountRepository = {
   // --- دليل الحسابات مع التخزين المؤقت (Performance Rule: Cache frequently accessed lists) ---
-  getAccounts: (): Account[] => {
+  getAccounts: async (): Promise<Account[]> => {
     const now = Date.now();
     if (ACCOUNTS_CACHE && (now - ACCOUNTS_CACHE_TIMESTAMP < CACHE_TTL)) return ACCOUNTS_CACHE;
     
-    ACCOUNTS_CACHE = db.getAccounts();
+    ACCOUNTS_CACHE = await db.getAccounts();
     ACCOUNTS_CACHE_TIMESTAMP = now;
     return ACCOUNTS_CACHE;
   },
 
-  getAccountById: (id: string): Account | undefined =>
-    AccountRepository.getAccounts().find(a => a.id === id),
+  getAccountById: async (id: string): Promise<Account | undefined> =>
+    (await AccountRepository.getAccounts()).find(a => a.id === id),
 
   saveAccount: async (account: Account) => {
     await db.saveAccount(account);
@@ -63,19 +64,19 @@ export const AccountRepository = {
   },
 
   deleteEntry: async (entryId: string) => {
-    const entry = await db.db.journalEntries.get(entryId);
+    const entry = await (db as any).journalEntries.get(entryId);
     if (entry) {
       // Reverse balances before deleting
       for (const line of entry.lines) {
         const amount = (line.credit || 0) - (line.debit || 0);
         await db.updateAccountBalance(line.accountId, amount);
       }
-      await db.db.journalEntries.delete(entryId);
+      await (db as any).journalEntries.delete(entryId);
     }
   },
 
   deleteEntriesBySource: async (sourceId: string) => {
-    const entries = await db.db.journalEntries.where('sourceId').equals(sourceId).toArray();
+    const entries = await safeWhereEqual((db as any).journalEntries, 'sourceId', sourceId);
     for (const entry of entries) {
       await AccountRepository.deleteEntry(entry.id);
     }

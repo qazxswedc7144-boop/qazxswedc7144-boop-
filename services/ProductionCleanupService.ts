@@ -5,6 +5,22 @@ import { useAppStore } from '../store/useAppStore';
 
 export class ProductionCleanupService {
   
+  static async clearDemoData() {
+    try {
+      // ⚠️ WARNING: This is a destructive operation. 
+      // It does not handle dependencies, journal entries, or stock movements.
+      // Use ProductionCleanupService.runCleanup() for a safe, dependency-aware cleanup.
+      await db.db.products.clear();
+      await db.db.purchases.clear();
+      await db.db.sales.clear();
+      
+      console.log("✅ تم حذف البيانات التجريبية بنجاح!");
+      // alert("تم تصفير النظام من البيانات التجريبية"); // Removed alert as it's not recommended in iframe
+    } catch (error) {
+      console.error("❌ فشل الحذف:", error);
+    }
+  }
+
   static isDemo(record: any): boolean {
     if (!record) return false;
     

@@ -26,9 +26,9 @@ const IntegrationsModule: React.FC<IntegrationsModuleProps> = ({ onNavigate }) =
   useEffect(() => {
     const loadData = async () => {
       setBankAccounts(await db.getBankAccounts());
-      setGateways(db.getPaymentGateways());
+      setGateways(await db.getPaymentGateways());
       setTransactions(await db.getBankTransactions());
-      setInternalAccounts(db.getAccounts());
+      setInternalAccounts(await db.getAccounts());
     };
     loadData();
   }, []);
@@ -142,7 +142,7 @@ const IntegrationsModule: React.FC<IntegrationsModuleProps> = ({ onNavigate }) =
                       if (existing) handleToggleGateway(existing.id);
                       else {
                         db.savePaymentGateway({ id: db.generateId('GW'), name: gw.name, provider: 'BankTransfer', isActive: true, config: {} });
-                        setGateways(db.getPaymentGateways());
+                        db.getPaymentGateways().then(setGateways);
                       }
                     }}
                    >

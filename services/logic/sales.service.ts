@@ -1,7 +1,7 @@
 
-import { SalesRepository } from '../repositories/SalesRepository';
-import { Sale } from '../types';
-import { transactionOrchestrator } from './transactionOrchestrator';
+import { SalesRepository } from '@/repositories/SalesRepository';
+import { Sale } from '@/types';
+import { transactionOrchestrator } from '../transactionOrchestrator';
 
 /**
  * Sales Service - واجهة إدارة المبيعات

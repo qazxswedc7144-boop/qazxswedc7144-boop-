@@ -2,6 +2,7 @@
 import { db } from './database';
 import { Product, InventoryItem, InventoryTransaction, MedicineBatch, MedicineAlert } from '../types';
 import { safeGetById, safeWhereEqual } from '../utils/dexieSafe';
+import { auditLogService } from './auditLog';
 
 export class InventoryService {
   /**
@@ -105,6 +106,19 @@ export class InventoryService {
       };
 
       await db.inventoryTransactions.add(transaction);
+      
+      // NEW: Log to central audit system
+      await auditLogService.log({
+        table: 'products',
+        action: movement.type === 'ADJUSTMENT' ? 'INVENTORY_ADJUSTMENT' : 
+                movement.type === 'SALE' ? 'STOCK_OUT' : 
+                movement.type === 'PURCHASE' ? 'STOCK_IN' : 'UPDATE' as any,
+        entityId: movement.productId,
+        oldData: { qty: product.StockQuantity },
+        newData: { qty: product.StockQuantity + movement.quantity },
+        details: movement.notes || `Inventory ${movement.type}: ${movement.quantity}`,
+        userId: movement.userId
+      });
       
       // Update the product stock
       product.StockQuantity += movement.quantity;

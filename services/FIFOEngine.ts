@@ -1,6 +1,7 @@
 
 import { db } from './database';
 import { FIFOCostLayer, InvoiceItem } from '../types';
+import { safeWhereEqual, safeGetById } from '../utils/dexieSafe';
 
 export class FIFOEngine {
   /**
@@ -28,10 +29,9 @@ export class FIFOEngine {
     let remainingToConsume = quantityToConsume;
 
     // جلب الطبقات المفتوحة للأصناف مرتبة حسب تاريخ الشراء (الأقدم أولاً)
-    const openLayers = await db.db.fifoCostLayers
-      .where('productId').equals(productId)
-      .and(l => !l.isClosed)
-      .sortBy('purchaseDate');
+    const openLayers = (await safeWhereEqual(db.db.fifoCostLayers, 'productId', productId))
+      .filter(l => !l.isClosed)
+      .sort((a, b) => new Date(a.purchaseDate).getTime() - new Date(b.purchaseDate).getTime());
 
     for (const layer of openLayers) {
       if (remainingToConsume <= 0) break;
@@ -51,7 +51,7 @@ export class FIFOEngine {
 
     // في حال عدم وجود طبقات كافية، نستخدم آخر سعر تكلفة معروف (أو سعر التكلفة الحالي للمنتج)
     if (remainingToConsume > 0) {
-      const product = await db.db.products.get(productId);
+      const product = await safeGetById(db.db.products, productId);
       const fallbackCost = product?.CostPrice || 0;
       totalCOGS += remainingToConsume * fallbackCost;
     }

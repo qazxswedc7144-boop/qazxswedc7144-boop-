@@ -1,12 +1,12 @@
 
 import { db } from './database';
 import { integrityVerifier } from './integrityVerifier';
-import { InvoiceItem, SecurityError, InvoiceStatus, ValidationError, AccountingEntry, Sale, Purchase } from '../types';
-import { InvoiceRepository } from '../repositories/invoice.repository';
-import { AccountRepository } from '../repositories/account.repository';
-import { SupplierRepository } from '../repositories/SupplierRepository';
-import { ProductRepository } from '../repositories/ProductRepository';
-import { FinancialTransactionRepository } from '../repositories/FinancialTransactionRepository';
+import { InvoiceItem, SecurityError, InvoiceStatus, ValidationError, AccountingEntry, Sale, Purchase } from '@/types';
+import { InvoiceRepository } from '@/repositories/invoice.repository';
+import { AccountRepository } from '@/repositories/account.repository';
+import { SupplierRepository } from '@/repositories/SupplierRepository';
+import { ProductRepository } from '@/core/engines/ProductRepository';
+import { FinancialTransactionRepository } from '@/repositories/FinancialTransactionRepository';
 import { authService } from './auth.service';
 import { priceIntelligenceService } from './priceIntelligence.service';
 import { dataValidator } from './validators/dataValidator';

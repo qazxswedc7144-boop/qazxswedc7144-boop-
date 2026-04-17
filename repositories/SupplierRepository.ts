@@ -10,23 +10,23 @@ import { useAppStore } from '../store/useAppStore';
  * Supplier Repository - إدارة الموردين والعملاء مع دعم الرصيد التراكمي الذكي والربط المالي
  */
 export const SupplierRepository = {
-  getSuppliers: (): Supplier[] => {
-    return db.getSuppliers().filter(s => s.Is_Active !== false);
+  getSuppliers: async (): Promise<Supplier[]> => {
+    return (await db.getSuppliers()).filter(s => s.Is_Active !== false);
   },
 
-  getCustomers: (): Supplier[] => {
-    return db.getCustomers().filter(c => c.Is_Active !== false);
+  getCustomers: async (): Promise<Supplier[]> => {
+    return (await db.getCustomers()).filter(c => c.Is_Active !== false);
   },
 
-  getById: (id: string, type: 'S' | 'C'): Supplier | undefined => {
-    const list = type === 'S' ? db.getSuppliers() : db.getCustomers();
+  getById: async (id: string, type: 'S' | 'C'): Promise<Supplier | undefined> => {
+    const list = type === 'S' ? await db.getSuppliers() : await db.getCustomers();
     return list.find(p => p.Supplier_ID === id);
   },
 
   getLedger: async (partnerId: string, startDate?: string, endDate?: string): Promise<any[]> => {
     if (!partnerId) return [];
     const type = partnerId.startsWith('S') ? 'S' : 'C';
-    const partner = SupplierRepository.getById(partnerId, type);
+    const partner = await SupplierRepository.getById(partnerId, type);
     if (!partner) return [];
 
     const partnerType = type === 'S' ? 'Supplier' : 'Customer';
@@ -54,7 +54,7 @@ export const SupplierRepository = {
   },
 
   getPartnerBalance: async (partnerId: string, type: 'S' | 'C'): Promise<number> => {
-    const partner = SupplierRepository.getById(partnerId, type);
+    const partner = await SupplierRepository.getById(partnerId, type);
     if (!partner) return 0;
     
     const statement = await AccountStatementRepository.getStatement(
@@ -73,7 +73,7 @@ export const SupplierRepository = {
   },
 
   delete: async (id: string, type: 'S' | 'C') => {
-    const partner = SupplierRepository.getById(id, type);
+    const partner = await SupplierRepository.getById(id, type);
     if (!partner) return;
 
     // فحص النزاهة المرجعية
@@ -89,9 +89,9 @@ export const SupplierRepository = {
     } else {
       // حذف فيزيائي إذا لم يوجد أي نشاط تاريخي
       if (type === 'S') {
-        await db.db.suppliers.delete(id);
+        await (db as any).suppliers.delete(id);
       } else {
-        await db.db.customers.delete(id);
+        await (db as any).customers.delete(id);
       }
       useAppStore.getState().addToast(`تم حذف الشريك بنجاح`, 'success');
     }

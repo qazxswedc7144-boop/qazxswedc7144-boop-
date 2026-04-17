@@ -1,13 +1,15 @@
 import { db } from './database';
 import { createJournalEntry } from './LedgerEngine';
-import { safeWhereEqual } from '../utils/dexieSafe';
+import { safeWhereEqual, safeEquals } from '../utils/dexieSafe';
 
 export const processTransaction = async (type: string, data: any) => {
 
   console.log("PROCESS:", type, data)
 
+  data.items = data.items.filter((i: any) => i.name && i.quantity)
+
   if (!data || !data.items || data.items.length === 0) {
-    throw new Error("بيانات غير صالحة")
+    throw new Error("❌ لا توجد بيانات صالحة")
   }
 
   const total = data.total || 0
@@ -23,42 +25,43 @@ export const processTransaction = async (type: string, data: any) => {
   await db.db.invoices.add(invoice)
 
   // 2. INVENTORY ENGINE
+  const productsToUpdate = [];
   for (const item of data.items) {
 
     if (!item.name) continue
 
-    const products = await safeWhereEqual(db.db.products, "name", item.name);
-    let product = products[0] || null;
+    let product = await safeEquals(db.db.products, "name", item.name);
 
     if (!product) {
       product = {
         id: crypto.randomUUID(),
         name: item.name,
-        stock: 0,
+        StockQuantity: 0,
         avgCost: 0
       }
     }
 
     if (type.includes("purchase")) {
-      product.stock += item.quantity
+      product.StockQuantity += item.quantity
       product.avgCost = item.price
     }
 
     if (type.includes("sale")) {
 
-      if (product.stock < item.quantity) {
+      if (product.StockQuantity < item.quantity) {
         throw new Error("المخزون غير كافي")
       }
 
-      product.stock -= item.quantity
+      product.StockQuantity -= item.quantity
     }
 
     if (type.includes("return")) {
-      product.stock += item.quantity
+      product.StockQuantity += item.quantity
     }
 
-    await db.db.products.put(product)
+    productsToUpdate.push(product);
   }
+  await db.db.products.bulkPut(productsToUpdate);
 
   // 3. ACCOUNTING ENGINE
   let entries: { account: string, debit: number, credit: number }[] = []

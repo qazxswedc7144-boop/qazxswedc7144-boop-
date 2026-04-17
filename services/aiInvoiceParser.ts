@@ -77,6 +77,13 @@ ${text}
     });
 
     const result = JSON.parse(response.text || '{}');
+    
+    result.items = result.items.filter((i: any) => i.name && i.quantity && i.price)
+    
+    if (result.items.length === 0) {
+        throw new Error("❌ فشل تحليل الفاتورة")
+    }
+
     return result as ParsedInvoice;
   } catch (error: any) {
     console.error('AI Parsing Error:', error);

@@ -4,6 +4,7 @@ import { Sale, Purchase, InvoiceItem, SystemAlert } from '../types';
 import { AlertCenter } from './AlertCenter';
 import { BehaviorMonitor } from './BehaviorMonitor';
 import { createSafeDateRange } from '../utils/safeRange';
+import { safeWhereEqual } from '../utils/dexieSafe';
 
 export class AIAuditEngine {
   
@@ -104,11 +105,11 @@ export class AIAuditEngine {
   private static async getEntityAvgAmount(entityId: string, type: 'SALE' | 'PURCHASE'): Promise<number> {
     if (!entityId) return 0;
     if (type === 'SALE') {
-      const sales = await db.db.sales.where('customerId').equals(entityId).toArray();
+      const sales = await safeWhereEqual(db.db.sales, 'customerId', entityId);
       if (sales.length === 0) return 0;
       return sales.reduce((sum, s) => sum + s.finalTotal, 0) / sales.length;
     } else {
-      const purchases = await db.db.purchases.where('partnerId').equals(entityId).toArray();
+      const purchases = await safeWhereEqual(db.db.purchases, 'partnerId', entityId);
       if (purchases.length === 0) return 0;
       return purchases.reduce((sum, p) => sum + p.totalAmount, 0) / purchases.length;
     }
@@ -174,7 +175,7 @@ export class AIAuditEngine {
   }
 
   static async getHistoricalMetric(type: 'AVG_SALE' | 'AVG_PURCHASE' | 'AVG_MARGIN' | 'AVG_EDITS'): Promise<number> {
-    const metrics = await db.db.historicalMetrics.where('type').equals(type).toArray();
+    const metrics = await safeWhereEqual(db.db.historicalMetrics, 'type', type);
     if (metrics.length === 0) return 0;
     return metrics.reduce((sum, m) => sum + m.value, 0) / metrics.length;
   }

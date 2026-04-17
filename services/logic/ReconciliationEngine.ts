@@ -1,10 +1,10 @@
 
 import { db } from '../database';
-import { AccountStatementRepository } from '../../repositories/AccountStatementRepository';
-import { SupplierRepository } from '../../repositories/SupplierRepository';
-import { ProductRepository } from '../../repositories/ProductRepository';
-import { VoucherInvoiceLinkRepository } from '../../repositories/VoucherInvoiceLinkRepository';
-import { InvoiceRepository } from '../../repositories/invoice.repository';
+import { AccountStatementRepository } from '@/repositories/AccountStatementRepository';
+import { SupplierRepository } from '@/repositories/SupplierRepository';
+import { ProductRepository } from '@/core/engines/ProductRepository';
+import { VoucherInvoiceLinkRepository } from '@/repositories/VoucherInvoiceLinkRepository';
+import { InvoiceRepository } from '@/repositories/invoice.repository';
 import { InvoiceWorkflowEngine } from './InvoiceWorkflowEngine';
 import { logger } from '../logger.service';
 
@@ -20,7 +20,7 @@ export const ReconciliationEngine = {
   async reconcilePartnerBalance(partnerId: string): Promise<number> {
     if (!partnerId) return 0;
     const type = partnerId.startsWith('S') ? 'S' : 'C';
-    const partner = SupplierRepository.getById(partnerId, type);
+    const partner = await SupplierRepository.getById(partnerId, type);
     if (!partner) return 0;
 
     const statement = await AccountStatementRepository.getStatement(

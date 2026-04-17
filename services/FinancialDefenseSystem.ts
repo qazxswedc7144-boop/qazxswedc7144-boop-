@@ -43,15 +43,15 @@ export class FinancialDefenseSystem {
       if (!oneHourAgo) return 0;
 
       // 1. Rapid sequence of deletions or updates
-      const suspiciousActions = await db.db.Audit_Log
+      const suspiciousActions = await db.audit_log
         .where('Modified_At').above(oneHourAgo)
-        .filter(l => l.Change_Type === 'DELETE' || l.Change_Type === 'UPDATE')
+        .filter((l: any) => l.Change_Type === 'DELETE' || l.Change_Type === 'UPDATE')
         .toArray();
       
       // 2. Accessing sensitive modules repeatedly
-      const sensitiveAccess = await db.db.Audit_Log
+      const sensitiveAccess = await db.audit_log
         .where('Modified_At').above(oneHourAgo)
-        .filter(l => l.Table_Name === 'Audit_Log' || l.Table_Name === 'Settings')
+        .filter((l: any) => l.Table_Name === 'Audit_Log' || l.Table_Name === 'Settings')
         .count();
 
       let score = 0;
@@ -145,14 +145,20 @@ export class FinancialDefenseSystem {
   static async resetSecuritySystem(): Promise<void> {
     try {
       // 1. Enable security bypass to allow clearing audit logs
-      db.db.setBypassSecurity(true);
+      if (typeof db.setBypassSecurity === 'function') {
+        db.setBypassSecurity(true);
+      }
       
       // 2. Clear the Audit Logs (the source of behavior scores)
-      await db.db.Audit_Log.clear();
-      await db.db.audit_log.clear();
+      const table = db.audit_log;
+      if (table && typeof table.clear === 'function') {
+        await table.clear();
+      }
       
       // 3. Disable security bypass
-      db.db.setBypassSecurity(false);
+      if (typeof db.setBypassSecurity === 'function') {
+        db.setBypassSecurity(false);
+      }
       
       // 4. Reset all security-related settings
       await db.saveSetting('SYSTEM_THREAT_LEVEL', '0');

@@ -2,6 +2,7 @@
 import { User, UserRole, Permission } from '../types';
 import { db } from './database';
 import CryptoJS from 'crypto-js';
+import { supabase } from './supabaseClient';
 
 const SESSION_KEY = 'pharmaflow_session_v4_secure';
 const SECRET_KEY = 'pharmaflow_local_secret_key_123'; // In a real app this would be more secure
@@ -65,6 +66,28 @@ export const authService = {
   getCurrentUser: (): User => {
     const validatedUser = authService.validateSession();
     if (validatedUser) return validatedUser;
+
+    // We don't block here because some components might call this before session is ready
+    // But we'll try to get it from local storage if supabase set it
+    const supabaseSession = localStorage.getItem('sb-lkvbroehoqlteyvitcqg-auth-token'); 
+    if (supabaseSession) {
+      try {
+        const parsed = JSON.parse(supabaseSession);
+        const user = parsed.user;
+        if (user) {
+          return {
+            id: user.id || 'USR-UNK',
+            user_id: user.id || 'USR-UNK',
+            User_Email: user.email || 'guest@pharmaflow.local',
+            User_Name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'مستخدم جوجل',
+            Role: 'Admin', // Default to admin for google login in this ERP context
+            Is_Active: true,
+            tenant_id: 'TEN-GOOGLE',
+            lastLogin: user.last_sign_in_at
+          } as User;
+        }
+      } catch (e) {}
+    }
 
     // Default mock user for development if no session (only for initial setup)
     return {
@@ -183,9 +206,24 @@ export const authService = {
   /**
    * تسجيل الخروج
    */
-  logout: () => {
+  logout: async () => {
     localStorage.removeItem(SESSION_KEY);
+    await supabase.auth.signOut();
     window.location.reload();
+  },
+
+  loginWithGoogle: async () => {
+    return await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: window.location.origin
+      }
+    });
+  },
+
+  getSupabaseUser: async () => {
+    const { data } = await supabase.auth.getUser();
+    return data.user;
   },
 
   /**

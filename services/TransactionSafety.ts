@@ -1,5 +1,6 @@
 import { db } from './database';
 import { processTransaction } from './TransactionEngine';
+import { safeWhereEqual } from '../utils/dexieSafe';
 
 let isProcessing = false
 
@@ -37,22 +38,16 @@ const validateTransaction = (type: string, data: any) => {
 }
 
 const checkDuplicateInvoice = async (invoiceNumber: string) => {
-  const exist = await db.db.invoices
-    .where("invoiceNumber")
-    .equals(invoiceNumber)
-    .first()
-
-  if (exist) {
+  const invoices = await safeWhereEqual(db.db.invoices, "invoiceNumber", invoiceNumber);
+  if (invoices.length > 0) {
     throw new Error("❌ رقم الفاتورة مكرر")
   }
 }
 
 const validateStock = async (items: any[]) => {
   for (const item of items) {
-    const product = await db.db.products
-      .where("name")
-      .equals(item.name)
-      .first()
+    const products = await safeWhereEqual(db.db.products, "Name", item.name);
+    const product = products[0] || null;
 
     if (product && product.StockQuantity < item.quantity) {
       throw new Error(`❌ المخزون غير كافي: ${item.name}`)
@@ -61,13 +56,25 @@ const validateStock = async (items: any[]) => {
 }
 
 const validateCash = async (amount: number) => {
-  const cash = await db.db.accounts
-    .where("name")
-    .equals("Cash")
-    .first()
+  const cashAccounts = await safeWhereEqual(db.db.accounts, "name", "Cash");
+  const cash = cashAccounts[0] || null;
 
   if (cash && cash.balance < amount) {
     throw new Error("❌ لا يوجد رصيد كافي في الصندوق")
+  }
+}
+
+const validateJournal = (entries: any[]) => {
+  let debit = 0
+  let credit = 0
+
+  entries.forEach(e => {
+    debit += e.debit || 0
+    credit += e.credit || 0
+  })
+
+  if (Math.abs(debit - credit) > 0.01) {
+    throw new Error("❌ القيد غير متوازن")
   }
 }
 
@@ -76,17 +83,15 @@ export const safeProcessTransaction = async (type: string, data: any) => {
     lock()
 
     validateTransaction(type, data)
+    await validateStock(data.items)
+    await validateCash(data.total)
 
     if (data.invoiceNumber) {
       await checkDuplicateInvoice(data.invoiceNumber)
     }
 
-    if (type.includes("sale")) {
-      await validateStock(data.items)
-    }
-
-    if (type.includes("cash")) {
-      await validateCash(data.total)
+    if (data.entries) {
+        validateJournal(data.entries)
     }
 
     await processTransaction(type, data)

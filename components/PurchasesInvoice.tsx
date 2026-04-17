@@ -14,9 +14,9 @@ import {
   Sparkles, FileUp, Image as ImageIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { usePurchases } from '../hooks/usePurchases';
-import { useUI } from '../store/AppContext';
-import { InvoiceItem } from '../types';
+import { usePurchases } from '@/hooks/usePurchases';
+import { useUI } from '@/store/AppContext';
+import { InvoiceItem } from '@/types';
 import { CameraModule } from './CameraModule';
 import { DocumentViewer } from './DocumentViewer';
 

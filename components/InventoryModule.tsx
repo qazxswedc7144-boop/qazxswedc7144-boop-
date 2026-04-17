@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useInventory, useUI, useAccounting } from '../store/AppContext';
 import { Product, PriceHistory, Purchase, InventoryTransaction, WarehouseStock, Supplier } from '../types';
-import { ProductRepository } from '../repositories/ProductRepository';
+import { ProductRepository } from '../src/core/engines/ProductRepository';
 import { db } from '../services/database';
 import { PurchaseRepository } from '../repositories/PurchaseRepository';
 import { InventoryService } from '../services/InventoryService';
@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
-import SupplierManagement from './SupplierManagement';
+import SupplierManagement from '../src/core/engines/SupplierManagement';
 
 const InventoryModule: React.FC<{ onNavigate?: (view: any) => void }> = ({ onNavigate }) => {
   const { products, categories } = useInventory();

@@ -12,8 +12,11 @@ const SalesByItemReport: React.FC<{ onNavigate?: (view: any) => void }> = ({ onN
     const fetchData = async () => {
       try {
         const sales = await db.getSales();
-        const custs = db.getCustomers();
-        setCustomers(custs.map(c => ({ id: c.Supplier_ID, name: c.Supplier_Name })));
+        const custs = await db.getCustomers();
+        setCustomers(custs.map((c: any) => ({ 
+          id: c.Supplier_ID || c.id, 
+          name: c.Supplier_Name || c.name 
+        })));
 
         // Aggregate by item
         const itemMap: Record<string, any> = {};

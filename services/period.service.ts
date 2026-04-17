@@ -1,6 +1,6 @@
 
-import { AccountingPeriodRepository } from '../repositories/AccountingPeriodRepository';
-import { AccountingError } from '../types';
+import { AccountingPeriodRepository } from '@/repositories/AccountingPeriodRepository';
+import { AccountingError } from '@/types';
 import { authService } from './auth.service';
 import { BackupService } from './backupService';
 import { PeriodLockEngine } from './PeriodLockEngine';
