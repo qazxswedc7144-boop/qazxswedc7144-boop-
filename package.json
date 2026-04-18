@@ -16,6 +16,7 @@
     "@mui/icons-material": "^7.3.9",
     "@mui/material": "^7.3.9",
     "@supabase/supabase-js": "^2.103.3",
+    "@vercel/speed-insights": "^2.0.0",
     "chart.js": "4.4.1",
     "crypto-js": "^4.2.0",
     "dexie": "3.2.4",

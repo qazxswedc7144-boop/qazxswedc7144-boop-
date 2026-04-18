@@ -27,6 +27,7 @@ import {
   Cloud, CloudOff, CloudAlert, Sparkles as AutoAwesome,
   ChevronLeft, LogOut, Clock
 } from 'lucide-react';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 
 // Lazy loading views
 const PurchasesView = lazy(() => import('./components/PurchasesInvoice'));
@@ -599,9 +600,12 @@ function MainLayout() {
 
 export default function App() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-[#F8FAFA] flex items-center justify-center font-black text-[#1E4D4D] animate-pulse">جاري تحميل النظام السيادي...</div>}>
-      <MainLayout />
-    </Suspense>
+    <>
+      <Suspense fallback={<div className="min-h-screen bg-[#F8FAFA] flex items-center justify-center font-black text-[#1E4D4D] animate-pulse">جاري تحميل النظام السيادي...</div>}>
+        <MainLayout />
+      </Suspense>
+      <SpeedInsights />
+    </>
   );
 }
 
