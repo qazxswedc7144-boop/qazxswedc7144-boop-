@@ -1,5 +1,5 @@
 
-import { db } from '../../../services/database';
+import { db } from '../../lib/database';
 import { 
   AIInsight, 
   FinancialHealthSnapshot, 
@@ -9,7 +9,7 @@ import {
   Account,
   StockMovement,
   JournalLine
-} from '@/types';
+} from '../../types';
 import { ReportEngine } from './reportEngine';
 
 export class AIInsightsEngine {

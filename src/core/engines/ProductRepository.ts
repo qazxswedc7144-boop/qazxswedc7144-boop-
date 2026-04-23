@@ -1,11 +1,11 @@
-import { db } from '@/services/database';
-import { InventoryService } from '@/services/InventoryService';
-import { Product, PriceHistory, Purchase } from '@/types';
-import { ReferentialIntegrityGuard } from '@/services/validators/ReferentialIntegrityGuard';
-import { authService } from '@/services/auth.service';
-import { useAppStore } from '@/store/useAppStore';
-import { PriceHistoryRepository } from '@/repositories/PriceHistoryRepository';
-import { PurchaseRepository } from '@/repositories/PurchaseRepository';
+import { db } from '../../lib/database';
+import { InventoryService } from '../../services/InventoryService';
+import { Product, PriceHistory, Purchase } from '../../types';
+import { ReferentialIntegrityGuard } from '../../services/ReferentialIntegrityGuard';
+import { authService } from '../../services/auth.service';
+import { useAppStore } from '../../store/useAppStore';
+import { PriceHistoryRepository } from '../../repositories/PriceHistoryRepository';
+import { PurchaseRepository } from '../../repositories/PurchaseRepository';
 
 export const ProductRepository = {
   getAll: async (options: { limit?: number; offset?: number; branchId?: string } = {}): Promise<Product[]> => {

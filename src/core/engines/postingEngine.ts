@@ -1,7 +1,7 @@
 
-import { db } from '@/services/database';
-import { AccountingEntry, JournalLine, Sale, Purchase, InvoiceItem } from '@/types';
-import { AccountingEngine } from '@/services/AccountingEngine';
+import { db } from '../../lib/database';
+import { AccountingEntry, JournalLine, Sale, Purchase, InvoiceItem } from '../../types';
+import { AccountingEngine } from '../../services/AccountingEngine';
 import { FIFOEngine } from './fifoEngine';
 import { StockMovementEngine } from './stockMovementEngine';
 import { AIInsightsEngine } from './aiInsightsEngine';

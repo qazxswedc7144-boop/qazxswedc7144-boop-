@@ -16,15 +16,7 @@ export default defineConfig(({ mode }) => {
       },
       resolve: {
         alias: {
-          '@/core/engines': path.resolve(__dirname, 'src/core/engines'),
-          '@/hooks': path.resolve(__dirname, 'src/core/engines/hooks'),
-          '@/services': path.resolve(__dirname, 'services'),
-          '@/repositories': path.resolve(__dirname, 'repositories'),
-          '@/components': path.resolve(__dirname, 'components'),
-          '@/store': path.resolve(__dirname, 'store'),
-          '@/types': path.resolve(__dirname, 'types.ts'),
-          '@/': path.resolve(__dirname, './'),
-          '@': path.resolve(__dirname, 'src'),
+          '@': path.resolve(__dirname, 'src')
         }
       }
     };

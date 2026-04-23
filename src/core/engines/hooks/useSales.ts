@@ -1,16 +1,16 @@
 
 import { useState, useMemo, useEffect, useRef, useCallback, KeyboardEvent } from 'react';
-import { db } from '@/services/database';
-import { Product, InvoiceStatus, InvoiceItem, Sale, PaymentStatus, Supplier } from '@/types';
-import { useUI, useInventory, useAccounting } from '@/store/AppContext';
-import { useAppStore } from '@/store/useAppStore';
-import { authService } from '@/services/auth.service';
-import { InvoiceRepository } from '@/repositories/invoice.repository';
-import { priceIntelligenceService } from '@/services/priceIntelligence.service';
-import { InvoiceWorkflowEngine } from '@/services/logic/InvoiceWorkflowEngine';
-import { ExportService } from '@/services/exportService';
-import { predictionService } from '@/services/predictionService';
-import { auditLogService } from '@/services/auditLog';
+import { db } from '../../../lib/database';
+import { Product, InvoiceStatus, InvoiceItem, Sale, PaymentStatus, Supplier } from '../../../types';
+import { useUI, useInventory, useAccounting } from '../../../store/AppContext';
+import { useAppStore } from '../../../store/useAppStore';
+import { authService } from '../../../services/auth.service';
+import { InvoiceRepository } from '../../../repositories/invoice.repository';
+import { priceIntelligenceService } from '../../../services/priceIntelligence.service';
+import { InvoiceWorkflowEngine } from '../../../services/InvoiceWorkflowEngine';
+import { ExportService } from '../../../services/exportService';
+import { predictionService } from '../../../services/predictionService';
+import { auditLogService } from '../../../services/auditLog';
 
 const DRAFT_KEY = 'pharmaflow_sales_draft';
 
@@ -154,7 +154,6 @@ export const useSales = (onNavigate?: (view: any, params?: any) => void) => {
 
   const confirmAddCustomer = async () => {
     try {
-      const { db } = await import('@/services/database');
       const newId = `CUS-${Date.now()}`;
       const newCus: Supplier = {
         id: newId,
@@ -190,7 +189,7 @@ export const useSales = (onNavigate?: (view: any, params?: any) => void) => {
   const handleAIImport = async (file: File | string) => {
     setIsProcessingAI(true);
     try {
-      const { processInvoice } = await import('@/services/smartImportEngine');
+      const { processInvoice } = await import('../../../services/smartImportEngine');
       const parsed = await processInvoice(file);
 
       if (!parsed || !parsed.items || parsed.items.length === 0) {
@@ -223,7 +222,7 @@ export const useSales = (onNavigate?: (view: any, params?: any) => void) => {
   const applyAIParsedData = async () => {
     if (!aiParsedData) return;
 
-    const { matchProductName } = await import('@/services/productMatcher');
+    const { matchProductName } = await import('../../../services/productMatcher');
 
     // Find or create customer
     const customerName = aiParsedData.customer || '';

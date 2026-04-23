@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { db } from '@/services/database';
-import { AuditLogEntry } from '@/types';
+import { db } from '../../../lib/database';
+import { AuditLogEntry } from '../../../types';
 import { FixedSizeList as List } from 'react-window';
 import { Home, Search } from 'lucide-react';
 

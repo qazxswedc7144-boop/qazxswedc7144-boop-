@@ -1,7 +1,7 @@
 
-import { db } from '@/services/database';
-import { StockMovement } from '@/types';
-import { PeriodLockEngine } from '@/services/PeriodLockEngine';
+import { db } from '../../lib/database';
+import { StockMovement } from '../../types';
+import { PeriodLockEngine } from '../../services/PeriodLockEngine';
 import { InventoryEngine } from './inventoryEngine';
 
 export class StockMovementEngine {

@@ -1,6 +1,6 @@
 
-import { Product, InventoryLog } from '@/types';
-import { generateId } from '../../../utils/id';
+import { Product, InventoryLog } from '../../types';
+import { generateId } from '../../utils/id';
 
 export class InventoryEngine {
 

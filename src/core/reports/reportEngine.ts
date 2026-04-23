@@ -1,4 +1,4 @@
-import { db } from '@/services/database';
+import { db } from '../../lib/database';
 
 /**
  * محرك التقارير المحاسبية المتقدم - Reporting Engine

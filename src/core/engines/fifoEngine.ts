@@ -1,6 +1,6 @@
 
-import { db } from '@/services/database';
-import { InventoryLayer, FIFOConsumptionLog } from '@/types';
+import { db } from '../../lib/database';
+import { InventoryLayer, FIFOConsumptionLog } from '../../types';
 
 export class FIFOEngine {
 

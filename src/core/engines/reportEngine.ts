@@ -1,5 +1,5 @@
 
-import { db } from '@/services/database';
+import { db } from '../../lib/database';
 import { 
   AccountingEntry, 
   JournalLine, 
@@ -13,8 +13,8 @@ import {
   CustomerProfitEntry,
   SupplierProfitEntry,
   AccountMovement
-} from '@/types';
-import { reportCache } from '@/services/reportCache.service';
+} from '../../types';
+import { reportCache } from '../../services/reportCache.service';
 
 export class ReportEngine {
   

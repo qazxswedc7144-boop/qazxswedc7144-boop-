@@ -1,19 +1,19 @@
 
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { db } from '@/services/database';
-import { Product, InvoiceStatus, InvoiceItem, Purchase, PaymentStatus, Supplier } from '@/types';
-import { useUI, useInventory, useAccounting } from '@/store/AppContext';
-import { useAppStore } from '@/store/useAppStore';
-import { authService } from '@/services/auth.service';
-import { PurchaseRepository } from '@/repositories/PurchaseRepository';
-import { InvoiceRepository } from '@/repositories/invoice.repository';
-import { auditLogService } from '@/services/auditLog';
-import { InvoiceWorkflowEngine } from '@/services/logic/InvoiceWorkflowEngine';
-import { syncService } from '@/services/sync.service';
-import { predictionService } from '@/services/predictionService';
-import { saveLearning } from '@/services/learningService';
-import { matchProductName } from '@/services/productMatcher';
-import { BackupService } from '@/services/backupService';
+import { db } from '../../../lib/database';
+import { Product, InvoiceStatus, InvoiceItem, Purchase, PaymentStatus, Supplier } from '../../../types';
+import { useUI, useInventory, useAccounting } from '../../../store/AppContext';
+import { useAppStore } from '../../../store/useAppStore';
+import { authService } from '../../../services/auth.service';
+import { PurchaseRepository } from '../../../repositories/PurchaseRepository';
+import { InvoiceRepository } from '../../../repositories/invoice.repository';
+import { auditLogService } from '../../../services/auditLog';
+import { InvoiceWorkflowEngine } from '../../../services/InvoiceWorkflowEngine';
+import { syncService } from '../../../services/sync.service';
+import { predictionService } from '../../../services/predictionService';
+import { saveLearning } from '../../../services/learningService';
+import { matchProductName } from '../../../services/productMatcher';
+import { BackupService } from '../../../services/backupService';
 
 const DRAFT_KEY = 'pharmaflow_purchase_draft';
 
@@ -220,32 +220,46 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
 
   const handleSupplierBlur = () => {
     // Wait a bit for click events on dropdown
-    setTimeout(() => {
+    setTimeout(async () => {
       setShowSupplierDropdown(false);
-      if (supplierSearchTerm && !suppliers.find(s => s.Supplier_Name === supplierSearchTerm)) {
-        // Check for similarity
-        const similarSupplier = suppliers.find(s => {
-          const sName = s.Supplier_Name.toLowerCase();
-          const tName = supplierSearchTerm.toLowerCase();
-          return sName.includes(tName) || tName.includes(sName);
-        });
+      
+      if (supplierSearchTerm) {
+        try {
+           const allDBSuppliers = await db.suppliers.toArray() as any[];
+           // Strict filter for active only to utilize logical index context
+           const activeSuppliers = allDBSuppliers.filter(s => s.Is_Active === true || s.Is_Active === 1 || String(s.Is_Active) === "true" || s.Is_Active === undefined);
+           
+           const exactMatch = activeSuppliers.find(s => s.Supplier_Name === supplierSearchTerm || s.name === supplierSearchTerm);
+           
+           if (!exactMatch) {
+              const similarSupplier = activeSuppliers.find(s => {
+                const sName = (s.Supplier_Name || s.name || '').toLowerCase();
+                const tName = supplierSearchTerm.toLowerCase();
+                return sName.includes(tName) || tName.includes(sName);
+              });
 
-        if (similarSupplier) {
-          if (window.confirm(`هل تقصد [${similarSupplier.Supplier_Name}]؟`)) {
-            selectSupplier(similarSupplier);
-            return;
-          }
+              if (similarSupplier) {
+                if (window.confirm(`هل تقصد [${similarSupplier.Supplier_Name || similarSupplier.name}]؟`)) {
+                  selectSupplier(similarSupplier);
+                  return;
+                }
+              }
+
+              setNewSupplierName(supplierSearchTerm);
+              setIsAddSupplierModalOpen(true);
+           } else {
+             // ensure selection is tight on exact match
+             selectSupplier(exactMatch);
+           }
+        } catch (error) {
+           console.error("Checking DB for supplier failed", error);
         }
-
-        setNewSupplierName(supplierSearchTerm);
-        setIsAddSupplierModalOpen(true);
       }
     }, 200);
   };
 
   const confirmAddSupplier = async () => {
     try {
-      const { db } = await import('@/services/database');
       const newId = `SUP-${Date.now()}`;
       const newSup: Supplier = {
         id: newId,
@@ -293,7 +307,7 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
     setIsProcessingAI(true);
     try {
       console.log("STEP 2: AI START");
-      const { processInvoice } = await import('@/services/smartImportEngine');
+      const { processInvoice } = await import('../../../services/smartImportEngine');
       const parsed = await processInvoice(file);
 
       console.log("STEP 3: AI DONE", parsed);

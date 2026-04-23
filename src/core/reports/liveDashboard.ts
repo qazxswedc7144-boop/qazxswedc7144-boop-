@@ -1,4 +1,4 @@
-import { db } from '@/services/database';
+import { db } from '../../lib/database';
 
 /**
  * liveDashboard - Realtime Financial Metrics Engine

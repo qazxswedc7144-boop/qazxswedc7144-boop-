@@ -1,4 +1,4 @@
-import { db } from '@/services/database'
+import { db } from '../../lib/database'
 
 /* --------------------------------------------------
 MAIN ENGINE - محرك العمليات المحاسبي المركزي

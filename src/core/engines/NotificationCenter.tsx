@@ -1,12 +1,12 @@
 
 import React, { useState, useEffect } from 'react';
-import { db } from '@/services/database';
-import { alertBotService } from '@/services/alertBot.service';
-import { MedicineAlert } from '@/types';
-import { useEventBus, useUI } from '@/store/AppContext'; 
-import { Badge } from '@/components/SharedUI';
+import { db } from '../../lib/database';
+import { alertBotService } from '../../services/alertBot.service';
+import { MedicineAlert } from '../../types';
+import { useEventBus, useUI } from '../../store/AppContext'; 
+import { Badge } from '../../components/SharedUI';
 import { Bell, Package, AlertCircle, Clock, Calendar } from 'lucide-react';
-import { EVENTS } from '@/services/eventBus';
+import { EVENTS } from '../../services/eventBus';
 
 const NotificationCenter: React.FC = () => {
   const [alerts, setAlerts] = useState<MedicineAlert[]>([]);

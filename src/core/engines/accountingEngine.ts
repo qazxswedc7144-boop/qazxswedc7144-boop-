@@ -1,5 +1,5 @@
 
-import { Sale, Purchase, CashFlow, AccountingEntry, Product, Supplier, InvoiceAdjustment, JournalLine } from '@/types';
+import { Sale, Purchase, CashFlow, AccountingEntry, Product, Supplier, InvoiceAdjustment, JournalLine } from '../../types';
 
 export class AccountingEngine {
   /**
@@ -117,8 +117,8 @@ export class AccountingEngine {
    * POST INVOICE TO ACCOUNTING
    */
   static async postInvoice(invoice: any, costResult: { totalCost: number }): Promise<void> {
-    const { AccountingEngine: robustEngine } = await import('@/services/AccountingEngine');
-    const { AccountRepository } = await import('@/repositories/account.repository');
+    const { AccountingEngine: robustEngine } = await import('../../services/AccountingEngine');
+    const { AccountRepository } = await import('../../repositories/account.repository');
     
     const type = invoice.type || (invoice.customerId ? 'SALE' : 'PURCHASE');
     const isReturn = invoice.isReturn || invoice.invoiceType === 'مرتجع';
