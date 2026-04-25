@@ -112,11 +112,7 @@ export const BackupService = {
       timestamp: Date.now(),
       updatedAt: Date.now(), // 6. ADD UPDATED TIMESTAMP
       device_id: this.getDeviceId(),
-      tables,
-      settings: {
-        app_lock_enabled: localStorage.getItem("app_lock_enabled"),
-        app_lock_pass: localStorage.getItem("app_lock_pass")
-      }
+      tables
     };
     return data;
   },
@@ -221,15 +217,6 @@ export const BackupService = {
       // 4. bulk insert all tables
       await this.restoreTables(data.tables);
 
-      // 5. Restore localStorage settings
-      if (data.settings) {
-        const s = data.settings;
-        if (s.app_lock_enabled !== null) localStorage.setItem("app_lock_enabled", s.app_lock_enabled);
-        else localStorage.removeItem("app_lock_enabled");
-        
-        if (s.app_lock_pass !== null) localStorage.setItem("app_lock_pass", s.app_lock_pass);
-      }
-
       // Validation
       await this.validateRestoredData();
       
@@ -317,11 +304,7 @@ export const BackupService = {
       settlements: await db.db.settlements.toArray(),
       Audit_Log: await db.db.Audit_Log.toArray(),
       audit_log: await db.db.audit_log.toArray(),
-      accounts: await db.db.accounts.toArray(),
-      settings: {
-        app_lock_enabled: localStorage.getItem("app_lock_enabled"),
-        app_lock_pass: localStorage.getItem("app_lock_pass")
-      }
+      accounts: await db.db.accounts.toArray()
     };
   },
 
@@ -343,11 +326,7 @@ export const BackupService = {
       voucherInvoiceLinks: (await db.db.voucherInvoiceLinks.toArray()).filter(filterSince),
       settlements: (await db.db.settlements.toArray()).filter(filterSince),
       Audit_Log: (await db.db.Audit_Log.toArray()).filter(filterSince),
-      audit_log: (await db.db.audit_log.toArray()).filter(filterSince),
-      settings: {
-        app_lock_enabled: localStorage.getItem("app_lock_enabled"),
-        app_lock_pass: localStorage.getItem("app_lock_pass")
-      }
+      audit_log: (await db.db.audit_log.toArray()).filter(filterSince)
     };
   },
 
@@ -425,19 +404,10 @@ export const BackupService = {
 
       // Insert snapshot data
       for (const table in snapshot) {
-        if (table === 'settings') continue;
+        if (table === 'settings') continue; // IDB table will not be injected directly here due to naming conflict we left here just in case! 
         if ((db.db as any)[table]) {
           await (db.db as any)[table].bulkPut(snapshot[table]);
         }
-      }
-
-      // Restore localStorage settings if present
-      if (snapshot.settings) {
-        const s = snapshot.settings;
-        if (s.app_lock_enabled !== null) localStorage.setItem("app_lock_enabled", s.app_lock_enabled);
-        else localStorage.removeItem("app_lock_enabled");
-        
-        if (s.app_lock_pass !== null) localStorage.setItem("app_lock_pass", s.app_lock_pass);
       }
 
       // Recalculate balances and rebuild stock ledger

@@ -36,19 +36,18 @@ export class GeminiAnalyticsService {
     try {
       this.LAST_REQUEST_TIME = now;
       
-      // MOCK FALLBACK SINCE GOOGLE GENAI IS REMOVED
-      const result = `
-### تحليل تفصيلي
+      const response = await fetch('/api/gemini/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: `${prompt}\n\nData: ${dataStr}` })
+      });
 
-لقد قمت بتحليل البيانات المرفقة وفقاً للمعايير المطلوبة.
+      if (!response.ok) {
+        throw new Error('فشل الاتصال بخدمة الذكاء الاصطناعي');
+      }
 
-**النقاط الرئيسية:**
-* الأداء العام مستقر وفقاً للبيانات الحالية.
-* هناك فرص لتحسين العمليات والتحكم في المخزون.
-* يفضل مراجعة تقارير المبيعات بشكل دوري.
-
-*(ملاحظة: هذا تحليل محلي تجريبي لعدم وجود خدمة ذكاء اصطناعي فعالة حالياً)*
-      `;
+      const responseData = await response.json();
+      const result = responseData.text || "لم يتم استلام أي استجابة من الذكاء الاصطناعي.";
       
       // 3. Save to Cache
       localStorage.setItem(this.CACHE_PREFIX + cacheKey, JSON.stringify({

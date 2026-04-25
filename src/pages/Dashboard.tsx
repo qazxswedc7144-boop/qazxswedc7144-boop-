@@ -166,7 +166,7 @@ const Dashboard: React.FC<{ lang?: 'ar', onNavigate?: (view: any, params?: any) 
         <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-50 rounded-full blur-3xl opacity-20 -mr-32 -mt-32"></div>
         <div className="absolute bottom-0 left-0 w-64 h-64 bg-slate-50 rounded-full blur-3xl opacity-20 -ml-32 -mb-32"></div>
 
-        <div className="flex flex-col items-center text-center gap-8 relative z-10 w-full max-w-2xl">
+        <div className="flex flex-col items-center text-center gap-4 relative z-10 w-full max-w-2xl">
           <motion.div
             initial={{ y: -20, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
@@ -182,9 +182,9 @@ const Dashboard: React.FC<{ lang?: 'ar', onNavigate?: (view: any, params?: any) 
           </motion.div>
 
           <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.3, duration: 0.5 }}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2, duration: 0.5 }}
             className="space-y-1"
           >
             <h2 className="text-3xl font-black text-[#1E4D4D] tracking-tight">أهلاً بك، {user?.User_Name}</h2>

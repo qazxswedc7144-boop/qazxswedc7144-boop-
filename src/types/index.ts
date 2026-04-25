@@ -510,6 +510,7 @@ export interface InvoiceItem extends SyncableEntity {
   id: string;
   parent_id: string; 
   product_id: string;
+  batchId?: string;
   row_order: number; 
   name: string;
   qty: number;
@@ -941,6 +942,7 @@ export interface MedicineBatch extends SyncableEntity {
   warehouseId: string;
   ExpiryDate: string;
   Quantity: number;
+  unitCost?: number;
   lastUpdated?: string;
 }
 

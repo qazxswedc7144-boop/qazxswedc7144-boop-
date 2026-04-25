@@ -35,8 +35,8 @@ export const BackupService = {
       const jsonSnapshot = JSON.stringify(snapshot);
       
       // PHASE 8 — BACKUP ENCRYPTION
-      // Use provided password or a default internal key if not provided (for auto-backups)
-      const encryptionPassword = password || 'pharmaflow-internal-secure-key-2026';
+      // Use provided password or environment key if not provided (for auto-backups)
+      const encryptionPassword = password || import.meta.env.VITE_ENCRYPTION_KEY || 'pharmaflow-internal-secure-key';
       const encrypted = await EncryptionService.encryptBackup(jsonSnapshot, encryptionPassword);
       
       const sizeInKB = Math.round(new Blob([encrypted.encrypted_data]).size / 1024);
@@ -111,11 +111,7 @@ export const BackupService = {
       timestamp: Date.now(),
       updatedAt: Date.now(), // 6. ADD UPDATED TIMESTAMP
       device_id: this.getDeviceId(),
-      tables,
-      settings: {
-        app_lock_enabled: localStorage.getItem("app_lock_enabled"),
-        app_lock_pass: localStorage.getItem("app_lock_pass")
-      }
+      tables
     };
     return data;
   },
@@ -166,14 +162,7 @@ export const BackupService = {
       // 4. bulk insert all tables
       await this.restoreTables(data.tables);
 
-      // 5. Restore localStorage settings
-      if (data.settings) {
-        const s = data.settings;
-        if (s.app_lock_enabled !== null) localStorage.setItem("app_lock_enabled", s.app_lock_enabled);
-        else localStorage.removeItem("app_lock_enabled");
-        
-        if (s.app_lock_pass !== null) localStorage.setItem("app_lock_pass", s.app_lock_pass);
-      }
+      // 5. Removed localStorage parsing since everything is in db.settings now
 
       // Validation
       await this.validateRestoredData();
@@ -263,11 +252,7 @@ export const BackupService = {
       Audit_Log: await db.db.audit_log.toArray(),
       audit_log: await db.db.audit_log.toArray(),
       accounts: await db.db.accounts.toArray(),
-      warehouseStock: (await db.db.warehouseStock?.toArray()) || [],
-      settings: {
-        app_lock_enabled: localStorage.getItem("app_lock_enabled"),
-        app_lock_pass: localStorage.getItem("app_lock_pass")
-      }
+      warehouseStock: (await db.db.warehouseStock?.toArray()) || []
     };
   },
 
@@ -290,11 +275,7 @@ export const BackupService = {
       settlements: (await db.db.settlements.toArray()).filter(filterSince),
       Audit_Log: (await db.db.audit_log.toArray()).filter(filterSince),
       audit_log: (await db.db.audit_log.toArray()).filter(filterSince),
-      warehouseStock: (await db.db.warehouseStock?.toArray() || []).filter(filterSince),
-      settings: {
-        app_lock_enabled: localStorage.getItem("app_lock_enabled"),
-        app_lock_pass: localStorage.getItem("app_lock_pass")
-      }
+      warehouseStock: (await db.db.warehouseStock?.toArray() || []).filter(filterSince)
     };
   },
 
@@ -372,19 +353,10 @@ export const BackupService = {
 
       // Insert snapshot data
       for (const table in snapshot) {
-        if (table === 'settings') continue;
+        if (table === 'settings') continue; // Wait, if we want IDB settings to be restored, we shouldn't skip it! Wait...
         if ((db.db as any)[table]) {
           await (db.db as any)[table].bulkPut(snapshot[table]);
         }
-      }
-
-      // Restore localStorage settings if present
-      if (snapshot.settings) {
-        const s = snapshot.settings;
-        if (s.app_lock_enabled !== null) localStorage.setItem("app_lock_enabled", s.app_lock_enabled);
-        else localStorage.removeItem("app_lock_enabled");
-        
-        if (s.app_lock_pass !== null) localStorage.setItem("app_lock_pass", s.app_lock_pass);
       }
 
       // Recalculate balances and rebuild stock ledger

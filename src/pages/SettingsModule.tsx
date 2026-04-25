@@ -396,39 +396,44 @@ const SettingsModule: React.FC<{ onNavigate?: (view: any) => void }> = ({ onNavi
 
 const SecuritySettingsTab: React.FC = () => {
   const [settings, setSettings] = useState<any>(null);
-  const [appLockEnabled, setAppLockEnabled] = useState(
-    localStorage.getItem("app_lock_enabled") === "true"
-  );
+  const [appLockEnabled, setAppLockEnabled] = useState(false);
+  const [simplePin, setSimplePin] = useState('');
   const [form, setForm] = useState({ username: '', password: '', confirm: '', mode: '5m' as any });
   const { addToast, refreshGlobal } = useUI();
   const [loading, setLoading] = useState(false);
 
-  const toggleAppLock = (value: boolean) => {
-    setAppLockEnabled(value);
-    if (value) {
-      localStorage.setItem("app_lock_enabled", "true");
-    } else {
-      localStorage.removeItem("app_lock_enabled");
-    }
-  };
-
-  const setPassword = (newPass: string) => {
-    localStorage.setItem("app_lock_pass", newPass);
-    refreshGlobal();
-  };
-
   useEffect(() => {
     const load = async () => {
       const { appLockService } = await import('../services/AppLockService');
+      const isEnabled = await appLockService.isSimpleLockEnabled();
+      setAppLockEnabled(isEnabled);
       const s = await appLockService.getSettings();
       setSettings(s);
       if (s) {
         setForm(f => ({ ...f, username: s.username, mode: s.lock_mode }));
-        toggleAppLock(s.is_enabled);
       }
     };
     load();
   }, []);
+
+  const toggleAppLock = async (value: boolean) => {
+    setAppLockEnabled(value);
+    const { appLockService } = await import('../services/AppLockService');
+    await appLockService.setSimpleLockEnabled(value);
+    addToast(value ? "تم تفعيل القفل السريع" : "تم تعطيل القفل السريع", "info");
+  };
+
+  const handleSetSimplePin = async (newPass: string) => {
+    setSimplePin(newPass);
+  };
+
+  const handleSaveSimplePin = async () => {
+    if (!simplePin) return;
+    const { appLockService } = await import('../services/AppLockService');
+    await appLockService.setSimplePin(simplePin);
+    addToast("تم حفظ رمز القفل السريع وتشفيره", "success");
+    setSimplePin('');
+  };
 
   const handleEnable = async () => {
     if (!form.username || !form.password) {
@@ -446,7 +451,6 @@ const SecuritySettingsTab: React.FC = () => {
       addToast("تم تفعيل أمان التطبيق بنجاح ✅", "success");
       const s = await appLockService.getSettings();
       setSettings(s);
-      toggleAppLock(true);
       refreshGlobal();
     } catch (e) {
       addToast("فشل تفعيل الأمان", "error");
@@ -463,7 +467,6 @@ const SecuritySettingsTab: React.FC = () => {
       addToast("تم تعطيل أمان التطبيق", "info");
       const s = await appLockService.getSettings();
       setSettings(s);
-      toggleAppLock(false);
       refreshGlobal();
     } catch (e) {
       addToast("فشل تعطيل الأمان", "error");
@@ -477,13 +480,13 @@ const SecuritySettingsTab: React.FC = () => {
       <div className="lg:col-span-4 space-y-6">
         <Card className="!p-8 space-y-6">
           <h3 className="text-lg font-black text-[#1E4D4D] flex items-center gap-2 border-b border-slate-50 pb-4">
-            <Lock size={20} className="text-blue-500" /> {settings?.is_enabled ? 'تعديل الأمان' : 'تفعيل قفل التطبيق'}
+            <Lock size={20} className="text-blue-500" /> {settings?.is_enabled ? 'تعديل الأمان' : 'تفعيل قفل التطبيق (متقدم)'}
           </h3>
           
           <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
             <div className="flex items-center gap-3">
               <ShieldCheck className="text-[#1E4D4D]" size={20} />
-              <span className="text-sm font-black text-[#1E4D4D]">تفعيل قفل التطبيق</span>
+              <span className="text-sm font-black text-[#1E4D4D]">تفعيل قفل التطبيق السريع</span>
             </div>
             <input
               type="checkbox"
@@ -494,51 +497,59 @@ const SecuritySettingsTab: React.FC = () => {
           </div>
 
           <div className="space-y-4">
-            <Input label="اسم المستخدم" value={form.username} onChange={e => setForm({...form, username: e.target.value})} icon={<Users size={14}/>} />
-            <Input 
-              label="رمز القفل السريع (localStorage)" 
-              type="text" 
-              value={localStorage.getItem("app_lock_pass") || "1234"} 
-              onChange={e => setPassword(e.target.value)} 
-              icon={<ShieldCheck size={14}/>} 
-            />
-            <Input label="كلمة المرور" type="password" value={form.password} onChange={e => setForm({...form, password: e.target.value})} icon={<Lock size={14}/>} />
-            <Input label="تأكيد كلمة المرور" type="password" value={form.confirm} onChange={e => setForm({...form, confirm: e.target.value})} icon={<Lock size={14}/>} />
-            
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-black text-slate-400 uppercase">وضع القفل التلقائي</label>
-              <select 
-                className="w-full h-12 bg-slate-50 border-2 border-slate-100 rounded-xl px-4 font-black text-xs outline-none focus:border-blue-500 transition-all"
-                value={form.mode}
-                onChange={e => setForm({...form, mode: e.target.value as any})}
-              >
-                <option value="instant">فوري (عند الخروج)</option>
-                <option value="5m">بعد 5 دقائق خمول</option>
-                <option value="10m">بعد 10 دقائق خمول</option>
-                <option value="20m">بعد 20 دقيقة خمول</option>
-                <option value="30m">بعد 30 دقيقة خمول</option>
-              </select>
+            <div className="space-y-2">
+              <Input 
+                label="تسجيل رمز قفل سريع جديد" 
+                type="password" 
+                value={simplePin} 
+                onChange={e => handleSetSimplePin(e.target.value)} 
+                icon={<ShieldCheck size={14}/>}
+                placeholder="أدخل الرمز الجديد هنا..." 
+              />
+              <Button type="button" onClick={handleSaveSimplePin} variant="secondary" className="w-full text-xs h-10">حفظ الرمز السريع المُشفر</Button>
             </div>
+            
+            <div className="pt-4 border-t border-slate-100">
+              <p className="text-xs font-bold text-slate-500 mb-4">الأمان المتقدم (مسؤول النظام):</p>
+              <Input label="اسم المستخدم" value={form.username} onChange={e => setForm({...form, username: e.target.value})} icon={<Users size={14}/>} />
+              <Input label="كلمة المرور" type="password" value={form.password} onChange={e => setForm({...form, password: e.target.value})} icon={<Lock size={14}/>} />
+              <Input label="تأكيد كلمة المرور" type="password" value={form.confirm} onChange={e => setForm({...form, confirm: e.target.value})} icon={<Lock size={14}/>} />
+              
+              <div className="space-y-1.5 mt-4">
+                <label className="text-[10px] font-black text-slate-400 uppercase">وضع القفل التلقائي</label>
+                <select 
+                  className="w-full h-12 bg-slate-50 border-2 border-slate-100 rounded-xl px-4 font-black text-xs outline-none focus:border-blue-500 transition-all"
+                  value={form.mode}
+                  onChange={e => setForm({...form, mode: e.target.value as any})}
+                >
+                  <option value="instant">فوري (عند الخروج)</option>
+                  <option value="5m">بعد 5 دقائق خمول</option>
+                  <option value="10m">بعد 10 دقائق خمول</option>
+                  <option value="20m">بعد 20 دقيقة خمول</option>
+                  <option value="30m">بعد 30 دقيقة خمول</option>
+                </select>
+              </div>
 
-            <Button 
-              variant="primary" 
-              className="w-full h-14 !rounded-xl shadow-lg" 
-              onClick={handleEnable}
-              disabled={loading}
-            >
-              {settings?.is_enabled ? 'تحديث الإعدادات' : 'تفعيل الآن'}
-            </Button>
-
-            {settings?.is_enabled && (
               <Button 
-                variant="danger" 
-                className="w-full h-12 !rounded-xl" 
-                onClick={handleDisable}
+                variant="primary" 
+                className="w-full h-14 !rounded-xl shadow-lg mt-4" 
+                onClick={handleEnable}
                 disabled={loading}
               >
-                تعطيل الأمان
+                {settings?.is_enabled ? 'تحديث الإعدادات المتقدمة' : 'تفعيل المتقدم الآن'}
               </Button>
-            )}
+
+              {settings?.is_enabled && (
+                <Button 
+                  variant="danger" 
+                  className="w-full h-12 !rounded-xl mt-2" 
+                  onClick={handleDisable}
+                  disabled={loading}
+                >
+                  تعطيل الأمان المتقدم
+                </Button>
+              )}
+            </div>
           </div>
         </Card>
       </div>

@@ -17,10 +17,24 @@ class Database extends Dexie {
 
   async saveSetting(key: string, value: any) {
     try {
-      await (this as any).settings.put({ key, value });
+      if (value === null || value === undefined) {
+        await (this as any).settings.delete(key);
+      } else {
+        await (this as any).settings.put({ key, value });
+      }
       return true;
     } catch (e) {
       console.error(`Failed to save setting ${key}:`, e);
+      return false;
+    }
+  }
+
+  async deleteSetting(key: string) {
+    try {
+      await (this as any).settings.delete(key);
+      return true;
+    } catch (e) {
+      console.error(`Failed to delete setting ${key}:`, e);
       return false;
     }
   }
@@ -152,6 +166,54 @@ class Database extends Dexie {
   async getDailyAuditTask() { 
     const table = (this as any).dailyAuditTasks;
     return table ? await table.get('current') : null; 
+  }
+  async saveAuditProgress(items: any[]) {
+    const table = (this as any).dailyAuditTasks;
+    if (table) {
+      const task = await table.get('current');
+      if (task) {
+        task.items = items;
+        await table.put(task);
+      }
+    }
+  }
+  async finalizeAudit(items: any[]) {
+    const table = (this as any).dailyAuditTasks;
+    if (table) {
+      const task = await table.get('current');
+      if (task) {
+        task.items = items;
+        task.completed = true;
+        task.completedAt = Date.now();
+        await table.put(task);
+      }
+    }
+  }
+  async createDailyAuditTask() {
+    const products = await this.getProducts();
+    // Select 5 random products for auditing that have positive stock
+    const shuffled = products
+      .filter(p => (p.Stock_Quantity || 0) > 0)
+      .sort(() => 0.5 - Math.random());
+    const selected = shuffled.slice(0, 5);
+    
+    const task = {
+      id: 'current',
+      date: new Date().toISOString().split('T')[0],
+      items: selected.map(p => ({
+        id: p.id,
+        name: p.Product_Name,
+        bookQty: p.Stock_Quantity || 0,
+        status: 'pending' as const
+      })),
+      completed: false
+    } as any;
+    
+    const table = (this as any).dailyAuditTasks;
+    if (table) {
+      await table.put(task);
+    }
+    return task;
   }
   async getInvoiceHistory(id: string) { 
     const table = (this as any).invoiceHistory;
@@ -338,7 +400,7 @@ class Database extends Dexie {
       settlements: 'id, voucherId, invoiceId',
       audit_log: 'id, timestamp, Modified_At, Table_Name, Change_Type',
       settings: 'key',
-      medicineBatches: 'id, ExpiryDate',
+      medicineBatches: 'id, ExpiryDate, BatchID, productId',
       categories: 'id, name',
       aiInsights: 'id, timestamp',
       financialHealthSnapshots: 'id, date',

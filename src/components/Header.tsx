@@ -1,6 +1,62 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import { db } from '../lib/database';
 // تأكد من وضع صورة الشعار في مجلد assets واستيرادها بهذا الشكل
-import logoImg from '../assets/pharmaflow-logo.png'; 
+import defaultLogoImg from '../assets/logo-vector.svg'; 
+import { HeartPulse } from 'lucide-react';
+
+const DynamicLogo = () => {
+  const [logoSrc, setLogoSrc] = useState<string | null>(null);
+  const [hasError, setHasError] = useState(false);
+  const [companyName, setCompanyName] = useState("PharmaFlow");
+
+  useEffect(() => {
+    const loadLogo = async () => {
+      try {
+        const config = await db.getSetting('invoice_config', null);
+        if (config?.CompanyLogo) {
+          setLogoSrc(config.CompanyLogo);
+        } else {
+          setLogoSrc(defaultLogoImg);
+        }
+        if (config?.CompanyName) {
+          setCompanyName(config.CompanyName);
+        }
+      } catch (err) {
+        setLogoSrc(defaultLogoImg);
+      }
+    };
+    loadLogo();
+  }, []);
+
+  if (hasError || !logoSrc) {
+    return (
+      <div className="flex items-center gap-2 px-3 py-1 bg-emerald-50 rounded-xl border border-emerald-100">
+        <HeartPulse className="text-emerald-600" size={24} />
+        <span className="font-black text-emerald-800 text-lg tracking-tight">
+          {companyName}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <img 
+      src={logoSrc} 
+      alt={`${companyName} Logo`} 
+      loading="lazy"
+      className="h-10 md:h-12 w-auto object-contain transition-opacity duration-500"
+      onError={() => {
+        if (logoSrc === defaultLogoImg) {
+          // If even SVG fails, fallback to icon
+          setHasError(true);
+        } else {
+          // If IDB logo fails, try default SVG
+          setLogoSrc(defaultLogoImg);
+        }
+      }}
+    />
+  );
+};
 
 const Header = ({ pageTitle, showBackButton, onBackClick }: { pageTitle?: string, showBackButton?: boolean, onBackClick?: () => void }) => {
   return (
@@ -26,16 +82,7 @@ const Header = ({ pageTitle, showBackButton, onBackClick }: { pageTitle?: string
 
       {/* المنتصف: الشعار (تم إصلاح المسار لضمان الظهور) */}
       <div className="flex flex-col items-center absolute left-1/2 -translate-x-1/2">
-        <img 
-          src={logoImg} 
-          alt="PharmaFlow Logo" 
-          className="h-10 md:h-12 w-auto object-contain transition-opacity duration-500"
-          onError={(e) => {
-            // حل احتياطي في حال فشل تحميل الصورة مجدداً
-            e.currentTarget.src = 'https://via.placeholder.com/150?text=PharmaFlow';
-            console.error("فشل تحميل الشعار، يرجى التأكد من وجود الملف في مجلد assets");
-          }}
-        />
+        <DynamicLogo />
       </div>
 
       {/* الجهة اليمنى: معلومات المستخدم أو التنبيهات */}

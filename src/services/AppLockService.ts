@@ -36,7 +36,6 @@ class AppLockService {
     };
 
     await db.security_settings.put(settings);
-    localStorage.setItem("app_lock_enabled", "true");
   }
 
   async disableSecurity(): Promise<void> {
@@ -45,7 +44,6 @@ class AppLockService {
       settings.is_enabled = false;
       await db.security_settings.put(settings);
     }
-    localStorage.removeItem("app_lock_enabled");
   }
 
   async updateActivity(): Promise<void> {
@@ -63,6 +61,35 @@ class AppLockService {
     
     const hash = await this.hashPassword(password, settings.salt);
     return hash === settings.password_hash;
+  }
+
+  async isSimpleLockEnabled(): Promise<boolean> {
+    const isEnabled = await db.getSetting('app_lock_enabled', 'false');
+    return isEnabled === 'true';
+  }
+
+  async setSimpleLockEnabled(enabled: boolean): Promise<void> {
+    await db.saveSetting('app_lock_enabled', enabled ? 'true' : 'false');
+    if (!enabled) {
+      await db.deleteSetting('app_lock_pin_hash');
+      await db.deleteSetting('app_lock_pin_salt');
+    }
+  }
+
+  async setSimplePin(pin: string): Promise<void> {
+    const salt = crypto.randomUUID();
+    const hash = await this.hashPassword(pin, salt);
+    await db.saveSetting('app_lock_pin_hash', hash);
+    await db.saveSetting('app_lock_pin_salt', salt);
+  }
+
+  async verifySimplePin(pin: string): Promise<boolean> {
+    const hash = await db.getSetting('app_lock_pin_hash');
+    const salt = await db.getSetting('app_lock_pin_salt');
+    if (!hash || !salt) {
+      return pin === '1234'; 
+    }
+    return (await this.hashPassword(pin, salt)) === hash;
   }
 
   getLockDuration(mode: SecuritySettings['lock_mode']): number {

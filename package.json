@@ -4,8 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
+    "dev": "tsx server.ts",
+    "build": "vite build && esbuild server.ts --bundle --platform=node --target=node18 --outfile=dist/server.cjs --format=cjs --external:express --external:vite",
+    "start": "node dist/server.cjs",
     "preview": "vite preview",
     "lint": "tsc --noEmit"
   },
@@ -16,9 +17,11 @@
     "@mui/icons-material": "^7.3.9",
     "@mui/material": "^7.3.9",
     "chart.js": "4.4.1",
+    "cors": "^2.8.6",
     "crypto-js": "^4.2.0",
     "dexie": "3.2.4",
-    "dexie-react-hooks": "^4.4.0",
+    "dexie-react-hooks": "^1.1.7",
+    "express": "^5.2.1",
     "lucide-react": "0.460.0",
     "motion": "^12.35.0",
     "pdfjs-dist": "^5.6.205",
@@ -30,13 +33,17 @@
     "react-window": "1.8.10",
     "recharts": "^3.7.0",
     "tesseract.js": "^7.0.0",
+    "tsx": "^4.21.0",
     "zustand": "^5.0.11"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.19",
     "@types/crypto-js": "^4.2.2",
+    "@types/express": "^5.0.6",
     "@types/node": "^22.14.0",
     "@types/react-router-dom": "^5.3.3",
     "@vitejs/plugin-react": "^5.0.0",
+    "esbuild": "^0.28.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"
   }

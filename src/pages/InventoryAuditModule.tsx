@@ -17,9 +17,12 @@ const InventoryAuditModule: React.FC<InventoryAuditModuleProps> = ({ lang, onNav
   // Fix: Fetches task using await inside useEffect
   useEffect(() => {
     const fetchTask = async () => {
-      const currentTask = await db.getDailyAuditTask();
+      let currentTask = await db.getDailyAuditTask();
+      if (!currentTask) {
+        currentTask = await db.createDailyAuditTask();
+      }
       setTask(currentTask);
-      if (currentTask.completed) setIsFinished(true);
+      if (currentTask && currentTask.completed) setIsFinished(true);
     };
     fetchTask();
   }, []);
@@ -98,12 +101,6 @@ const InventoryAuditModule: React.FC<InventoryAuditModuleProps> = ({ lang, onNav
               <h2 className="text-3xl font-black text-[#1E4D4D]">{isAr ? 'مهمة الجرد اليومية' : 'Daily Auditing Task'}</h2>
               <p className="text-slate-400 text-sm font-bold">{isAr ? `${task?.items.length || 0} أصناف لضمان دقة رفوفك اليوم` : `${task?.items.length || 0} items to ensure shelf accuracy today`}</p>
            </div>
-           <button 
-             onClick={() => onNavigate?.('dashboard')}
-             className="bg-white border border-[#1E4D4D]/20 px-4 py-2 rounded-xl text-xs font-black text-[#1E4D4D] hover:bg-[#1E4D4D] hover:text-white transition-all shadow-sm flex items-center gap-1.5"
-           >
-             <span className="text-sm">➦</span> {isAr ? 'الرئيسية' : 'Home'}
-           </button>
         </div>
         <div className="flex flex-col gap-2 w-full md:w-64">
            <div className="w-full bg-white rounded-full h-3 p-0.5 shadow-inner border border-slate-100 overflow-hidden">

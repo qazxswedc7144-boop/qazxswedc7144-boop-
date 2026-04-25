@@ -95,6 +95,8 @@ function MainLayout() {
   const [loginError, setLoginError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
   // 1. Session Tracking
   useEffect(() => {
     const handleActivity = () => {
@@ -118,17 +120,6 @@ function MainLayout() {
 
     // 2. Lock Logic (Interval & Visibility)
     useEffect(() => {
-      const syncLockFlag = async () => {
-        const { appLockService } = await import('./services/AppLockService');
-        const settings = await appLockService.getSettings();
-        if (settings?.is_enabled) {
-          localStorage.setItem("app_lock_enabled", "true");
-        } else {
-          localStorage.removeItem("app_lock_enabled");
-        }
-      };
-      syncLockFlag();
-
       const checkLock = async () => {
         const { appLockService } = await import('./services/AppLockService');
         const settings = await appLockService.getSettings();
@@ -172,14 +163,17 @@ function MainLayout() {
   
       // Initial check on mount (App Resume)
       const initialCheck = async () => {
-        const isLockEnabled = localStorage.getItem("app_lock_enabled") === "true";
-        if (!isLockEnabled) return; // دخول طبيعي
-
         const { appLockService } = await import('./services/AppLockService');
-        const settings = await appLockService.getSettings();
+        const isLockEnabled = await appLockService.isSimpleLockEnabled();
         
+        if (isLockEnabled) {
+          // If simple quick lock is enabled, we lock the screen initially just for security.
+          setIsLocked(true);
+          return;
+        }
+
+        const settings = await appLockService.getSettings();
         if (settings?.is_enabled) {
-          // في البداية نفتح مباشرة إلا إذا كان هناك سبب قوي للقفل
           const shouldLock = await appLockService.shouldLock();
           if (shouldLock) setIsLocked(true);
         }
@@ -221,6 +215,12 @@ function MainLayout() {
       'reports/supplier-profit', 'reports/account-movement', 'reports/purchases-by-item',
       'reports/sales-by-item', 'reports/item-movement-details', 'reports/expiry-items'
     ];
+
+    if (view === 'settings') {
+      setIsSettingsOpen(true);
+      window.location.hash = '#/dashboard';
+      view = 'dashboard';
+    }
 
     if (!validViews.includes(view)) {
       view = 'dashboard';
@@ -361,6 +361,11 @@ function MainLayout() {
   }, [refreshGlobal, parseRoute, setCurrency, setSyncStatus, setSystemStatus, addToast]);
 
   const handleNav = useCallback((view: string, params: any = null) => {
+    if (view === 'settings') {
+      setIsSettingsOpen(true);
+      setIsSidebarOpen(false);
+      return;
+    }
     if ((view === 'sales' || view === 'purchases') && !params?.id) {
        setEditingInvoiceId(null);
     }
@@ -668,7 +673,6 @@ function MainLayout() {
                   case 'inventory-audit': return <InventoryAuditModule lang="ar" onNavigate={handleNav} />;
                   case 'accounting': return <RoleGuard permission="FINANCIAL_ACCESS"><AccountingModule onNavigate={handleNav} /></RoleGuard>;
                   case 'audit-history': return <RoleGuard permission="MANAGE_SYSTEM"><AuditHistoryModule onNavigate={handleNav} recordId={viewParams?.id} /></RoleGuard>;
-                  case 'settings': return <RoleGuard permission="MANAGE_SYSTEM"><SettingsModule onNavigate={handleNav} /></RoleGuard>;
                   case 'reconciliation': return <RoleGuard permission="FINANCIAL_ACCESS"><ReconciliationModule onNavigate={handleNav} /></RoleGuard>;
                   case 'system-health': return <RoleGuard permission="MANAGE_SYSTEM"><SystemHealthModule onNavigate={handleNav} /></RoleGuard>;
                   case 'invoices-archive': return <InvoicesArchiveModule onNavigate={handleNav} initialFilter={viewParams?.filter} />;
@@ -700,6 +704,36 @@ function MainLayout() {
       <div className="pointer-events-none fixed inset-x-0 bottom-10 z-[1000] flex flex-col items-center">
         {toasts.map(t => <div key={t.id} className="pointer-events-auto"><Toast key={t.id} message={t.message} type={t.type as any} onClose={() => removeToast(t.id)} /></div>)}
       </div>
+
+      <AnimatePresence>
+        {isSettingsOpen && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[500] bg-slate-900/60 backdrop-blur-sm flex justify-center items-center p-4 md:p-6"
+          >
+            <motion.div 
+              initial={{ scale: 0.95, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 20 }}
+              className="bg-[#F8FAFA] w-full max-w-7xl h-[95vh] rounded-[32px] shadow-2xl overflow-hidden flex flex-col relative"
+            >
+               <button 
+                 onClick={() => setIsSettingsOpen(false)}
+                 className="absolute top-6 right-6 w-10 h-10 bg-white border border-slate-100 rounded-xl flex items-center justify-center text-slate-400 hover:bg-red-50 hover:text-red-500 transition-all z-[600]"
+               >
+                 <X size={20} />
+               </button>
+               <div className="flex-1 overflow-y-auto w-full custom-scrollbar pt-6">
+                 <RoleGuard permission="MANAGE_SYSTEM">
+                    <SettingsModule onNavigate={(v) => { setIsSettingsOpen(false); handleNav(v); }} />
+                 </RoleGuard>
+               </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -722,11 +756,10 @@ const LockScreen: React.FC<{ onUnlock: () => void }> = ({ onUnlock }) => {
     if (!password) return;
     setLoading(true);
     try {
-      const simplePass = localStorage.getItem("app_lock_pass") || "1234";
       const { appLockService } = await import('./services/AppLockService');
       
       // Check simple pass first, then secure service
-      const isSimpleValid = password === simplePass;
+      const isSimpleValid = await appLockService.verifySimplePin(password);
       const isSecureValid = await appLockService.verifyPassword(password);
 
       if (isSimpleValid || isSecureValid) {

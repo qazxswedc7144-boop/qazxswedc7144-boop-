@@ -51,8 +51,8 @@ export class AccountingEngine {
     lines.push(await this.createLine(entryId, revenueAcc, 0, baseAmount));
 
     // 2. COGS Impact
-    const totalCost = sale.totalCost || 0;
-    const { baseAmount: baseCost } = await CurrencyService.convertToBase(totalCost, currencyCode, sale.date);
+    const totalCalculatedCost = await this.calculateTotalCOGS(items);
+    const { baseAmount: baseCost } = await CurrencyService.convertToBase(totalCalculatedCost, currencyCode, sale.date);
     
     if (baseCost > 0) {
       lines.push(await this.createLine(entryId, cogsAcc, baseCost, 0));
@@ -142,8 +142,8 @@ export class AccountingEngine {
     }
 
     // Reverse COGS: Debit Inventory, Credit COGS
-    const totalCost = sale.totalCost || 0;
-    const { baseAmount: baseCost } = await CurrencyService.convertToBase(totalCost, currencyCode, sale.date);
+    const totalCalculatedCost = await this.calculateTotalCOGS(items);
+    const { baseAmount: baseCost } = await CurrencyService.convertToBase(totalCalculatedCost, currencyCode, sale.date);
     
     if (baseCost > 0) {
       lines.push(await this.createLine(entryId, invAcc, baseCost, 0));
@@ -250,6 +250,32 @@ export class AccountingEngine {
       created_at: new Date().toISOString(),
       lastModified: new Date().toISOString()
     };
+  }
+
+  private static async calculateTotalCOGS(items: InvoiceItem[]): Promise<number> {
+    let totalCOGS = 0;
+    for (const item of items) {
+      let unitCost = 0;
+      
+      // Try to get cost from batch
+      if (item.batchId) {
+        const batch = await db.medicineBatches.get(item.batchId);
+        if (batch && batch.unitCost !== undefined) {
+          unitCost = batch.unitCost;
+        }
+      }
+      
+      // Fallback to product default cost price if batch cost is missing
+      if (unitCost === 0) {
+        const product = await db.products.get(item.product_id);
+        if (product) {
+          unitCost = product.CostPrice || 0;
+        }
+      }
+      
+      totalCOGS += (item.qty || 0) * unitCost;
+    }
+    return totalCOGS;
   }
 
   private static validateEntryBalance(lines: JournalLine[]) {

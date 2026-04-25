@@ -187,13 +187,6 @@ const ReportsModule: React.FC<ReportsModuleProps> = ({ onNavigate }) => {
         <div className="max-w-7xl mx-auto relative z-10">
           <div className="flex flex-col md:flex-row items-center justify-between gap-8 mb-10">
             <div className="flex items-center gap-6">
-              <button 
-                onClick={() => onNavigate('dashboard')}
-                className="w-12 h-12 bg-slate-50 text-slate-400 rounded-2xl flex items-center justify-center hover:bg-slate-100 hover:text-[#1E4D4D] transition-all"
-                title="العودة للرئيسية"
-              >
-                <ArrowRight size={24} />
-              </button>
               <div className="w-20 h-20 bg-[#1E4D4D] text-white rounded-[28px] flex items-center justify-center shadow-2xl shadow-emerald-900/20">
                 <PieChart size={36} />
               </div>

@@ -204,7 +204,6 @@ const VouchersModule: React.FC<VouchersModuleProps> = ({ onNavigate, initialType
                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">إدارة التحويلات النقدية والعهدة</p>
             </div>
          </div>
-         <button onClick={() => onNavigate?.('dashboard')} className="w-10 h-10 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-center text-[#1E4D4D] text-xl font-black hover:bg-slate-100 transition-colors">➦</button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
