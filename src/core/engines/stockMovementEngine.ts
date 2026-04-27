@@ -14,15 +14,16 @@ export class StockMovementEngine {
     const date = (data as any).date || new Date().toISOString();
     await PeriodLockEngine.validateOperation(date, 'تعديل المخزون');
 
-    // Check if item exists
-    const product = await db.db.products.get(data.item_id);
+    // Check if item exists in Dexie
+    const product = await db.products.get(data.item_id);
+
     if (!product) {
       throw new Error(`Item ${data.item_id} not found.`);
     }
 
-    const movement: StockMovement = {
+    const movement: any = {
       ...data,
-      id: db.generateId('MOV'),
+      id: `MOV-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
       created_at: new Date().toISOString(),
       lastModified: new Date().toISOString(),
       tenant_id: 'TEN-DEV-001'
@@ -33,15 +34,28 @@ export class StockMovementEngine {
       throw new Error(`Insufficient stock for item ${movement.item_id}. Resulting stock would be ${movement.quantity_after}.`);
     }
 
-    await db.db.stock_movements.add(movement);
+    try {
+      await db.stock_movements.add(movement);
+    } catch (error: any) {
+      throw new Error(`Stock Movement Error: ${error.message}`);
+    }
 
-    // Update Product StockQuantity (Sync)
+    // Update Product StockQuantity (Sync) in Dexie
     const { product: updatedProduct, log } = movement.quantity_change > 0 
       ? InventoryEngine.addStock(product, Math.abs(movement.quantity_change), movement.unit_cost)
       : InventoryEngine.removeStock(product, Math.abs(movement.quantity_change));
 
-    await db.db.products.put(updatedProduct);
-    await db.db.inventory_logs.put(log);
+    try {
+      await db.products.update(product.id, { StockQuantity: updatedProduct.StockQuantity });
+    } catch (error: any) {
+      throw new Error(`Product Update Error: ${error.message}`);
+    }
+
+    try {
+      await db.inventory_logs.add({ ...log, id: `LOG-${Date.now()}` });
+    } catch (error: any) {
+      throw new Error(`Inventory Log Error: ${error.message}`);
+    }
   }
 
   /**
@@ -50,12 +64,16 @@ export class StockMovementEngine {
   static async getCurrentStock(item_id: string): Promise<number> {
     if (!item_id) return 0;
     
-    const movements = await db.db.stock_movements
-      .where('item_id')
-      .equals(item_id)
-      .toArray();
-    
-    return movements.reduce((sum, m) => sum + m.quantity_change, 0);
+    try {
+      const movements = await db.stock_movements
+        .where('item_id')
+        .equals(item_id)
+        .toArray();
+      
+      return (movements || []).reduce((sum: number, m: any) => sum + m.quantity_change, 0);
+    } catch (error) {
+      return 0;
+    }
   }
 
   /**
@@ -101,25 +119,31 @@ export class StockMovementEngine {
   static async reverseMovements(reference_id: string): Promise<void> {
     if (!reference_id) return;
     
-    const movements = await db.db.stock_movements
-      .where('reference_id')
-      .equals(reference_id)
-      .toArray();
+    try {
+      const movements = await db.stock_movements
+        .where('reference_id')
+        .equals(reference_id)
+        .toArray();
 
-    if (movements.length > 0) {
-      // 8. PROTECT DATA: Block stock changes if period is locked
-      const date = (movements[0] as any).date || movements[0].created_at || new Date().toISOString();
-      await PeriodLockEngine.validateOperation(date, 'إلغاء حركات المخزون');
-    }
-
-    for (const movement of movements) {
-      const currentProduct = await db.db.products.get(movement.item_id);
-      if (currentProduct) {
-        await db.db.products.update(movement.item_id, {
-          StockQuantity: (currentProduct.StockQuantity || 0) - movement.quantity_change
-        });
+      if (movements && movements.length > 0) {
+        // 8. PROTECT DATA: Block stock changes if period is locked
+        const date = (movements[0] as any).date || movements[0].created_at || new Date().toISOString();
+        await PeriodLockEngine.validateOperation(date, 'إلغاء حركات المخزون');
       }
-      await db.db.stock_movements.delete(movement.id);
+
+      for (const movement of (movements || [])) {
+        const currentProduct = await db.products.get(movement.item_id);
+
+        if (currentProduct) {
+          await db.products.update(movement.item_id, {
+            StockQuantity: (currentProduct.StockQuantity || 0) - movement.quantity_change
+          });
+        }
+        
+        await db.stock_movements.delete(movement.id);
+      }
+    } catch (error: any) {
+      throw new Error(`Reverse Movements Error: ${error.message}`);
     }
   }
 

@@ -12,6 +12,7 @@ import { InvoiceWorkflowEngine } from '../services/InvoiceWorkflowEngine';
 import { syncService } from '../services/sync.service';
 import { predictionService } from '../services/predictionService';
 import { saveLearning } from '../services/learningService';
+import { safeProcessTransaction } from '../services/TransactionSafety';
 import { matchProductName } from '../services/productMatcher';
 import { BackupService } from '../services/backupService';
 
@@ -386,7 +387,6 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
 
     try {
       console.log("CALLING SAFE ENGINE 🔥");
-      // @ts-ignore
       await safeProcessTransaction(type, data);
       addToast("✅ تم الحفظ بنجاح", "success");
       safeNavigate('dashboard');
@@ -530,12 +530,48 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
       };
 
       if (editingInvoiceId) {
-        // Update logic if needed, but PurchaseRepository doesn't have update.
-        // We can use InvoiceRepository.savePurchase if it handles updates.
-        await InvoiceRepository.savePurchase(header.supplier_id, items, vTotalSum, editingInvoiceId, header.payment_method === 'Cash', currency, 'POSTED', undefined, undefined, undefined, header.attachment);
+        await addInvoice({
+          type: 'PURCHASE',
+          payload: {
+            supplierId: header.supplier_id,
+            items,
+            total: vTotalSum,
+            id: editingInvoiceId,
+            notes: header.notes,
+            attachment: header.attachment,
+            date: header.date
+          },
+          options: {
+            isCash: header.payment_method === 'Cash',
+            paymentStatus: header.payment_method as any,
+            invoiceStatus: 'POSTED',
+            isReturn: !!header.isReturn,
+            currency,
+            date: header.date
+          }
+        });
         addToast("تم تحديث الفاتورة بنجاح", "success");
       } else {
-        await InvoiceRepository.savePurchase(header.supplier_id, items, vTotalSum, header.invoice_number, header.payment_method === 'Cash', currency, 'POSTED', undefined, undefined, undefined, header.attachment);
+        await addInvoice({
+          type: 'PURCHASE',
+          payload: {
+            supplierId: header.supplier_id,
+            items,
+            total: vTotalSum,
+            invoiceId: header.invoice_number,
+            notes: header.notes,
+            attachment: header.attachment,
+            date: header.date
+          },
+          options: {
+            isCash: header.payment_method === 'Cash',
+            paymentStatus: header.payment_method as any,
+            invoiceStatus: 'POSTED',
+            isReturn: !!header.isReturn,
+            currency,
+            date: header.date
+          }
+        });
         addToast("تم حفظ وترحيل الفاتورة", "success");
         localStorage.removeItem(DRAFT_KEY);
       }

@@ -1,5 +1,5 @@
 
-import { db } from '../lib/database';
+import { supabase, TABLE_NAMES } from '../lib/supabase';
 import { AccountingEngine } from './AccountingEngine';
 import { Receipt, Payment } from '../types';
 
@@ -8,7 +8,7 @@ export const voucherService = {
     if (data.amount <= 0) throw new Error('المبلغ يجب أن يكون أكبر من صفر');
     if (!data.customer_id) throw new Error('يرجى اختيار العميل');
     
-    const id = db.generateId('RCPT');
+    const id = `RCPT-${Date.now()}`;
     const date = data.date || new Date().toISOString();
     
     const receipt: Receipt = {
@@ -22,7 +22,18 @@ export const voucherService = {
       lastModified: new Date().toISOString()
     };
     
-    await db.db.receipts.add(receipt);
+    // Save to Supabase Vouchers table
+    const { error: vError } = await supabase.from(TABLE_NAMES.VOUCHERS).insert({
+       id,
+       type: 'RECEIPT',
+       amount: data.amount,
+       partner_id: data.customer_id,
+       notes: data.notes,
+       date,
+       created_at: new Date().toISOString()
+    });
+
+    if (vError) throw new Error(`Failed to save voucher to Supabase: ${vError.message}`);
     
     // Journal Entry
     const entry = await AccountingEngine.generateVoucherEntry({
@@ -35,10 +46,7 @@ export const voucherService = {
       paymentMethod: data.paymentMethod
     });
     
-    await db.saveAccountingEntry(entry);
-    
-    // Update Customer Balance
-    await db.updateCustomerBalance(data.customer_id, -data.amount); // Receipt reduces receivable
+    await supabase.from(TABLE_NAMES.JOURNAL_ENTRIES).insert(entry);
     
     return receipt;
   },
@@ -47,7 +55,7 @@ export const voucherService = {
     if (data.amount <= 0) throw new Error('المبلغ يجب أن يكون أكبر من صفر');
     if (!data.supplier_id) throw new Error('يرجى اختيار المورد');
     
-    const id = db.generateId('PAY');
+    const id = `PAY-${Date.now()}`;
     const date = data.date || new Date().toISOString();
     
     const payment: Payment = {
@@ -61,7 +69,18 @@ export const voucherService = {
       lastModified: new Date().toISOString()
     };
     
-    await db.db.payments.add(payment);
+    // Save to Supabase Vouchers table
+    const { error: vError } = await supabase.from(TABLE_NAMES.VOUCHERS).insert({
+       id,
+       type: 'PAYMENT',
+       amount: data.amount,
+       partner_id: data.supplier_id,
+       notes: data.notes,
+       date,
+       created_at: new Date().toISOString()
+    });
+
+    if (vError) throw new Error(`Failed to save voucher to Supabase: ${vError.message}`);
     
     // Journal Entry
     const entry = await AccountingEngine.generateVoucherEntry({
@@ -74,10 +93,7 @@ export const voucherService = {
       paymentMethod: data.paymentMethod
     });
     
-    await db.saveAccountingEntry(entry);
-    
-    // Update Supplier Balance
-    await db.updateSupplierBalance(data.supplier_id, -data.amount); // Payment reduces payable
+    await supabase.from(TABLE_NAMES.JOURNAL_ENTRIES).insert(entry);
     
     return payment;
   }

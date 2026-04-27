@@ -1,4 +1,5 @@
 import { ReportEngine } from '../core/engines/reportEngine';
+import { ai } from '../lib/gemini';
 
 export class GeminiAnalyticsService {
   private static CACHE_PREFIX = 'pharmaflow_gemini_cache_';
@@ -36,18 +37,12 @@ export class GeminiAnalyticsService {
     try {
       this.LAST_REQUEST_TIME = now;
       
-      const response = await fetch('/api/gemini/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: `${prompt}\n\nData: ${dataStr}` })
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: `${prompt}\n\nData: ${dataStr}`,
       });
 
-      if (!response.ok) {
-        throw new Error('فشل الاتصال بخدمة الذكاء الاصطناعي');
-      }
-
-      const responseData = await response.json();
-      const result = responseData.text || "لم يتم استلام أي استجابة من الذكاء الاصطناعي.";
+      const result = response.text || "لم يتم استلام أي استجابة من الذكاء الاصطناعي.";
       
       // 3. Save to Cache
       localStorage.setItem(this.CACHE_PREFIX + cacheKey, JSON.stringify({

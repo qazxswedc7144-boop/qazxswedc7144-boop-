@@ -1,35 +1,57 @@
 
-import { db } from '../lib/database';
+import { supabase, TABLE_NAMES } from '../lib/supabase';
 import { AccountingEntry, CashFlow, Transaction } from '../types';
 
 export const AccountingRepository = {
-  // Fix: Methods now return Promise to match database async implementation
   getEntries: async (): Promise<AccountingEntry[]> => {
-    return await db.getJournalEntries();
+    const { data, error } = await supabase
+      .from(TABLE_NAMES.JOURNAL_ENTRIES)
+      .select('*')
+      .order('date', { ascending: false });
+    
+    if (error) {
+      console.error('Error fetching journal entries from Supabase:', error);
+      return [];
+    }
+    return data as any[];
   },
 
   getCashFlow: async (): Promise<CashFlow[]> => {
-    return await db.getCashFlow();
-  },
-
-  getTransactions: async (): Promise<Transaction[]> => {
-    return await db.getTransactions();
+    const { data, error } = await supabase
+      .from('cash_flow') // Assuming table name
+      .select('*');
+    
+    if (error) return [];
+    return data as any[];
   },
 
   getAccountBalance: async (accountName: string): Promise<number> => {
-    return await db.getAccountBalance(accountName);
+    // This would ideally be a complex query or a view in Supabase
+    const { data, error } = await supabase
+      .from(TABLE_NAMES.JOURNAL_ENTRIES)
+      .select('total_debit, total_credit');
+    
+    if (error) return 0;
+    return (data as any[]).reduce((sum, e) => sum + (e.total_debit || 0) - (e.total_credit || 0), 0);
   },
 
-  // Fix: Changed signature to async and return Promise<boolean> as db.isDateLocked is async
-  isDateLocked: async (date: string): Promise<boolean> => {
-    return await db.isDateLocked(date);
+  getTransactions: async (): Promise<Transaction[]> => {
+    const { data, error } = await supabase
+      .from('transactions') // Assuming table name
+      .select('*');
+    
+    if (error) {
+      console.error('Error fetching transactions from Supabase:', error);
+      return [];
+    }
+    return data as any[];
   },
 
   addJournalEntry: async (entry: AccountingEntry) => {
-    await db.addJournalEntry(entry);
-  },
-
-  getSales: async () => {
-    return await db.getSales();
+    const { error } = await supabase
+      .from(TABLE_NAMES.JOURNAL_ENTRIES)
+      .insert(entry);
+    
+    if (error) throw new Error(`Failed to add journal entry to Supabase: ${error.message}`);
   }
 };

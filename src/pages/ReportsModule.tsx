@@ -179,7 +179,7 @@ const ReportsModule: React.FC<ReportsModuleProps> = ({ onNavigate }) => {
   };
 
   return (
-    <div className="flex flex-col min-h-full h-full bg-[#F8FAFA] font-['Cairo'] overflow-x-hidden" dir="rtl">
+    <div className="flex flex-col min-h-full h-full bg-[#F8FAFA] font-cairo overflow-x-hidden" dir="rtl">
       {/* Header Section */}
       <header className="px-10 py-12 shrink-0 bg-white border-b border-slate-100 z-20 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-50 rounded-full -translate-y-1/2 translate-x-1/2 opacity-50 blur-3xl" />

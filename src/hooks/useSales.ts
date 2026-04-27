@@ -487,7 +487,9 @@ export const useSales = (onNavigate?: (view: any, params?: any) => void) => {
           total: vTotalSum, 
           invoiceId: header.invoice_number,
           id: editingInvoiceId,
-          attachment: header.attachment
+          notes: header.notes,
+          attachment: header.attachment,
+          date: header.date
         },
         options: { 
           isCash: header.payment_method === 'Cash', 

@@ -1,53 +1,91 @@
 
-import { db } from '../lib/database';
 import { Product, InventoryItem, InventoryTransaction, MedicineBatch, MedicineAlert } from '../types';
-import { safeGetById, safeWhereEqual } from '../utils/dexieSafe';
 import { auditLogService } from './auditLog';
+import { db } from '../lib/database';
+import { safeGetById } from '../utils/dexieSafe';
 
 export class InventoryService {
   /**
-   * Retrieves all products from the database.
+   * Retrieves all products from Dexie.
    */
   static async getProducts(): Promise<Product[]> {
-    return await db.products.toArray();
+    try {
+      const products = await db.products.filter((p: any) => !p.deletedAt).toArray();
+      return (products || []) as any[];
+    } catch (error) {
+      console.error('Error fetching products from Dexie:', error);
+      return [];
+    }
   }
 
   /**
-   * Saves a product to the database.
+   * Saves a product to Dexie.
    */
   static async saveProduct(product: Product): Promise<string> {
-    if (!product.id) {
-      product.id = db.generateId('PRD');
+    const isNew = !product.id;
+    const now = new Date().toISOString();
+    const productPayload = {
+      ...product,
+      updated_at: now,
+      updatedAt: now,
+      lastModified: now
+    };
+
+    if (isNew) {
+      productPayload.id = `PRD-${Date.now()}`;
+      (productPayload as any).Created_At = now;
+      (productPayload as any).createdAt = Date.now();
     }
-    await db.products.put(product);
-    return product.id;
+
+    try {
+      await db.products.put(productPayload);
+      return productPayload.id;
+    } catch (error: any) {
+      throw new Error(`Failed to save product to Dexie: ${error.message}`);
+    }
   }
 
   /**
-   * Updates the stock quantity of a product.
+   * Updates the stock quantity of a product in Dexie.
    */
   static async updateStock(productId: string, quantityChange: number): Promise<Product | undefined> {
-    const product = await safeGetById(db.products, productId);
-    if (product) {
-      product.StockQuantity += quantityChange;
-      await db.products.put(product);
-      return product;
+    try {
+      const product = await db.products.get(productId);
+
+      if (!product) {
+        console.error('Product not found for stock update:', productId);
+        return undefined;
+      }
+
+      const newStock = (product.StockQuantity || product.stock || 0) + quantityChange;
+      const now = new Date().toISOString();
+
+      await db.products.update(productId, { 
+        StockQuantity: newStock, 
+        stock: newStock,
+        updated_at: now,
+        updatedAt: now,
+        lastModified: now
+      });
+
+      return await db.products.get(productId);
+    } catch (updateError) {
+      console.error('Error updating stock in Dexie:', updateError);
+      return undefined;
     }
-    return undefined;
   }
 
   /**
-   * Retrieves all inventory items.
-   */
-  static async getInventory(): Promise<InventoryItem[]> {
-    return await db.inventory.toArray();
-  }
-
-  /**
-   * Retrieves all medicine batches.
+   * Retrieves all medicine batches from Dexie.
    */
   static async getMedicineBatches(): Promise<MedicineBatch[]> {
-    return await db.medicineBatches.toArray();
+    try {
+      const batches = await db.medicineBatches.toArray();
+      return (batches || []) as any[];
+    } catch (error) {
+       console.warn('Error fetching medicine batches from Dexie:', error);
+       return [];
+    }
   }
 
   /**
@@ -86,6 +124,7 @@ export class InventoryService {
       const finalSourceType = movement.sourceType || movement.sourceDocType || 'MANUAL';
 
       const now = new Date().toISOString();
+      const currentQty = product.StockQuantity || product.stock || 0;
       const transaction: InventoryTransaction = {
         TransactionID: db.generateId('ITX'),
         productId: movement.productId,
@@ -93,8 +132,8 @@ export class InventoryService {
         SourceDocumentType: finalSourceType as any,
         SourceDocumentID: finalSourceId,
         QuantityChange: movement.quantity,
-        before_qty: product.StockQuantity,
-        after_qty: product.StockQuantity + movement.quantity,
+        before_qty: currentQty,
+        after_qty: currentQty + movement.quantity,
         TransactionType: movement.type,
         TransactionDate: now,
         UserID: movement.userId || 'system',
@@ -114,15 +153,21 @@ export class InventoryService {
                 movement.type === 'SALE' ? 'STOCK_OUT' : 
                 movement.type === 'PURCHASE' ? 'STOCK_IN' : 'UPDATE' as any,
         entityId: movement.productId,
-        oldData: { qty: product.StockQuantity },
-        newData: { qty: product.StockQuantity + movement.quantity },
+        oldData: { qty: currentQty },
+        newData: { qty: currentQty + movement.quantity },
         details: movement.notes || `Inventory ${movement.type}: ${movement.quantity}`,
         userId: movement.userId
       });
       
       // Update the product stock
-      product.StockQuantity += movement.quantity;
-      await db.products.put(product);
+      const newQty = currentQty + movement.quantity;
+      await db.products.update(movement.productId, {
+        StockQuantity: newQty,
+        stock: newQty,
+        updated_at: now,
+        updatedAt: now,
+        lastModified: now
+      });
 
       // Update warehouse stock
       const warehouseId = movement.warehouseId || 'WH-MAIN';

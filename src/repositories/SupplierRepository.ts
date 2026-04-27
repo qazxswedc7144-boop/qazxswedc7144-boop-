@@ -1,107 +1,81 @@
 
-import { db } from '../lib/database';
+import { supabase, TABLE_NAMES } from '../lib/supabase';
 import { Supplier, SupplierLedgerEntry, PurchaseRecord, PartnerLedgerEntry } from '../types';
-import { VoucherInvoiceLinkRepository } from './VoucherInvoiceLinkRepository';
-import { AccountStatementRepository } from './AccountStatementRepository';
-import { ReferentialIntegrityGuard } from '../services/ReferentialIntegrityGuard';
-import { useAppStore } from '../store/useAppStore';
 
-/**
- * Supplier Repository - إدارة الموردين والعملاء مع دعم الرصيد التراكمي الذكي والربط المالي
- */
 export const SupplierRepository = {
   getSuppliers: async (): Promise<Supplier[]> => {
-    return (await db.getSuppliers()).filter(s => s.Is_Active !== false);
+    const { data, error } = await supabase
+      .from(TABLE_NAMES.SUPPLIERS)
+      .select('*');
+    
+    if (error) {
+      console.error('Error fetching suppliers from Supabase:', error);
+      return [];
+    }
+    return data as any[];
   },
 
   getCustomers: async (): Promise<Supplier[]> => {
-    return (await db.getCustomers()).filter(c => c.Is_Active !== false);
-  },
-
-  getById: async (id: string, type: 'S' | 'C'): Promise<Supplier | undefined> => {
-    const list = type === 'S' ? await db.getSuppliers() : await db.getCustomers();
-    return list.find(p => p.Supplier_ID === id);
-  },
-
-  getLedger: async (partnerId: string, startDate?: string, endDate?: string): Promise<any[]> => {
-    if (!partnerId) return [];
-    const type = partnerId.startsWith('S') ? 'S' : 'C';
-    const partner = await SupplierRepository.getById(partnerId, type);
-    if (!partner) return [];
-
-    const partnerType = type === 'S' ? 'Supplier' : 'Customer';
-    let statement = await AccountStatementRepository.getStatement(partner.Supplier_Name, partnerType);
+    const { data, error } = await supabase
+      .from(TABLE_NAMES.CUSTOMERS)
+      .select('*');
     
-    if (startDate) {
-      statement = statement.filter(e => new Date(e.date) >= new Date(startDate));
+    if (error) {
+      console.error('Error fetching customers from Supabase:', error);
+      return [];
     }
-    if (endDate) {
-      statement = statement.filter(e => new Date(e.date) <= new Date(endDate));
-    }
-
-    const enriched = await Promise.all(statement.map(async (entry: any) => {
-      if (entry.referenceId && (entry.referenceId.startsWith('V-') || entry.referenceId.startsWith('VOU-'))) {
-        const links = await VoucherInvoiceLinkRepository.getByVoucher(entry.referenceId);
-        if (links.length > 0) {
-          const invoiceList = links.map(l => `#${l.invoiceId}`).join('، ');
-          return { ...entry, linkedInvoices: invoiceList };
-        }
-      }
-      return entry;
-    }));
-
-    return enriched;
-  },
-
-  getPartnerBalance: async (partnerId: string, type: 'S' | 'C'): Promise<number> => {
-    const partner = await SupplierRepository.getById(partnerId, type);
-    if (!partner) return 0;
-    
-    const statement = await AccountStatementRepository.getStatement(
-      partner.Supplier_Name, 
-      type === 'S' ? 'Supplier' : 'Customer'
-    );
-    
-    if (statement.length === 0) return partner.openingBalance || 0;
-    return statement[statement.length - 1].runningBalance;
+    return data as any[];
   },
 
   save: async (partner: Supplier, type: 'S' | 'C') => {
-    if (partner.Is_Active === undefined) partner.Is_Active = true;
-    if (type === 'S') await db.saveSupplier(partner);
-    else await db.saveCustomer(partner);
+    const table = type === 'S' ? TABLE_NAMES.SUPPLIERS : TABLE_NAMES.CUSTOMERS;
+    const { error } = await supabase
+      .from(table)
+      .upsert({
+        ...partner,
+        Created_At: partner.Created_At || new Date().toISOString()
+      });
+
+    if (error) throw new Error(`Failed to save partner to Supabase: ${error.message}`);
   },
 
   delete: async (id: string, type: 'S' | 'C') => {
-    const partner = await SupplierRepository.getById(id, type);
-    if (!partner) return;
+    const table = type === 'S' ? TABLE_NAMES.SUPPLIERS : TABLE_NAMES.CUSTOMERS;
+    const { error } = await supabase
+      .from(table)
+      .delete()
+      .eq('id', id);
 
-    // فحص النزاهة المرجعية
-    const hasRefs = await ReferentialIntegrityGuard.checkPartnerReferences(partner.Supplier_ID);
-    const hasBalance = Math.abs(partner.Balance) > 0.01;
-
-    if (hasRefs || hasBalance) {
-      // تعطيل الحساب بدلاً من حذفه
-      partner.Is_Active = false;
-      partner.lastModified = new Date().toISOString();
-      await SupplierRepository.save(partner, type);
-      useAppStore.getState().addToast(`تم تعطيل حساب [${partner.Supplier_Name}] بدلاً من حذفه لوجود أرصدة أو عمليات سابقة 🛡️`, 'info');
-    } else {
-      // حذف فيزيائي إذا لم يوجد أي نشاط تاريخي
-      if (type === 'S') {
-        await (db as any).suppliers.delete(id);
-      } else {
-        await (db as any).customers.delete(id);
-      }
-      useAppStore.getState().addToast(`تم حذف الشريك بنجاح`, 'success');
-    }
+    if (error) throw new Error(`Failed to delete partner from Supabase: ${error.message}`);
   },
 
-  postToLedger: async (entry: Omit<PartnerLedgerEntry, 'runningBalance'>) => {
-    await db.addPartnerLedgerEntry(entry);
+  getById: async (id: string, type: 'S' | 'C' = 'S'): Promise<Supplier | undefined> => {
+    const table = type === 'S' ? TABLE_NAMES.SUPPLIERS : TABLE_NAMES.CUSTOMERS;
+    const { data } = await supabase.from(table).select('*').eq('id', id).single();
+    return data as any;
+  },
+
+  getPartnerBalance: async (id: string, type: 'S' | 'C'): Promise<number> => {
+    const table = type === 'S' ? TABLE_NAMES.SUPPLIERS : TABLE_NAMES.CUSTOMERS;
+    const { data } = await supabase.from(table).select('Balance').eq('id', id).single();
+    return data?.Balance || 0;
+  },
+
+  getLedger: async (partnerId: string, start?: string, end?: string): Promise<PartnerLedgerEntry[]> => {
+    let query = supabase.from('partner_ledger').select('*').eq('partnerId', partnerId);
+    if (start) query = query.gte('date', start);
+    if (end) query = query.lte('date', end);
+    const { data } = await query.order('date', { ascending: false });
+    return data as any[] || [];
+  },
+
+  postToLedger: async (entry: PartnerLedgerEntry) => {
+    const { error } = await supabase.from('partner_ledger').insert(entry);
+    if (error) console.error('Failed to post to ledger:', error.message);
   },
 
   getInvoicePaymentHistory: async (invoiceId: string) => {
-    return await VoucherInvoiceLinkRepository.getByInvoice(invoiceId);
+    const { data } = await supabase.from('invoice_settlements').select('*').eq('invoiceId', invoiceId);
+    return data || [];
   }
 };

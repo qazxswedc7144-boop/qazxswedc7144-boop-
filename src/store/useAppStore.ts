@@ -14,7 +14,7 @@ import {
   Supplier, User, ToastMessage, Account, SystemStatus, Category 
 } from '../types';
 import { CurrencyService } from '../services/CurrencyService';
-import { db } from '../lib/database';
+// Removed unused db import
 
 interface AppState {
   products: Product[];
@@ -35,6 +35,7 @@ interface AppState {
   systemStatus: SystemStatus;
   headerAction: { icon: React.ReactNode; label: string; onClick: () => void } | null;
   editingInvoiceId: string | null; 
+  isSettingsOpen: boolean;
 
   refreshData: () => Promise<void>;
   addInvoice: (invoice: InvoiceRequest) => Promise<{ success: boolean; error?: string; refId?: string }>;
@@ -48,13 +49,29 @@ interface AppState {
   setSystemStatus: (status: SystemStatus) => void;
   setHeaderAction: (action: { icon: React.ReactNode; label: string; onClick: () => void } | null) => void;
   setEditingInvoiceId: (id: string | null) => void;
+  setSettingsOpen: (isOpen: boolean) => void;
   addToast: (message: string, type?: ToastMessage['type']) => void;
   removeToast: (id: string) => void;
 }
 
+import { supabase, TABLE_NAMES } from '../lib/supabase';
+
 export const useAppStore = create<AppState>()(
   subscribeWithSelector((set, get) => {
     
+    // Subscribe to Realtime changes
+    supabase
+      .channel('schema-db-changes')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public' },
+        (payload) => {
+          console.log('[Supabase Realtime] Change detected:', payload);
+          get().refreshData();
+        }
+      )
+      .subscribe();
+
     eventBus.subscribe(EVENTS.DATA_REFRESHED, () => {
       console.log("[Store] Reactive Update Triggered by Data Refresh");
       get().refreshData();
@@ -79,12 +96,13 @@ export const useAppStore = create<AppState>()(
       systemStatus: 'ACTIVE',
       headerAction: null,
       editingInvoiceId: null,
+      isSettingsOpen: false,
 
-      // Fix: refreshData now awaits all repository calls to resolve promises
+      // Fix: refreshData now awaits all repository calls to resolve promises from Supabase
       refreshData: async () => {
-        const [products, categories, sales, purchases, journalEntries, cashFlow, suppliers, customers] = await Promise.all([
+        const [products, categoriesData, sales, purchases, journalEntries, cashFlow, suppliers, customers] = await Promise.all([
           InventoryService.getProducts(),
-          db.getCategories(),
+          supabase.from('categories').select('*'),
           SalesRepository.getAll(),
           PurchaseRepository.getAll(),
           AccountingRepository.getEntries(),
@@ -93,16 +111,18 @@ export const useAppStore = create<AppState>()(
           SupplierRepository.getCustomers(),
         ]);
 
+        const categories = categoriesData.data || [];
+
         set({
           products,
-          categories,
+          categories: categories as any[],
           sales,
           purchases,
           journalEntries,
           cashFlow,
           suppliers,
           customers,
-          accounts: journalEntries.length > 0 ? get().accounts : [], 
+          accounts: [], // Will be handled by a specific accounts fetcher or view
           version: get().version + 1
         });
       },
@@ -139,7 +159,15 @@ export const useAppStore = create<AppState>()(
       },
 
       addCategory: async (category: Category) => {
-        await db.saveCategory(category);
+        const { error } = await supabase
+          .from('categories')
+          .insert(category);
+        
+        if (error) {
+          get().addToast(`فشل إضافة التصنيف: ${error.message}`, "error");
+          return;
+        }
+        
         await get().refreshData();
         get().addToast("تمت إضافة التصنيف بنجاح", "success");
       },
@@ -154,6 +182,7 @@ export const useAppStore = create<AppState>()(
       setSystemStatus: (systemStatus) => set({ systemStatus }),
       setHeaderAction: (headerAction) => set({ headerAction }),
       setEditingInvoiceId: (editingInvoiceId) => set({ editingInvoiceId }),
+      setSettingsOpen: (isSettingsOpen) => set({ isSettingsOpen }),
       addToast: (message, type = 'info') => {
         const id = Math.random().toString(36).substr(2, 9);
         set((state) => ({ toasts: [...state.toasts, { id, message, type }] }));

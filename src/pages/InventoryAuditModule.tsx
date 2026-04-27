@@ -17,12 +17,18 @@ const InventoryAuditModule: React.FC<InventoryAuditModuleProps> = ({ lang, onNav
   // Fix: Fetches task using await inside useEffect
   useEffect(() => {
     const fetchTask = async () => {
-      let currentTask = await db.getDailyAuditTask();
-      if (!currentTask) {
-        currentTask = await db.createDailyAuditTask();
+      try {
+        let currentTask = await db.getDailyAuditTask();
+        if (!currentTask) {
+          currentTask = await db.createDailyAuditTask();
+        }
+        if (currentTask) {
+          setTask(currentTask);
+          if (currentTask.completed) setIsFinished(true);
+        }
+      } catch (error) {
+        console.error("Failed to fetch audit task:", error);
       }
-      setTask(currentTask);
-      if (currentTask && currentTask.completed) setIsFinished(true);
     };
     fetchTask();
   }, []);

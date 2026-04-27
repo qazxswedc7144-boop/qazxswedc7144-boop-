@@ -38,7 +38,7 @@ const NotificationCenter: React.FC = () => {
   const unreadCount = alerts.filter(n => !n.IsRead).length;
 
   return (
-    <div className="relative font-['Cairo']" dir="rtl">
+    <div className="relative font-cairo" dir="rtl">
       <button 
         onClick={() => setIsOpen(!isOpen)}
         className="relative w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400 hover:text-[#1E4D4D] transition-colors"

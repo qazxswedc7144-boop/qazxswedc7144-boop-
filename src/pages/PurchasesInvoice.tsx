@@ -14,7 +14,7 @@ import {
   Sparkles, FileUp, Image as ImageIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { usePurchases } from '@/hooks/usePurchases';
+import { usePurchases } from '../hooks/usePurchases';
 import { useUI } from '../store/AppContext';
 import { InvoiceItem } from '../types';
 import { CameraModule } from './CameraModule';
@@ -170,10 +170,10 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
   };
 
   return (
-    <div className="flex flex-col min-h-full h-full bg-white font-['Cairo'] w-full relative overflow-x-hidden" dir="rtl">
+    <div className="flex flex-col min-h-full h-full bg-white font-cairo w-full relative overflow-x-hidden" dir="rtl">
       {/* HEADER SECTION - FLAT & FULL WIDTH */}
       <div className="shrink-0 z-[100] border-b border-slate-100">
-        <div className="py-3 px-4 flex items-center justify-between gap-4">
+        <div className="py-3 px-4 flex items-center justify-between gap-4 flex-wrap gap-y-2">
           {/* Right Group: Title, AI Import, Return */}
           <div className="flex items-center gap-6">
             <div className="flex items-center gap-1">
@@ -223,7 +223,7 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
           </div>
 
           {/* Left Group: Payment Toggle */}
-          <div className="flex bg-slate-100 p-0.5 rounded-lg border border-slate-200 w-full max-w-[240px]">
+          <div className="flex bg-slate-100 p-0.5 rounded-lg border border-slate-200 w-full max-w-[240px] shrink-0">
             <button 
               onClick={() => setHeader({...header, payment_method: 'Cash'})}
               className={`flex-1 py-2 rounded-md text-[11px] font-black transition-all relative z-10 ${header.payment_method === 'Cash' ? 'text-white' : 'text-slate-400'}`}
@@ -246,9 +246,9 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
         </div>
 
         {/* DATA DIVIDERS SECTION */}
-        <form onSubmit={(e) => e.preventDefault()} className="border-t border-slate-50">
-          <div className="flex border-b border-slate-50">
-            <div className="w-[60%] flex items-center h-10 px-3 border-l border-slate-50">
+        <form onSubmit={(e) => e.preventDefault()} className="border-t border-slate-50 overflow-x-visible">
+          <div className="flex border-b border-slate-50 flex-wrap gap-y-2">
+            <div className="w-full sm:w-[60%] min-w-[200px] flex items-center h-10 px-3 border-l border-slate-50">
               <User className="text-slate-300 ml-2" size={14} />
               <input 
                 value={supplierSearchTerm}
@@ -278,7 +278,7 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
                 )}
               </AnimatePresence>
             </div>
-            <div className="w-[40%] flex items-center h-10 px-3">
+            <div className="flex-1 flex items-center h-10 px-3">
               <CalendarDays className="text-slate-300 ml-2" size={14} />
               <input 
                 type="date"
@@ -289,8 +289,8 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
             </div>
           </div>
           
-          <div className="flex border-b border-slate-50">
-            <div className="w-[30%] flex items-center h-10 px-3 border-l border-slate-50">
+          <div className="flex border-b border-slate-50 flex-wrap gap-y-2">
+            <div className="w-full sm:w-[30%] flex items-center h-10 px-3 border-l border-slate-50">
               <LayoutList className="text-slate-300 ml-2" size={14} />
               <input 
                 type="text"
@@ -302,7 +302,7 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
                 className="flex-1 h-full bg-transparent text-xs font-bold text-[#1E4D4D] outline-none border-b border-[#1E4D4D]/30 focus:border-[#1E4D4D] transition-colors"
               />
             </div>
-            <div className="w-[70%] flex items-center h-10 px-3 relative">
+            <div className="flex-1 flex items-center h-10 px-3 relative">
               <FileText className="text-slate-300 ml-2" size={14} />
               <input 
                 value={header.notes || ''}

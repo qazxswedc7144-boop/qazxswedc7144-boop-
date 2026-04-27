@@ -186,7 +186,7 @@ const SupplierPaymentModule: React.FC<{ onNavigate?: (view: any) => void }> = ({
   };
 
   return (
-    <div className="flex flex-col min-h-full h-full bg-[#F8FAFA] font-['Cairo'] w-full relative overflow-x-hidden" dir="rtl">
+    <div className="flex flex-col min-h-full h-full bg-[#F8FAFA] font-cairo w-full relative overflow-x-hidden" dir="rtl">
       <div className="bg-white px-4 sm:px-6 py-4 border-b border-slate-100 flex items-center justify-between shadow-sm shrink-0 h-20">
         <div className="flex items-center gap-4">
           <button onClick={() => onNavigate?.('dashboard')} className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400 hover:text-[#1E4D4D] transition-colors"><ArrowRight size={20} /></button>

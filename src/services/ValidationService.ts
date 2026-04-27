@@ -32,17 +32,27 @@ export class ValidationService {
       this.validateItem(item);
     }
 
-    // 3. Date Validation
-    if (!invoice.date || isNaN(Date.parse(invoice.date))) {
-      throw new ValidationError("تاريخ الفاتورة غير صالح.");
+    // 3. Date Validation (Only if provided)
+    if (invoice.date) {
+      let parsedDate: number = NaN;
+      if (typeof invoice.date === 'string') {
+        const cleanDate = invoice.date.trim();
+        // Ignore "undefined", "null", or empty strings
+        if (cleanDate && cleanDate !== 'undefined' && cleanDate !== 'null') {
+          parsedDate = Date.parse(cleanDate);
+        } else {
+          // If it was "undefined" or "null", we treat it as if date was not provided
+          return;
+        }
+      } else if (invoice.date instanceof Date) {
+        parsedDate = invoice.date.getTime();
+      }
+      
+      if (isNaN(parsedDate)) {
+        console.error("[ValidationService] Invalid date received:", invoice.date, typeof invoice.date);
+        throw new ValidationError("تاريخ الفاتورة غير صالح.");
+      }
     }
-    const invoiceDate = new Date(invoice.date);
-    const now = new Date();
-    if (invoiceDate > now) {
-      // throw new ValidationError("تاريخ الفاتورة لا يمكن أن يكون في المستقبل.");
-      // Some systems allow future dates, but let's warn or restrict if needed.
-    }
-
     // 4. Stock Protection (For Sales)
     if (type === 'SALE') {
       const warehouseId = invoice.warehouseId || 'WH-MAIN';

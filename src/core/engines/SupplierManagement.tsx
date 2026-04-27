@@ -148,7 +148,7 @@ const SupplierManagement: React.FC<SupplierManagementProps> = ({ lang, onNavigat
   }, [dateRange, expandedId]);
 
   return (
-    <div className="flex flex-col h-full bg-[#F8FAFA] font-['Cairo'] overflow-hidden" dir={isAr ? 'rtl' : 'ltr'}>
+    <div className="flex flex-col h-full bg-[#F8FAFA] font-cairo overflow-hidden" dir={isAr ? 'rtl' : 'ltr'}>
       {/* Modern Header */}
       <header className="p-10 pb-6 shrink-0 bg-white border-b border-slate-100 z-20">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-8 mb-10">

@@ -123,7 +123,7 @@ const BaseReportPage: React.FC<BaseReportPageProps> = ({
   };
 
   return (
-    <div className="space-y-6 animate-in fade-in slide-in-from-left-4 duration-500 font-['Cairo']" dir="rtl">
+    <div className="space-y-6 animate-in fade-in slide-in-from-left-4 duration-500 font-cairo" dir="rtl">
       {/* Breadcrumb */}
       <nav className="flex items-center gap-2 text-[11px] font-bold text-slate-400">
         <button 

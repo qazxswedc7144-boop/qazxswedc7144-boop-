@@ -1,5 +1,6 @@
 
 import { Sale, Purchase, CashFlow, AccountingEntry, Product, Supplier, InvoiceAdjustment, JournalLine } from '../../types';
+import { supabase } from '../../lib/supabase';
 
 export class AccountingEngine {
   /**
@@ -146,5 +147,14 @@ export class AccountingEngine {
     } else {
       await AccountRepository.addEntry(entry);
     }
+  }
+
+  static async seedAccounts() {
+    console.log('AccountingEngine.seedAccounts called');
+  }
+
+  static async getTransactions() {
+    const { data } = await supabase.from('transactions').select('*');
+    return data || [];
   }
 }

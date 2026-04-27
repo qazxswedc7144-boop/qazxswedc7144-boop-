@@ -6,26 +6,29 @@ import { CurrencyService } from './CurrencyService';
 export class AccountingEngine {
   
   static async getCoreAccount(type: 'CASH' | 'BANK' | 'RECEIVABLE' | 'PAYABLE' | 'INVENTORY' | 'SALES_REVENUE' | 'COGS' | 'EXPENSE'): Promise<string> {
-    const setting = await db.getSetting(`ACCOUNT_${type}`, '');
-    if (!setting) {
-      // Fallback to defaults if not configured
-      const defaults: Record<string, string> = {
-        CASH: 'ACC-101',
-        BANK: 'ACC-104',
-        RECEIVABLE: 'ACC-103',
-        PAYABLE: 'ACC-201',
-        INVENTORY: 'ACC-102',
-        SALES_REVENUE: 'ACC-401',
-        COGS: 'ACC-501',
-        EXPENSE: 'ACC-502'
-      };
-      return defaults[type];
+    try {
+      const setting = await db.settings.get(`ACCOUNT_${type}`);
+      if (setting) return setting.value;
+    } catch (e) {
+      console.warn(`Error fetching ACCOUNT_${type} from Dexie:`, e);
     }
-    return setting;
+
+    // Fallback to defaults if not configured
+    const defaults: Record<string, string> = {
+      CASH: 'ACC-101',
+      BANK: 'ACC-104',
+      RECEIVABLE: 'ACC-103',
+      PAYABLE: 'ACC-201',
+      INVENTORY: 'ACC-102',
+      SALES_REVENUE: 'ACC-401',
+      COGS: 'ACC-501',
+      EXPENSE: 'ACC-502'
+    };
+    return defaults[type];
   }
 
   static async seedAccounts() {
-    // Redundant - now handled in database.ts
+    console.log('AccountingEngine.seedAccounts called - now managed via Dexie settings');
   }
 
   static async generateSalesEntry(sale: Sale, items: InvoiceItem[]): Promise<AccountingEntry> {
@@ -36,11 +39,11 @@ export class AccountingEngine {
     const invAcc = await this.getCoreAccount('INVENTORY');
 
     const lines: JournalLine[] = [];
-    const entryId = db.generateId('JE');
+    const entryId = `JE-${Date.now()}`;
 
     // Multi-currency conversion
     const currencyCode = (sale as any).currencyCode || 'USD';
-    const { baseAmount, rate } = await CurrencyService.convertToBase(sale.finalTotal, currencyCode, sale.date);
+    const { baseAmount } = await CurrencyService.convertToBase(sale.finalTotal, currencyCode, sale.date);
 
     // 1. Revenue Impact
     if (sale.paymentStatus === 'Cash') {
@@ -74,8 +77,8 @@ export class AccountingEngine {
       lines,
       created_at: new Date().toISOString(),
       lastModified: new Date().toISOString(),
-      timestamp: new Date().toISOString() // Precise timestamp for auditing
-    };
+      timestamp: new Date().toISOString()
+    } as any;
   }
 
   static async generatePurchaseEntry(purchase: Purchase): Promise<AccountingEntry> {
@@ -84,7 +87,7 @@ export class AccountingEngine {
     const invAcc = await this.getCoreAccount('INVENTORY');
 
     const lines: JournalLine[] = [];
-    const entryId = db.generateId('JE');
+    const entryId = `JE-${Date.now()}`;
 
     // Multi-currency conversion
     const currencyCode = (purchase as any).currencyCode || 'USD';
@@ -115,7 +118,7 @@ export class AccountingEngine {
       lines,
       created_at: new Date().toISOString(),
       lastModified: new Date().toISOString(),
-      timestamp: new Date().toISOString() // Precise timestamp for auditing
+      timestamp: new Date().toISOString()
     };
   }
 
@@ -127,13 +130,12 @@ export class AccountingEngine {
     const invAcc = await this.getCoreAccount('INVENTORY');
 
     const lines: JournalLine[] = [];
-    const entryId = db.generateId('JE');
+    const entryId = `JE-${Date.now()}`;
 
     const currencyCode = (sale as any).currencyCode || 'USD';
     const { baseAmount, rate } = await CurrencyService.convertToBase(sale.finalTotal, currencyCode, sale.date);
 
     // Reverse Revenue: Debit Revenue, Credit Cash/AR
-    // Note: In some systems, we use a "Sales Returns" account. Here we debit the revenue account directly.
     lines.push(await this.createLine(entryId, revenueAcc, baseAmount, 0));
     if (sale.paymentStatus === 'Cash') {
       lines.push(await this.createLine(entryId, cashAcc, 0, baseAmount));
@@ -174,7 +176,7 @@ export class AccountingEngine {
     const invAcc = await this.getCoreAccount('INVENTORY');
 
     const lines: JournalLine[] = [];
-    const entryId = db.generateId('JE');
+    const entryId = `JE-${Date.now()}`;
 
     const currencyCode = (purchase as any).currencyCode || 'USD';
     const { baseAmount } = await CurrencyService.convertToBase(purchase.totalAmount, currencyCode, purchase.date);
@@ -220,16 +222,14 @@ export class AccountingEngine {
     const apAcc = await this.getCoreAccount('PAYABLE');
 
     const lines: JournalLine[] = [];
-    const entryId = db.generateId('JE');
+    const entryId = `JE-${Date.now()}`;
 
     const fundAcc = params.paymentMethod === 'TRANSFER' ? bankAcc : cashAcc;
 
     if (params.type === 'RECEIPT') {
-      // Receipt: Debit Cash/Bank, Credit Customer (AR)
       lines.push(await this.createLine(entryId, fundAcc, params.amount, 0));
       lines.push(await this.createLine(entryId, arAcc, 0, params.amount));
     } else {
-      // Payment: Debit Supplier (AP), Credit Cash/Bank
       lines.push(await this.createLine(entryId, apAcc, params.amount, 0));
       lines.push(await this.createLine(entryId, fundAcc, 0, params.amount));
     }
@@ -257,19 +257,27 @@ export class AccountingEngine {
     for (const item of items) {
       let unitCost = 0;
       
-      // Try to get cost from batch
+      // Try to get cost from batch from Dexie
       if (item.batchId) {
-        const batch = await db.medicineBatches.get(item.batchId);
-        if (batch && batch.unitCost !== undefined) {
-          unitCost = batch.unitCost;
+        try {
+          const batch = await db.medicineBatches.get(item.batchId);
+          if (batch && batch.unitCost !== undefined) {
+            unitCost = batch.unitCost;
+          }
+        } catch (e) {
+          console.warn("Error fetching batch from Dexie:", e);
         }
       }
       
       // Fallback to product default cost price if batch cost is missing
       if (unitCost === 0) {
-        const product = await db.products.get(item.product_id);
-        if (product) {
-          unitCost = product.CostPrice || 0;
+        try {
+          const product = await db.products.get(item.product_id);
+          if (product) {
+            unitCost = product.CostPrice || product.cost || 0;
+          }
+        } catch (e) {
+          console.warn("Error fetching product from Dexie:", e);
         }
       }
       
@@ -287,8 +295,7 @@ export class AccountingEngine {
   }
 
   private static async createLine(entryId: string, accountId: string, debit: number, credit: number): Promise<JournalLine> {
-    const id = db.generateId('JL');
-    const account = (await db.getAccounts()).find((a: any) => a.id === accountId);
+    const id = `JL-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
     
     return {
       id,
@@ -297,11 +304,11 @@ export class AccountingEngine {
       entry_id: entryId,
       accountId,
       account_id: accountId,
-      accountName: account?.name || 'حساب غير معرف',
+      accountName: 'حساب محلي',
       debit,
       credit,
       type: debit > 0 ? 'DEBIT' : 'CREDIT',
       amount: debit > 0 ? debit : credit
-    };
+    } as any;
   }
 }

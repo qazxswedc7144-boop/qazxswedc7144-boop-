@@ -1,48 +1,72 @@
 
-import { db } from '../lib/database';
+import { supabase, TABLE_NAMES } from '../lib/supabase';
 import { Account, AccountingEntry } from '../types';
-import { safeWhereEqual } from '../utils/dexieSafe';
 
 const MAX_ACCOUNTING_SLICE = 200;
-let ACCOUNTS_CACHE: Account[] | null = null;
-let ACCOUNTS_CACHE_TIMESTAMP = 0;
-const CACHE_TTL = 30000; // 30 ثانية لدليل الحسابات
 
 export const AccountRepository = {
-  // --- دليل الحسابات مع التخزين المؤقت (Performance Rule: Cache frequently accessed lists) ---
+  // --- دليل الحسابات ---
   getAccounts: async (): Promise<Account[]> => {
-    const now = Date.now();
-    if (ACCOUNTS_CACHE && (now - ACCOUNTS_CACHE_TIMESTAMP < CACHE_TTL)) return ACCOUNTS_CACHE;
+    const { data, error } = await supabase
+      .from('accounts')
+      .select('*')
+      .order('name', { ascending: true });
     
-    ACCOUNTS_CACHE = await db.getAccounts();
-    ACCOUNTS_CACHE_TIMESTAMP = now;
-    return ACCOUNTS_CACHE;
+    if (error) {
+      console.error('Error fetching accounts:', error);
+      return [];
+    }
+    return data as any[];
   },
 
-  getAccountById: async (id: string): Promise<Account | undefined> =>
-    (await AccountRepository.getAccounts()).find(a => a.id === id),
+  getAccountById: async (id: string): Promise<Account | undefined> => {
+    const { data, error } = await supabase
+      .from('accounts')
+      .select('*')
+      .eq('id', id)
+      .single();
+    
+    if (error) return undefined;
+    return data as any;
+  },
 
   saveAccount: async (account: Account) => {
-    await db.saveAccount(account);
-    // تفريغ الكاش لإعادة التحميل
-    ACCOUNTS_CACHE = null; 
-    ACCOUNTS_CACHE_TIMESTAMP = 0;
+    const { error } = await supabase
+      .from('accounts')
+      .upsert(account);
+    
+    if (error) throw new Error(`Failed to save account: ${error.message}`);
   },
 
   deleteAccount: async (id: string) => {
-    await db.deleteAccount(id);
-    ACCOUNTS_CACHE = null;
-    ACCOUNTS_CACHE_TIMESTAMP = 0;
+    const { error } = await supabase
+      .from('accounts')
+      .delete()
+      .eq('id', id);
+    
+    if (error) throw new Error(`Failed to delete account: ${error.message}`);
   },
 
-  // --- القيود اليومية (Rule: Limit SELECT queries) ---
+  // --- القيود اليومية ---
   getAllJournalEntries: async (): Promise<AccountingEntry[]> => {
-    return await db.getJournalEntries();
+    const { data, error } = await supabase
+      .from('journal_entries')
+      .select('*')
+      .order('date', { ascending: false });
+    
+    if (error) return [];
+    return data as any[];
   },
 
   getRecentJournalEntries: async (): Promise<AccountingEntry[]> => {
-    const all = await db.getJournalEntries();
-    return all.slice(0, MAX_ACCOUNTING_SLICE);
+    const { data, error } = await supabase
+      .from('journal_entries')
+      .select('*')
+      .order('date', { ascending: false })
+      .limit(MAX_ACCOUNTING_SLICE);
+    
+    if (error) return [];
+    return data as any[];
   },
 
   addEntry: async (entry: AccountingEntry) => {
@@ -54,39 +78,106 @@ export const AccountRepository = {
       throw new Error(`قيد غير متزن: إجمالي المدين (${totalDebit}) لا يساوي إجمالي الدائن (${totalCredit}) للفاتورة #${entry.sourceId}`);
     }
 
-    await db.addJournalEntry(entry);
+    const { error: entryError } = await supabase
+      .from('journal_entries')
+      .insert(entry);
+    
+    if (entryError) throw new Error(`Failed to add journal entry: ${entryError.message}`);
     
     // Update account balances
     for (const line of entry.lines) {
       const amount = (line.debit || 0) - (line.credit || 0);
-      await db.updateAccountBalance(line.accountId, amount);
+      
+      const { data: account } = await supabase
+        .from('accounts')
+        .select('balance')
+        .eq('id', line.accountId)
+        .single();
+        
+      if (account) {
+        await supabase
+          .from('accounts')
+          .update({ balance: (account.balance || 0) + amount })
+          .eq('id', line.accountId);
+      }
     }
   },
 
   deleteEntry: async (entryId: string) => {
-    const entry = await (db as any).journalEntries.get(entryId);
+    const { data: entry } = await supabase
+      .from('journal_entries')
+      .select('*')
+      .eq('id', entryId)
+      .single();
+
     if (entry) {
       // Reverse balances before deleting
-      for (const line of entry.lines) {
+      for (const line of (entry.lines || [])) {
         const amount = (line.credit || 0) - (line.debit || 0);
-        await db.updateAccountBalance(line.accountId, amount);
+        
+        const { data: account } = await supabase
+          .from('accounts')
+          .select('balance')
+          .eq('id', line.accountId)
+          .single();
+          
+        if (account) {
+          await supabase
+            .from('accounts')
+            .update({ balance: (account.balance || 0) + amount })
+            .eq('id', line.accountId);
+        }
       }
-      await (db as any).journalEntries.delete(entryId);
+      
+      await supabase
+        .from('journal_entries')
+        .delete()
+        .eq('id', entryId);
     }
   },
 
   deleteEntriesBySource: async (sourceId: string) => {
-    const entries = await safeWhereEqual((db as any).journalEntries, 'sourceId', sourceId);
-    for (const entry of entries) {
-      await AccountRepository.deleteEntry(entry.id);
+    const { data: entries } = await supabase
+      .from('journal_entries')
+      .select('id')
+      .eq('sourceId', sourceId);
+      
+    if (entries) {
+      for (const entry of entries) {
+        await AccountRepository.deleteEntry(entry.id);
+      }
     }
   },
 
   getAccountBalance: async (accountName: string): Promise<number> => {
-    return await db.getAccountBalance(accountName);
+    const { data, error } = await supabase
+      .from('accounts')
+      .select('balance')
+      .eq('name', accountName)
+      .single();
+    
+    if (error || !data) return 0;
+    return data.balance || 0;
   },
 
   isDateLocked: async (date: string): Promise<boolean> => {
-    return await db.isDateLocked(date);
+    const { data, error } = await supabase
+      .from('accounting_periods')
+      .select('*')
+      .eq('status', 'LOCKED');
+      
+    if (error || !data) return false;
+    
+    const targetDate = new Date(date);
+    return data.some((p: any) => {
+        const start = new Date(p.startDate);
+        const end = new Date(p.endDate);
+        return targetDate >= start && targetDate <= end;
+    });
+  },
+
+  getTransactions: async (): Promise<any[]> => {
+    const { data } = await supabase.from('transactions').select('*');
+    return data || [];
   }
 };

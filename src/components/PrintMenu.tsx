@@ -53,7 +53,7 @@ const PrintMenu: React.FC<PrintMenuProps> = ({ data, type, items }) => {
   };
 
   return (
-    <div className="relative font-['Cairo']">
+    <div className="relative font-cairo">
       <button 
         onClick={() => setIsOpen(!isOpen)}
         disabled={isProcessing}

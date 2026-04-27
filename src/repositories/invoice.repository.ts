@@ -156,11 +156,14 @@ export const InvoiceRepository = {
 
   getAllSales: async (): Promise<Sale[]> => await db.getSales(),
   getSaleById: async (id: string) => await db.db.sales.where('SaleID').equals(id).first() || await db.db.sales.get(id),
-  saveSale: async (cId: string, items: any[], total: number, isR: boolean, inv: string, curr: string, st: string, invSt: InvoiceStatus = 'PENDING', auditScore?: number, riskLevel?: 'LOW' | 'MEDIUM' | 'HIGH', totalSaleCost?: number, pid?: string, attachment?: string) => {
+  saveSale: async (cId: string, items: any[], total: number, isR: boolean, inv: string, curr: string, st: string, invSt: InvoiceStatus = 'PENDING', auditScore?: number, riskLevel?: 'LOW' | 'MEDIUM' | 'HIGH', totalSaleCost?: number, pid?: string, attachment?: string, date?: string) => {
     return await db.runTransaction(async () => {
       const finalInv = inv || `INV-${Date.now()}`;
       const recordId = pid || finalInv;
-      const invoiceData = { id: recordId, customerId: cId, items, finalTotal: total, date: new Date().toISOString(), attachment };
+      const invoiceData: any = { id: recordId, customerId: cId, items, finalTotal: total, attachment };
+      if (date) {
+        invoiceData.date = date;
+      }
       
       // Phase 7: Day Lock System (تم استبداله بـ PeriodLockEngine في المنسق)
       // if (await db.isDateLocked(invoiceData.date)) {
@@ -202,7 +205,7 @@ export const InvoiceRepository = {
       // Phase 2 & 3: Validation & Hashing
       const hash = await InvoiceValidationEngine.validate(invoiceData, 'SALE');
       
-      const result = await db.processSale(cId, items, total, isR, finalInv, curr, st, pid, invSt, hash, auditScore, riskLevel, totalSaleCost, attachment);
+      const result = await db.processSale(cId, items, total, isR, finalInv, curr, st, pid, invSt, hash, auditScore, riskLevel, totalSaleCost, attachment, date);
       
       // NEW: Automatic Posting
       const sale = await InvoiceRepository.getSaleById(result.id);
@@ -214,11 +217,14 @@ export const InvoiceRepository = {
       return result;
     });
   },
-  savePurchase: async (sId: string, items: any[], total: number, inv: string, isC: boolean, curr: string = 'USD', invSt: InvoiceStatus = 'PENDING', auditScore?: number, riskLevel?: 'LOW' | 'MEDIUM' | 'HIGH', pid?: string, attachment?: string, isReturn: boolean = false) => {
+  savePurchase: async (sId: string, items: any[], total: number, inv: string, isC: boolean, curr: string = 'USD', invSt: InvoiceStatus = 'PENDING', auditScore?: number, riskLevel?: 'LOW' | 'MEDIUM' | 'HIGH', pid?: string, attachment?: string, isReturn: boolean = false, date?: string) => {
     return await db.runTransaction(async () => {
       const finalInv = inv || `PUR-${Date.now()}`;
       const recordId = pid || finalInv;
-      const invoiceData = { id: recordId, partnerId: sId, items, totalAmount: total, date: new Date().toISOString(), attachment };
+      const invoiceData: any = { id: recordId, partnerId: sId, items, totalAmount: total, attachment };
+      if (date) {
+        invoiceData.date = date;
+      }
       
       // Phase 1: State Engine Validation
       if (recordId) {
@@ -250,7 +256,7 @@ export const InvoiceRepository = {
       // Phase 2 & 3: Validation & Hashing
       const hash = await InvoiceValidationEngine.validate(invoiceData, 'PURCHASE');
 
-      const result = await db.processPurchase(sId, items, total, finalInv, isC, curr, invSt, isReturn ? 'مرتجع' : 'شراء', hash, auditScore, riskLevel, pid, attachment);
+      const result = await db.processPurchase(sId, items, total, finalInv, isC, curr, invSt, isReturn ? 'مرتجع' : 'شراء', hash, auditScore, riskLevel, pid, attachment, date);
       
       // NEW: Automatic Posting
       const purchase = await InvoiceRepository.getPurchaseById(result.id);

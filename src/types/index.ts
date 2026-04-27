@@ -1001,7 +1001,7 @@ export interface PartnerLedgerEntry extends SyncableEntity {
   debit: number;
   credit: number;
   referenceId: string;
-  runningBalance: number;
+  runningBalance?: number;
 }
 
 export interface Warehouse extends SyncableEntity {

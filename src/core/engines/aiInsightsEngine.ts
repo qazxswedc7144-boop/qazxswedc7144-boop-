@@ -11,6 +11,8 @@ import {
   JournalLine
 } from '../../types';
 import { ReportEngine } from './reportEngine';
+import { SupplierRepository } from '../../repositories/SupplierRepository';
+import { InvoiceRepository } from '../../repositories/invoice.repository';
 
 export class AIInsightsEngine {
   private static isRunning = false;
@@ -23,8 +25,6 @@ export class AIInsightsEngine {
     this.isRunning = true;
 
     try {
-      const tenantId = 'TEN-DEV-001';
-      
       // 1. KPI Calculations
       const kpis = await this.calculateKPIs();
       
@@ -45,6 +45,21 @@ export class AIInsightsEngine {
       
       // 7. Generate & Store Insights
       await this.generateAndStoreInsights(kpis, anomalies, inventoryAlerts, partnerInsights, cashFlow, healthScore);
+      
+      // NEW: Save analysis to local table if it exists (for simulation/logging)
+      try {
+        if ((db as any).aiPerformanceLog) {
+          await (db as any).aiPerformanceLog.add({
+            id: `LOG-${Date.now()}`,
+            event_type: 'SYSTEM_ANALYSIS',
+            payload: { kpis, anomalies, healthScore },
+            result: { alerts: inventoryAlerts.alerts, risk: cashFlow.cashRisk },
+            created_at: new Date().toISOString()
+          });
+        }
+      } catch (e) {
+        // ignore log error
+      }
       
       // 8. Store Health Snapshot
       await this.storeHealthSnapshot(healthScore, kpis, cashFlow);
@@ -79,7 +94,6 @@ export class AIInsightsEngine {
     const anomalies: string[] = [];
     const { current, previous } = kpis;
 
-    // Sudden drop in sales (e.g., > 30% drop)
     if (previous.revenue > 0) {
       const drop = (previous.revenue - current.revenue) / previous.revenue;
       if (drop > 0.3) {
@@ -87,7 +101,6 @@ export class AIInsightsEngine {
       }
     }
 
-    // Abnormal increase in expense
     if (previous.expenses > 0) {
       const increase = (current.expenses - previous.expenses) / previous.expenses;
       if (increase > 0.5) {
@@ -95,14 +108,12 @@ export class AIInsightsEngine {
       }
     }
 
-    // Negative profit
     if (current.netProfit < 0) {
       anomalies.push(`صافي ربح سالب لهذا الشهر: ${current.netProfit.toLocaleString()}`);
     }
 
-    // Negative stock (from products)
-    const products = await db.getProducts();
-    const negativeStock = products.filter(p => p.StockQuantity < 0);
+    const products = await db.products.toArray();
+    const negativeStock = (products || []).filter((p: any) => (p.StockQuantity || 0) < 0);
     if (negativeStock.length > 0) {
       anomalies.push(`يوجد ${negativeStock.length} أصناف برصيد سالب في المخزن`);
     }
@@ -114,18 +125,19 @@ export class AIInsightsEngine {
    * 5. INVENTORY & 6. EXPIRY ALERTS
    */
   private static async analyzeInventory() {
-    const products = await db.getProducts();
+    const products = await db.products.toArray();
+    const allProducts = products || [];
     const alerts: string[] = [];
     
-    const lowStock = products.filter(p => p.StockQuantity > 0 && p.StockQuantity <= (p.MinLevel || 5));
-    const zeroStock = products.filter(p => p.StockQuantity <= 0);
+    const lowStock = allProducts.filter((p: any) => (p.StockQuantity || 0) > 0 && (p.StockQuantity || 0) <= (p.MinLevel || 5));
+    const zeroStock = allProducts.filter((p: any) => (p.StockQuantity || 0) <= 0);
     
     const now = new Date();
     const nearExpiryDate = new Date();
-    nearExpiryDate.setMonth(now.getMonth() + 3); // 3 months
+    nearExpiryDate.setMonth(now.getMonth() + 3);
     
-    const nearExpiry = products.filter(p => p.ExpiryDate && new Date(p.ExpiryDate) > now && new Date(p.ExpiryDate) <= nearExpiryDate);
-    const expired = products.filter(p => p.ExpiryDate && new Date(p.ExpiryDate) <= now);
+    const nearExpiry = allProducts.filter((p: any) => p.ExpiryDate && new Date(p.ExpiryDate) > now && new Date(p.ExpiryDate) <= nearExpiryDate);
+    const expired = allProducts.filter((p: any) => p.ExpiryDate && new Date(p.ExpiryDate) <= now);
 
     if (lowStock.length > 0) alerts.push(`${lowStock.length} أصناف قاربت على النفاد`);
     if (zeroStock.length > 0) alerts.push(`${zeroStock.length} أصناف نفدت تماماً`);
@@ -139,15 +151,15 @@ export class AIInsightsEngine {
    * 7. CUSTOMER & 8. SUPPLIER ANALYSIS
    */
   private static async analyzePartners() {
-    const customers = await db.getCustomers();
-    const suppliers = await db.getSuppliers();
-    const purchases = await db.getPurchases();
+    const customers = await SupplierRepository.getCustomers();
+    const suppliers = await SupplierRepository.getSuppliers();
+    const purchases = await InvoiceRepository.getSalesArchive();
     
     const topCustomers = [...customers].sort((a, b) => (b.Balance || 0) - (a.Balance || 0)).slice(0, 5);
-    const highDebtCustomers = customers.filter(c => (c.Balance || 0) > 10000); // Threshold
+    const highDebtCustomers = customers.filter(c => (c.Balance || 0) > 10000);
     
     const topSuppliers = [...suppliers].sort((a, b) => (b.Balance || 0) - (a.Balance || 0)).slice(0, 5);
-    const delayedPurchases = purchases.filter(p => p.invoiceStatus === 'PENDING' && (Date.now() - new Date(p.date).getTime()) > 7 * 24 * 60 * 60 * 1000);
+    const delayedPurchases = purchases.filter(p => (p as any).invoiceStatus === 'PENDING' && (Date.now() - new Date(p.date).getTime()) > 7 * 24 * 60 * 60 * 1000);
 
     return { topCustomers, highDebtCustomers, topSuppliers, delayedPurchases };
   }
@@ -156,16 +168,17 @@ export class AIInsightsEngine {
    * 9. CASH FLOW MONITOR
    */
   private static async monitorCashFlow() {
-    const cashFlows = await db.db.cashFlow.toArray();
+    const cashFlows = await db.cashFlow.toArray();
+    const allFlows = cashFlows || [];
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
     
-    const currentMonthFlows = cashFlows.filter(f => f.date >= startOfMonth);
+    const currentMonthFlows = allFlows.filter((f: any) => f.date >= startOfMonth);
     
-    const inflow = currentMonthFlows.filter(f => f.type === 'دخل').reduce((sum, f) => sum + f.amount, 0);
-    const outflow = currentMonthFlows.filter(f => f.type === 'خرج').reduce((sum, f) => sum + f.amount, 0);
+    const inflow = currentMonthFlows.filter((f: any) => f.type === 'دخل').reduce((sum: number, f: any) => sum + (f.amount || 0), 0);
+    const outflow = currentMonthFlows.filter((f: any) => f.type === 'خرج').reduce((sum: number, f: any) => sum + (f.amount || 0), 0);
     
-    const cashRisk = inflow < outflow * 0.8; // Warning if inflow is significantly less than outflow
+    const cashRisk = inflow < outflow * 0.8;
 
     return { inflow, outflow, cashRisk };
   }
@@ -174,19 +187,16 @@ export class AIInsightsEngine {
    * 10. SCORING SYSTEM
    */
   private static async calculateHealthScore(kpis: any, inventory: any, cashFlow: any) {
-    let score = 70; // Base score
+    let score = 70;
 
-    // Profit impact
     if (kpis.current.netProfit > 0) score += 10;
     else score -= 20;
 
     if (kpis.current.margin > 20) score += 5;
 
-    // Stock impact
     if (inventory.zeroStock.length > 10) score -= 10;
     if (inventory.expired.length > 0) score -= 15;
 
-    // Cash flow impact
     if (cashFlow.cashRisk) score -= 10;
     if (cashFlow.inflow > cashFlow.outflow) score += 10;
 
@@ -197,11 +207,7 @@ export class AIInsightsEngine {
    * 11. SMART ALERTS & 12. STORAGE
    */
   private static async generateAndStoreInsights(kpis: any, anomalies: string[], inventory: any, partners: any, cashFlow: any, score: number) {
-    const tenantId = 'TEN-DEV-001';
     const batch: any[] = [];
-
-    // Clear old insights for this tenant (optional, or just add new ones)
-    // For now, we'll just add new ones with high severity if they are critical
 
     if (score < 40) {
       batch.push(this.createInsight('RISK', 'تحذير: صحة مالية حرجة', `درجة الصحة المالية للمنشأة منخفضة جداً (${score}/100). يرجى مراجعة المصاريف والتدفقات النقدية.`, 'CRITICAL'));
@@ -219,22 +225,27 @@ export class AIInsightsEngine {
       batch.push(this.createInsight('COST', 'تنبيه: تدفق نقدي سالب', 'المصاريف تتجاوز الدخل بشكل ملحوظ هذا الشهر. قد تواجه مشكلة في السيولة.', 'WARNING'));
     }
 
-    // Save to database
-    for (const insight of batch) {
-      await db.db.aiInsights.put(insight);
+    // Save to database (Dexie)
+    try {
+      for (const insight of batch) {
+        await db.aiInsights.put(insight);
+      }
+    } catch (e) {
+      console.warn("Failed to store AI insights in Dexie:", e);
     }
   }
 
   private static createInsight(type: any, title: string, message: string, severity: any): AIInsight {
+    const now = new Date().toISOString();
     return {
-      id: db.generateId('INS'),
+      id: `INS-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
       type,
       title,
       message,
       severity,
-      timestamp: new Date().toISOString(),
+      timestamp: now,
       tenant_id: 'TEN-DEV-001',
-      lastModified: new Date().toISOString()
+      lastModified: now
     };
   }
 
@@ -242,18 +253,24 @@ export class AIInsightsEngine {
    * جلب آخر الرؤى المولدة
    */
   static async getLatestInsights(): Promise<AIInsight[]> {
-    return await db.db.aiInsights.orderBy('timestamp').reverse().limit(10).toArray();
+    try {
+      const insights = await db.aiInsights.orderBy('timestamp').reverse().limit(10).toArray();
+      return insights || [];
+    } catch (error) {
+      console.warn("Failed to fetch insights from Dexie:", error);
+      return [];
+    }
   }
 
   private static async storeHealthSnapshot(score: number, kpis: any, cashFlow: any) {
     const snapshot: FinancialHealthSnapshot = {
-      id: db.generateId('FHS'),
+      id: `FHS-${Date.now()}`,
       date: new Date().toISOString().split('T')[0],
       score,
       metrics: {
         cashBalance: cashFlow.inflow - cashFlow.outflow,
-        accountsReceivable: 0, // Need to calculate from partners
-        accountsPayable: 0,    // Need to calculate from partners
+        accountsReceivable: 0,
+        accountsPayable: 0,
         inventoryValue: await ReportEngine.getInventoryValue(),
         grossProfit: kpis.current.grossProfit,
         netProfit: kpis.current.netProfit,
@@ -270,6 +287,10 @@ export class AIInsightsEngine {
       insights: []
     };
 
-    await db.db.financialHealthSnapshots.put(snapshot);
+    try {
+      await db.financialHealthSnapshots.put(snapshot);
+    } catch (e) {
+      console.warn("Failed to store health snapshot in Dexie:", e);
+    }
   }
 }

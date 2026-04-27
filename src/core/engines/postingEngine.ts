@@ -52,15 +52,14 @@ export class PostingEngine {
       }
     }
 
-    const entryId = db.generateId('JE');
+    const entryId = `JE-${Date.now()}`;
     let calculatedTotalCost = 0;
 
-    // 3. FIFO & STOCK MOVEMENTS
+    // 3. FIFO & STOCK MOVEMENTS (Uses the refactored engines which now use Dexie)
     if (isSale) {
         if (isReturn) {
           // SALE RETURN: Increase Stock, Add FIFO Layer
           for (const item of items) {
-            // We treat sale return as a purchase to restore stock
             await FIFOEngine.addPurchaseLayer(item.product_id, item.qty, item.price, invoiceId);
             await StockMovementEngine.recordPurchaseMovement(item.product_id, item.qty, item.price, invoiceId);
           }
@@ -120,14 +119,11 @@ export class PostingEngine {
           break;
 
         case 'sale_return_cash':
-          // Debit Revenue, Credit Cash
           lines.push(this.createLine(entryId, revenueAcc, total, 0, tenantId));
           lines.push(this.createLine(entryId, cashAcc, 0, total, tenantId));
-          // Note: Stock increase is handled by FIFO/StockMovement above
           break;
 
         case 'sale_return_credit':
-          // Debit Revenue, Credit AR
           lines.push(this.createLine(entryId, revenueAcc, total, 0, tenantId));
           lines.push(this.createLine(entryId, arAcc, 0, total, tenantId));
           break;
@@ -143,13 +139,11 @@ export class PostingEngine {
           break;
 
         case 'purchase_return_cash':
-          // Debit Cash, Credit Inventory
           lines.push(this.createLine(entryId, cashAcc, total, 0, tenantId));
           lines.push(this.createLine(entryId, invAcc, 0, total, tenantId));
           break;
 
         case 'purchase_return_credit':
-          // Debit AP, Credit Inventory
           lines.push(this.createLine(entryId, apAcc, total, 0, tenantId));
           lines.push(this.createLine(entryId, invAcc, 0, total, tenantId));
           break;
@@ -167,48 +161,61 @@ export class PostingEngine {
         type: type,
         description: `ترحيل آلي: ${type} #${invoiceNumber}`,
         TotalAmount: total,
+        total_debit: total, 
+        total_credit: total,
         status: 'Posted',
         sourceId: invoiceId,
         sourceType: isSale ? 'SALE' : 'PURCHASE',
         lines,
         created_at: new Date().toISOString(),
-        lastModified: new Date().toISOString(),
+        last_modified: new Date().toISOString(),
         tenant_id: tenantId
       };
 
-      // 8. SAVE TO DATABASE
-      await db.db.journalEntries.add(entry);
+      // 8. SAVE TO DATABASE (DEXIE)
+      try {
+        await db.journalEntries.add(entry);
+      } catch (error: any) {
+        throw new Error(`Failed to save journal entry: ${error.message}`);
+      }
 
-      // 9. UPDATE ACCOUNT BALANCES
+      // 9. UPDATE ACCOUNT BALANCES in Dexie
       for (const line of lines) {
-        const account = await db.db.accounts.get(line.account_id);
+        const account = await db.accounts.get(line.account_id);
         if (account) {
           const newBalance = (account.balance || 0) + (line.debit - line.credit);
-          await db.db.accounts.update(line.account_id, { balance: newBalance });
+          await db.accounts.update(line.account_id, { balance: newBalance });
+        } else {
+           // Create account if missing for resilience
+           await db.accounts.add({
+             id: line.account_id,
+             name: line.account_id,
+             type: 'GL',
+             balance: line.debit - line.credit
+           });
         }
       }
 
       // 10. LINK INVOICE
       if (isSale) {
-        const update = { 
+        await db.sales.update(invoiceId, { 
           InvoiceStatus: 'POSTED',
           isArchived: true,
           lastPostedAt: new Date().toISOString(),
           totalCost: calculatedTotalCost,
           tenant_id: tenantId
-        };
-        await db.db.sales.update(invoiceId, update);
+        });
       } else {
-        const update = { 
+        await db.purchases.update(invoiceId, { 
           invoiceStatus: 'POSTED',
           isArchived: true,
           lastPostedAt: new Date().toISOString(),
           tenant_id: tenantId
-        };
-        await db.db.purchases.update(invoiceId, update);
+        });
       }
-    // End of posting logic
-    AIInsightsEngine.runAnalysis();
+    
+    // AI analysis
+    AIInsightsEngine.runAnalysis().catch(console.error);
     return entryId;
   }
 
@@ -216,11 +223,14 @@ export class PostingEngine {
    * UNPOST ENGINE: unpostInvoice(invoice)
    */
   static async unpostInvoice(invoiceId: string): Promise<void> {
-    // 1. FIND JOURNAL BY REFERENCE_ID (sourceId)
-    const entries = await db.getJournalEntries();
-    const entry = entries.find(e => e.sourceId === invoiceId);
-    
-    if (!entry) return;
+    // 1. FIND JOURNAL BY REFERENCE_ID (sourceId) from Dexie
+    const entries = await db.journalEntries
+      .where('sourceId')
+      .equals(invoiceId)
+      .toArray();
+      
+    if (!entries || entries.length === 0) return;
+    const entry = entries[0];
 
     // 2. REVERSE FIFO / STOCK MOVEMENTS
     if (entry.sourceType === 'SALE') {
@@ -231,30 +241,23 @@ export class PostingEngine {
       await StockMovementEngine.reverseMovements(invoiceId);
     }
 
-    // 3. REVERSE ALL JOURNAL LINES & UPDATE BALANCES
-    for (const line of entry.lines) {
-      await db.updateAccountBalance(line.accountId, line.credit - line.debit);
+    // 3. REVERSE ALL JOURNAL LINES & UPDATE BALANCES in Dexie
+    for (const line of entry.lines || []) {
+      const accountId = line.accountId || line.account_id;
+      const account = await db.accounts.get(accountId);
+        
+      if (account) {
+        const newBalance = (account.balance || 0) - (line.debit - line.credit);
+        await db.accounts.update(accountId, { balance: newBalance });
+      }
     }
 
     // 4. DELETE JOURNAL
-    await db.db.journalEntries.delete(entry.id);
+    await db.journalEntries.delete(entry.id);
 
     // 5. SET INVOICE.IS_POSTED = FALSE
-    const sale = await db.db.sales.get(invoiceId);
-    if (sale) {
-      await db.db.sales.update(invoiceId, { 
-        InvoiceStatus: 'DRAFT_EDIT',
-        isArchived: false
-      });
-    } else {
-      const purchase = await db.db.purchases.get(invoiceId);
-      if (purchase) {
-        await db.db.purchases.update(invoiceId, { 
-          invoiceStatus: 'DRAFT_EDIT',
-          isArchived: false
-        });
-      }
-    }
+    await db.sales.update(invoiceId, { InvoiceStatus: 'DRAFT_EDIT', isArchived: false });
+    await db.purchases.update(invoiceId, { invoiceStatus: 'DRAFT_EDIT', isArchived: false });
   }
 
   /**
@@ -266,7 +269,7 @@ export class PostingEngine {
   }
 
   private static createLine(entryId: string, accountId: string, debit: number, credit: number, tenantId: string): JournalLine {
-    const id = db.generateId('JL');
+    const id = `JL-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
     return {
       id,
       lineId: id,

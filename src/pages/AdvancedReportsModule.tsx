@@ -212,7 +212,7 @@ const AdvancedReportsModule: React.FC<{ onBack: () => void }> = ({ onBack }) => 
   };
 
   return (
-    <div className="flex flex-col min-h-full h-full bg-[#F8FAFA] font-['Cairo'] overflow-x-hidden" dir="rtl">
+    <div className="flex flex-col min-h-full h-full bg-[#F8FAFA] font-cairo overflow-x-hidden" dir="rtl">
       <div className="p-8 space-y-8 shrink-0 bg-white border-b border-slate-100 shadow-sm">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-6">

@@ -1,3 +1,5 @@
+import { ai } from '../lib/gemini';
+
 export interface ParsedInvoice {
   type: 'cash' | 'credit' | 'return';
   supplier: string;
@@ -30,18 +32,15 @@ export async function parseInvoice(text: string): Promise<ParsedInvoice> {
 ${text}
 `;
 
-    const response = await fetch('/api/gemini/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt })
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: prompt,
     });
 
-    if (!response.ok) {
-      throw new Error('Failed to parse invoice using AI');
+    let jsonStr = response.text;
+    if (!jsonStr) {
+      throw new Error('No content received from AI');
     }
-
-    const responseData = await response.json();
-    let jsonStr = responseData.text;
     
     // Clean up markdown block if present
     if (jsonStr.startsWith('\`\`\`json')) {

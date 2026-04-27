@@ -39,6 +39,7 @@ export interface InvoiceProcessingRequest {
     warehouseId?: string;
     currency?: string;
     paymentStatus?: 'Cash' | 'Credit';
+    date?: string;
   };
 }
 
@@ -51,11 +52,13 @@ export class SystemOrchestrator {
     const isEdit = !!payload.id;
     const finalStatus: InvoiceStatus = options?.invoiceStatus || 'POSTED';
     const isPosting = finalStatus === 'POSTED' || finalStatus === 'LOCKED';
-    const invoiceDate = payload.date || new Date().toISOString();
+    
+    // Ensure payload.date is populated only if required for GlobalGuard
+    const effectiveDate = payload.date || options?.date || new Date().toISOString();
     const resourceId = payload.id || `NEW_${type}_${Date.now()}`;
 
     // 1. Global Guard & Lock
-    await GlobalGuard.checkSystemState(isEdit ? 'تعديل فاتورة' : 'إنشاء فاتورة', invoiceDate);
+    await GlobalGuard.checkSystemState(isEdit ? 'تعديل فاتورة' : 'إنشاء فاتورة', effectiveDate);
 
     return await TransactionService.runSafe(resourceId, async () => {
       try {
@@ -100,7 +103,8 @@ export class SystemOrchestrator {
             'LOW',
             costResult.totalCost,
             payload.id,
-            payload.attachment
+            payload.attachment,
+            payload.date
           );
         } else {
           result = await InvoiceRepository.savePurchase(
@@ -115,7 +119,8 @@ export class SystemOrchestrator {
             'LOW',
             payload.id,
             payload.attachment,
-            !!options?.isReturn
+            !!options?.isReturn,
+            payload.date
           );
         }
 

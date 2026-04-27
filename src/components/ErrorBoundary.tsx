@@ -55,7 +55,7 @@ class ErrorBoundary extends React.Component<Props, State> {
     
     if (hasError) {
       return (
-        <div className="min-h-screen bg-[#F0F7F7] flex items-center justify-center p-4 sm:p-6 text-right font-['Cairo']" dir="rtl">
+        <div className="min-h-screen bg-[#F0F7F7] flex items-center justify-center p-4 sm:p-6 text-right font-cairo" dir="rtl">
           <Card className="max-w-lg w-full p-8 sm:p-12 space-y-8 animate-in zoom-in duration-500 shadow-2xl border-4 border-white !rounded-[48px]">
             <div className="text-center space-y-4">
               <div className="w-24 h-24 bg-red-50 text-red-500 rounded-[32px] flex items-center justify-center text-5xl mx-auto shadow-inner animate-pulse">⚠️</div>

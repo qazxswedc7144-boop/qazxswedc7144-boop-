@@ -29,7 +29,9 @@ export const useUI = () => {
     setHeaderAction: store.setHeaderAction,
     refreshGlobal: store.refreshData,
     isSyncing: store.isSyncing,
-    setSyncing: store.setSyncing
+    setSyncing: store.setSyncing,
+    isSettingsOpen: store.isSettingsOpen,
+    setSettingsOpen: store.setSettingsOpen
   };
 };
 

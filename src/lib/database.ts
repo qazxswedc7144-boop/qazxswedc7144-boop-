@@ -1,10 +1,69 @@
 import Dexie from 'dexie'
+import { supabase, TABLE_NAMES } from './supabase'
+import { InvoiceStatus } from '../types'
 
 /* --------------------------------------------------
    DATABASE INIT
 -------------------------------------------------- */
 
 class Database extends Dexie {
+  async processSale(cId: string, items: any[], total: number, isR: boolean, finalInv: string, curr: string, st: string, pid?: string, invSt: InvoiceStatus = 'PENDING', hash?: string, auditScore?: number, riskLevel?: string, totalSaleCost?: number, attachment?: string, date?: string) {
+    const id = pid || `SALE-${Date.now()}`;
+    const payload = {
+      id,
+      SaleID: finalInv,
+      customerId: cId,
+      items,
+      finalTotal: total,
+      isReturn: isR,
+      currency: curr,
+      status: st,
+      InvoiceStatus: invSt,
+      hash,
+      auditScore,
+      riskLevel,
+      totalCost: totalSaleCost,
+      attachment,
+      date: date || new Date().toISOString(),
+      isSynced: 0,
+      timestamp: Date.now()
+    };
+
+    const table = (this as any).sales;
+    if (table) {
+      await table.put(payload);
+    }
+    return payload;
+  }
+
+  async processPurchase(sId: string, items: any[], total: number, inv: string, isC: boolean, curr: string, invSt: InvoiceStatus, purchaseType?: string, hash?: string, auditScore?: number, riskLevel?: string, pid?: string, attachment?: string, date?: string) {
+    const id = pid || `PUR-${Date.now()}`;
+    const payload = {
+      id,
+      invoiceId: inv,
+      partnerId: sId,
+      items,
+      totalAmount: total,
+      isCash: isC,
+      currency: curr,
+      invoiceStatus: invSt,
+      purchaseType,
+      hash,
+      auditScore,
+      riskLevel,
+      attachment,
+      isReturn: purchaseType === 'مرتجع',
+      date: date || new Date().toISOString(),
+      isSynced: 0,
+      timestamp: Date.now()
+    };
+
+    const table = (this as any).purchases;
+    if (table) {
+      await table.put(payload);
+    }
+    return payload;
+  }
   async getSetting(key: string, defaultValue: any = null) {
     try {
       const item = await (this as any).settings.get(key);

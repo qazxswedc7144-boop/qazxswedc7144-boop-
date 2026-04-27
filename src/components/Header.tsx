@@ -2,7 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../lib/database';
 // تأكد من وضع صورة الشعار في مجلد assets واستيرادها بهذا الشكل
 import defaultLogoImg from '../assets/logo-vector.svg'; 
-import { HeartPulse } from 'lucide-react';
+import { HeartPulse, Settings, Bell } from 'lucide-react';
+import { useUI } from '../store/AppContext';
+import RoleGuard from './RoleGuard';
 
 const DynamicLogo = () => {
   const [logoSrc, setLogoSrc] = useState<string | null>(null);
@@ -59,6 +61,7 @@ const DynamicLogo = () => {
 };
 
 const Header = ({ pageTitle, showBackButton, onBackClick }: { pageTitle?: string, showBackButton?: boolean, onBackClick?: () => void }) => {
+  const { setSettingsOpen } = useUI();
   return (
     <header className="w-full bg-white border-b border-gray-100 px-4 py-3 flex items-center justify-between sticky top-0 z-50 shadow-sm">
       
@@ -87,11 +90,29 @@ const Header = ({ pageTitle, showBackButton, onBackClick }: { pageTitle?: string
 
       {/* الجهة اليمنى: معلومات المستخدم أو التنبيهات */}
       <div className="flex items-center gap-3" dir="rtl">
-        <div className="text-right hidden sm:block">
-          <p className="text-xs text-gray-500">مرحباً بك،</p>
-          <p className="text-sm font-semibold text-emerald-700">admin</p>
+        <RoleGuard permission="MANAGE_SYSTEM">
+          <button 
+            onClick={() => setSettingsOpen(true)}
+            className="w-10 h-10 flex items-center justify-center bg-slate-50 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-xl transition-all"
+            title="الإعدادات"
+          >
+            <Settings size={20} />
+          </button>
+        </RoleGuard>
+
+        <button 
+          className="w-10 h-10 flex items-center justify-center bg-slate-50 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-xl transition-all relative"
+          title="التنبيهات"
+        >
+          <Bell size={20} />
+          <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-red-500 border-2 border-white rounded-full"></span>
+        </button>
+
+        <div className="text-right hidden sm:block mr-2">
+          <p className="text-[10px] text-gray-500 font-bold leading-tight uppercase tracking-tighter">مرحباً بك،</p>
+          <p className="text-xs font-black text-emerald-700">admin</p>
         </div>
-        <div className="w-10 h-10 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-700 font-bold border-2 border-emerald-50">
+        <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-[#1E4D4D] rounded-xl flex items-center justify-center text-white font-black shadow-lg shadow-emerald-900/10 border border-emerald-400/20">
           A
         </div>
       </div>

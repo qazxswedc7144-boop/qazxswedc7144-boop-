@@ -87,7 +87,7 @@ export const CameraModule: React.FC<CameraModuleProps> = ({ isOpen, onClose, onC
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-[2000] bg-black flex flex-col font-['Cairo']">
+        <div className="fixed inset-0 z-[2000] bg-black flex flex-col font-cairo">
           <div className="p-4 flex justify-between items-center bg-slate-900/50 backdrop-blur-md border-b border-white/10">
             <h3 className="text-white font-bold text-sm">تصوير مستند</h3>
             <button onClick={onClose} className="text-white/70 hover:text-white transition-colors">

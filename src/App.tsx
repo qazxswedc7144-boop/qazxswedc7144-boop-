@@ -30,8 +30,10 @@ import {
 } from 'lucide-react';
 
 // Lazy loading views
-const PurchasesView = lazy(() => import('./pages/PurchasesInvoice'));
-const SalesModule = lazy(() => import('./pages/SalesModule'));
+import PurchasesInvoice from './pages/PurchasesInvoice';
+import SalesModuleStatic from './pages/SalesModule';
+const SalesModule = SalesModuleStatic;
+const PurchasesView = PurchasesInvoice;
 const InventoryModule = lazy(() => import('./pages/InventoryModule'));
 const InventoryAuditModule = lazy(() => import('./pages/InventoryAuditModule'));
 const AuditHistoryModule = lazy(() => import('./pages/AuditHistoryModule')); 
@@ -80,7 +82,7 @@ function MainLayout() {
   const [viewParams, setViewParams] = useState<any>(null); 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
-  const { setHeaderAction, refreshGlobal, toasts, removeToast } = useUI();
+  const { setHeaderAction, refreshGlobal, toasts, removeToast, isSettingsOpen, setSettingsOpen } = useUI();
   const setEditingInvoiceId = useAppStore(state => state.setEditingInvoiceId);
   const systemStatus = useAppStore(state => state.systemStatus);
   const setSystemStatus = useAppStore(state => state.setSystemStatus);
@@ -95,7 +97,6 @@ function MainLayout() {
   const [loginError, setLoginError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   // 1. Session Tracking
   useEffect(() => {
@@ -217,7 +218,7 @@ function MainLayout() {
     ];
 
     if (view === 'settings') {
-      setIsSettingsOpen(true);
+      setSettingsOpen(true);
       window.location.hash = '#/dashboard';
       view = 'dashboard';
     }
@@ -277,7 +278,7 @@ function MainLayout() {
       await PeriodLockEngine.seedDefaultPeriod();
 
       heartbeatService.start(); 
-      backupService.startAutoTimer();
+      // backupService.startAutoTimer(); // RECENT CHANGE: Disabled automatic timer to avoid conflict during import
       
       // 8. CLOUD BACKUP: Initial sync (now handles hybrid sync context)
       try {
@@ -362,7 +363,7 @@ function MainLayout() {
 
   const handleNav = useCallback((view: string, params: any = null) => {
     if (view === 'settings') {
-      setIsSettingsOpen(true);
+      setSettingsOpen(true);
       setIsSidebarOpen(false);
       return;
     }
@@ -720,14 +721,14 @@ function MainLayout() {
               className="bg-[#F8FAFA] w-full max-w-7xl h-[95vh] rounded-[32px] shadow-2xl overflow-hidden flex flex-col relative"
             >
                <button 
-                 onClick={() => setIsSettingsOpen(false)}
+                 onClick={() => setSettingsOpen(false)}
                  className="absolute top-6 right-6 w-10 h-10 bg-white border border-slate-100 rounded-xl flex items-center justify-center text-slate-400 hover:bg-red-50 hover:text-red-500 transition-all z-[600]"
                >
                  <X size={20} />
                </button>
                <div className="flex-1 overflow-y-auto w-full custom-scrollbar pt-6">
                  <RoleGuard permission="MANAGE_SYSTEM">
-                    <SettingsModule onNavigate={(v) => { setIsSettingsOpen(false); handleNav(v); }} />
+                    <SettingsModule onNavigate={(v) => { setSettingsOpen(false); handleNav(v); }} />
                  </RoleGuard>
                </div>
             </motion.div>

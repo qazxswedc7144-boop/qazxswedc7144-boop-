@@ -1,3 +1,10 @@
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-cairo: "Cairo", sans-serif;
+}
+
 /* Global UI Overrides for PharmaFlow */
 
 /* 1. Hide unnecessary empty spaces and spacers */

@@ -157,7 +157,7 @@ const AccountingModule: React.FC<AccountingModuleProps> = ({ onNavigate }) => {
   };
 
   return (
-    <div className="flex flex-col min-h-full h-full bg-[#F8FAFA] font-['Cairo'] overflow-hidden" dir="rtl">
+    <div className="flex flex-col min-h-full h-full bg-[#F8FAFA] font-cairo overflow-hidden" dir="rtl">
       {/* Modern Header - Row 1 & 2 */}
       <header className="shrink-0 bg-white border-b border-slate-100 z-20">
         {/* Row 1: Back Button & Centered Titles */}

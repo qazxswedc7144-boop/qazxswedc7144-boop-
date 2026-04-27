@@ -1,5 +1,6 @@
 import { db } from '../lib/database';
 import { GeminiAnalyticsService } from './GeminiAnalyticsService';
+import { supabase, TABLE_NAMES } from '../lib/supabase';
 
 export async function generateAIInsights() {
   const invoices = await db.invoices.toArray();
@@ -44,6 +45,15 @@ export async function generateAIInsights() {
 
   try {
     aiResponse = await GeminiAnalyticsService.analyze(summary);
+    
+    // Save to Supabase ai_logs
+    await supabase.from(TABLE_NAMES.AI_LOGS).insert({
+      insight_type: 'SUMMARY_ANALYSIS',
+      payload: summary,
+      response: aiResponse,
+      created_at: new Date().toISOString()
+    });
+    
   } catch (e) {
     console.warn("Gemini failed, using local insights", e);
   }

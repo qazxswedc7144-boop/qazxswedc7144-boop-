@@ -63,7 +63,7 @@ const SystemHealthModule: React.FC<{ onNavigate?: (v: any) => void }> = ({ onNav
   };
 
   return (
-    <div className="p-6 md:p-10 space-y-8 animate-in fade-in duration-500 font-['Cairo']" dir="rtl">
+    <div className="p-6 md:p-10 space-y-8 animate-in fade-in duration-500 font-cairo" dir="rtl">
       <div className="flex items-center justify-between bg-white p-8 rounded-[40px] shadow-sm border border-slate-100">
         <div className="flex items-center gap-6">
           <div className="w-16 h-16 bg-[#1E4D4D] text-white rounded-3xl flex items-center justify-center text-3xl shadow-xl"><ShieldCheck size={32} /></div>

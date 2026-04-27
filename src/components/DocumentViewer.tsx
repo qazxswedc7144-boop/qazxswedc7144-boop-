@@ -22,7 +22,7 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({ isOpen, onClose,
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-[2000] bg-black flex flex-col font-['Cairo']">
+        <div className="fixed inset-0 z-[2000] bg-black flex flex-col font-cairo">
           {/* Action Header */}
           <div className="h-16 px-4 flex items-center justify-between bg-slate-900/80 backdrop-blur-md border-b border-white/10">
             {/* Option 1 (Left - '✓' Icon): Confirm and return */}

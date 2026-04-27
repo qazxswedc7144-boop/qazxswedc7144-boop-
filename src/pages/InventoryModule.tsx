@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useInventory, useUI, useAccounting } from '../store/AppContext';
 import { Product, PriceHistory, Purchase, InventoryTransaction, WarehouseStock, Supplier } from '../types';
 import { ProductRepository } from '../core/engines/ProductRepository';
@@ -26,16 +26,23 @@ const InventoryModule: React.FC<{ onNavigate?: (view: any) => void }> = ({ onNav
   const { refreshGlobal, addToast, currency } = useUI();
   const containerRef = useRef<HTMLDivElement>(null);
   
-  const [loading, setLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
 
+  // Optimize loading state - use products.length as dependency to avoid flickering on reference changes
   useEffect(() => {
     if (products.length > 0) {
-      setLoading(false);
+      setIsLoading(false);
     } else {
-      const timer = setTimeout(() => setLoading(false), 500);
+      // Small timeout to allow async products to load before showing empty state
+      const timer = setTimeout(() => setIsLoading(false), 800);
       return () => clearTimeout(timer);
     }
-  }, [products]);
+  }, [products.length]);
+
+  const handleProductClick = useCallback((product: Product) => {
+    setEditingProduct(product);
+    setActiveTab('details');
+  }, []);
   
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -204,7 +211,7 @@ const ProductItem = React.memo(({ product, currency, onClick }: { product: Produ
 });
 
   return (
-    <div className="flex flex-col min-h-full h-full bg-[#F8FAFA] font-['Cairo'] w-full relative" dir="rtl">
+    <div className="flex flex-col min-h-full h-full bg-[#F8FAFA] font-cairo w-full relative" dir="rtl">
       {/* Modern Header */}
       <header className="p-4 sm:p-10 pb-6 shrink-0 bg-white border-b border-slate-100 z-20">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 sm:gap-8 mb-6 sm:mb-10">
@@ -291,8 +298,11 @@ const ProductItem = React.memo(({ product, currency, onClick }: { product: Produ
 
       {/* List Area */}
       <div className="flex-1 bg-[#F8FAFA] pt-6" ref={containerRef}>
-        {loading ? (
-          <div className="flex items-center justify-center h-full text-slate-400 font-black">جاري التحميل...</div>
+        {isLoading ? (
+          <div className="flex flex-col items-center justify-center h-full text-slate-400 font-black gap-4">
+            <div className="w-10 h-10 border-4 border-slate-200 border-t-[#1E4D4D] rounded-full animate-spin"></div>
+            <span>جاري التحميل...</span>
+          </div>
         ) : (
           <List 
             height={containerRef.current?.offsetHeight || 600} 
@@ -300,13 +310,14 @@ const ProductItem = React.memo(({ product, currency, onClick }: { product: Produ
             itemSize={120} 
             width="100%" 
             className="custom-scrollbar"
+            itemKey={(index) => filteredProducts[index].id}
           >
             {({ index, style }) => (
-              <div style={style} className="px-8 py-3">
+              <div style={style} className="px-8 py-3" key={filteredProducts[index].id}>
                 <ProductItem 
                   product={filteredProducts[index]} 
                   currency={currency} 
-                  onClick={() => { setEditingProduct(filteredProducts[index]); setActiveTab('details'); }}
+                  onClick={() => handleProductClick(filteredProducts[index])}
                 />
               </div>
             )}
