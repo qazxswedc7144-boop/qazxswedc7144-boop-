@@ -10,7 +10,6 @@ import { useAppStore } from '../store/useAppStore';
 import { useSafeNavigation } from '../utils/navigation';
 import { Card, Badge } from '../components/SharedUI';
 import { FinancialHealthSnapshot } from '../types';
-import InstallPWAButton from '../components/InstallPWAButton';
 import { UI_CONFIG } from '../constants';
 import RoleGuard from '../components/RoleGuard';
 import { AISummaryPanel } from '../components/AISummaryPanel';
@@ -194,7 +193,6 @@ const Dashboard: React.FC<{ lang?: 'ar', onNavigate?: (view: any, params?: any) 
         </div>
 
         <div className="absolute bottom-4 left-10 hidden sm:block">
-          <InstallPWAButton />
         </div>
       </div>
 

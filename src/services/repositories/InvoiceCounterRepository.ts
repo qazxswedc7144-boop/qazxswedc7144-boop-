@@ -1,6 +1,6 @@
 
-import { db } from '../lib/database';
-import { InvoiceCounter } from '../types';
+import { db } from '../../lib/database';
+import { InvoiceCounter } from '../../types';
 
 /**
  * Invoice Counter Repository - حارس الترقيم التسلسلي السيادي (Phase 11)

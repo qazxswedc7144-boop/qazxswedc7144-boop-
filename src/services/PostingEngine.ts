@@ -3,7 +3,7 @@ import { db } from '../lib/database';
 import { AccountingEntry, Sale, Purchase, InvoiceItem, InvoiceStatus, InventoryTransaction } from '../types';
 import { AccountingEngine } from './AccountingEngine';
 import { InventoryService } from './InventoryService';
-import { InvoiceRepository } from '../repositories/invoice.repository';
+import { InvoiceRepository } from './repositories/invoice.repository';
 import { AccountRepository } from '../repositories/account.repository';
 import { integrityVerifier } from './integrityVerifier';
 import { PeriodLockEngine } from './PeriodLockEngine';

@@ -5,8 +5,8 @@ import { Product, InvoiceStatus, InvoiceItem, Purchase, PaymentStatus, Supplier 
 import { useUI, useInventory, useAccounting } from '../../../store/AppContext';
 import { useAppStore } from '../../../store/useAppStore';
 import { authService } from '../../../services/auth.service';
-import { PurchaseRepository } from '../../../repositories/PurchaseRepository';
-import { InvoiceRepository } from '../../../repositories/invoice.repository';
+import { PurchaseRepository } from '../../../services/repositories/PurchaseRepository';
+import { InvoiceRepository } from '../../../services/repositories/invoice.repository';
 import { auditLogService } from '../../../services/auditLog';
 import { InvoiceWorkflowEngine } from '../../../services/InvoiceWorkflowEngine';
 import { syncService } from '../../../services/sync.service';

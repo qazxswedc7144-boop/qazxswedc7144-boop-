@@ -1,10 +1,10 @@
 
 import { db } from '../lib/database';
 import { AccountStatementRepository } from '../repositories/AccountStatementRepository';
-import { SupplierRepository } from '../repositories/SupplierRepository';
+import { SupplierRepository } from './repositories/SupplierRepository';
 import { ProductRepository } from '@/core/engines/ProductRepository';
-import { VoucherInvoiceLinkRepository } from '../repositories/VoucherInvoiceLinkRepository';
-import { InvoiceRepository } from '../repositories/invoice.repository';
+import { VoucherInvoiceLinkRepository } from './repositories/VoucherInvoiceLinkRepository';
+import { InvoiceRepository } from './repositories/invoice.repository';
 import { InvoiceWorkflowEngine } from './InvoiceWorkflowEngine';
 import { logger } from './logger.service';
 

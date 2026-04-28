@@ -1,5 +1,5 @@
 
-import { SalesRepository } from '../repositories/SalesRepository';
+import { SalesRepository } from './repositories/SalesRepository';
 import { Sale } from '../types';
 import { transactionOrchestrator } from './transactionOrchestrator';
 

@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { InvoiceRepository } from '../repositories/invoice.repository';
-import { AdjustmentRepository } from '../repositories/AdjustmentRepository';
+import { InvoiceRepository } from '../services/repositories/invoice.repository';
+import { AdjustmentRepository } from '../services/repositories/AdjustmentRepository';
 import { Sale } from '../types';
 import { useUI } from '../store/AppContext';
 import { useAppStore } from '../store/useAppStore';

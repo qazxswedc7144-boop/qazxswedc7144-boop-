@@ -343,6 +343,172 @@ class Database extends Dexie {
       await (this as any).products.put(product);
     }
   }
+
+  async updatePurchaseNotes(id: string, notes: string) {
+    if (!id) return;
+    try {
+      const table = (this as any).purchases;
+      if (table) {
+        const purchase = await table.get(id);
+        if (purchase) {
+          purchase.notes = notes;
+          purchase.updatedAt = Date.now();
+          await table.put(purchase);
+        }
+      }
+    } catch (e) {
+      console.error("Failed to update purchase notes:", e);
+    }
+  }
+
+  async updatePurchaseAttachment(id: string, attachment: string) {
+    if (!id) return;
+    try {
+      const table = (this as any).purchases;
+      if (table) {
+        const purchase = await table.get(id);
+        if (purchase) {
+          purchase.attachment = attachment;
+          purchase.updatedAt = Date.now();
+          await table.put(purchase);
+        }
+      }
+    } catch (e) {
+      console.error("Failed to update purchase attachment:", e);
+    }
+  }
+
+  async updateSaleNotes(id: string, notes: string) {
+    if (!id) return;
+    try {
+      const table = (this as any).sales;
+      if (table) {
+        const sale = await table.get(id);
+        if (sale) {
+          sale.notes = notes;
+          sale.updatedAt = Date.now();
+          await table.put(sale);
+        }
+      }
+    } catch (e) {
+      console.error("Failed to update sale notes:", e);
+    }
+  }
+
+  async updateSaleAttachment(id: string, attachment: string) {
+    if (!id) return;
+    try {
+      const table = (this as any).sales;
+      if (table) {
+        const sale = await table.get(id);
+        if (sale) {
+          sale.attachment = attachment;
+          sale.updatedAt = Date.now();
+          await table.put(sale);
+        }
+      }
+    } catch (e) {
+      console.error("Failed to update sale attachment:", e);
+    }
+  }
+
+  async addInvoiceHistory(data: any) {
+    const table = (this as any).invoiceHistory;
+    if (table) {
+      await table.add({
+        ...data,
+        id: data.id || `HIST-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+      });
+    }
+  }
+
+  async recordCashFlow(entry: any) {
+    const table = (this as any).cashFlow;
+    if (table) {
+      await table.put(entry);
+    }
+  }
+
+  async addPendingOperation(op: any) {
+    const table = (this as any).pendingOperations;
+    if (table) {
+      await table.add(op);
+    }
+  }
+
+  async removePendingOperation(id: string) {
+    const table = (this as any).pendingOperations;
+    if (table) {
+      await table.delete(id);
+    }
+  }
+
+  async updatePendingOperation(op: any) {
+    const table = (this as any).pendingOperations;
+    if (table) {
+      await table.put(op);
+    }
+  }
+
+  async saveMedicineAlert(alert: any) {
+    const table = (this as any).medicineAlerts;
+    if (table) {
+      await table.put(alert);
+    }
+  }
+
+  async clearOldAlerts() {
+    const table = (this as any).medicineAlerts;
+    if (table) {
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      try {
+        await table.filter((a: any) => new Date(a.Date) < thirtyDaysAgo).delete();
+      } catch (e) {
+        console.warn("clearOldAlerts failed:", e);
+      }
+    }
+  }
+
+  async saveInvoiceAdjustment(adj: any) {
+    const table = (this as any).invoiceAdjustments;
+    if (table) {
+      await table.put(adj);
+    }
+  }
+
+  async deleteInvoiceAdjustment(id: string) {
+    const table = (this as any).invoiceAdjustments;
+    if (table) {
+      await table.delete(id);
+    }
+  }
+
+  async saveCurrency(currency: any) {
+    const table = (this as any).currencies;
+    if (table) {
+      await table.put(currency);
+    }
+  }
+
+  async saveAccount(account: any) {
+    const table = (this as any).accounts;
+    if (table) {
+      await table.put(account);
+    }
+  }
+
+  async saveAccountingPeriod(period: any) {
+    const table = (this as any).accountingPeriods;
+    if (table) {
+      await table.put(period);
+    }
+  }
+
+  async updateSyncDate() {
+    await this.saveSetting('LAST_SYNC_DATE', new Date().toISOString());
+  }
+
   async saveCategory(category: any) { await (this as any).categories.put(category); }
   async saveSettlement(settlement: any) { await (this as any).settlements.put(settlement); }
   async saveBankAccount(account: any) { await (this as any).bankAccounts.put(account); }
@@ -438,8 +604,8 @@ class Database extends Dexie {
     super("pharmaflow");
     
     // Explicitly define tables to avoid NotFoundError
-    // Version 16: Add invoiceId to sales and purchases indexing
-    this.version(16).stores({
+    // Version 17: Add pendingOperations for sync service
+    this.version(17).stores({
       products: '&id, name, barcode, price, stock, user_id, updated_at, deleted_at, Name, updatedAt, deletedAt, isSynced, category, branchId',
       invoices: 'id, type, createdAt, created_at, isSynced, status, branchId',
       customers: 'id, name, Customer_Name, isSynced, Is_Active',
@@ -498,7 +664,8 @@ class Database extends Dexie {
       supplierProfits: 'id',
       purchasesByItem: 'id',
       systemPerformanceMetrics: 'id, timestamp',
-      financialAnalysis: 'id, date'
+      financialAnalysis: 'id, date',
+      pendingOperations: 'id, type, status'
     });
     
     // Handle version changes from other tabs

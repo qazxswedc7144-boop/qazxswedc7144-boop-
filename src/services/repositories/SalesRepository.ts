@@ -1,10 +1,10 @@
 
-import { supabase, TABLE_NAMES } from '../lib/supabase';
-import { Sale, InvoiceStatus, ValidationError, PaymentStatus } from '../types';
-import { priceIntelligenceService } from '../services/priceIntelligence.service';
+import { supabase, TABLE_NAMES } from '../../lib/supabase';
+import { Sale, InvoiceStatus, ValidationError, PaymentStatus } from '../../types';
+import { priceIntelligenceService } from '../../services/priceIntelligence.service';
 import { InvoiceCounterRepository } from './InvoiceCounterRepository';
 import { PriceHistoryRepository } from './PriceHistoryRepository';
-import { InvoiceWorkflowEngine } from '../services/InvoiceWorkflowEngine';
+import { InvoiceWorkflowEngine } from '../../services/InvoiceWorkflowEngine';
 
 export interface PriceInsight {
   price: number;

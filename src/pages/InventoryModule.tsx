@@ -4,7 +4,7 @@ import { useInventory, useUI, useAccounting } from '../store/AppContext';
 import { Product, PriceHistory, Purchase, InventoryTransaction, WarehouseStock, Supplier } from '../types';
 import { ProductRepository } from '../core/engines/ProductRepository';
 import { db } from '../lib/database';
-import { PurchaseRepository } from '../repositories/PurchaseRepository';
+import { PurchaseRepository } from '../services/repositories/PurchaseRepository';
 import { InventoryService } from '../services/InventoryService';
 import { authService } from '../services/auth.service';
 import { Card, Button, Input, Modal, Badge } from '../components/SharedUI';

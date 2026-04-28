@@ -5,7 +5,7 @@ import { Product, InvoiceStatus, InvoiceItem, Sale, PaymentStatus, Supplier } fr
 import { useUI, useInventory, useAccounting } from '../store/AppContext';
 import { useAppStore } from '../store/useAppStore';
 import { authService } from '../services/auth.service';
-import { InvoiceRepository } from '../repositories/invoice.repository';
+import { InvoiceRepository } from '../services/repositories/invoice.repository';
 import { priceIntelligenceService } from '../services/priceIntelligence.service';
 import { InvoiceWorkflowEngine } from '../services/InvoiceWorkflowEngine';
 import { ExportService } from '../services/exportService';

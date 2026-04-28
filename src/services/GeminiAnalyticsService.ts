@@ -6,6 +6,7 @@ export class GeminiAnalyticsService {
   private static CACHE_TTL = 30 * 60 * 1000; // 30 minutes
   private static LAST_REQUEST_TIME = 0;
   private static MIN_REQUEST_INTERVAL = 5000; // 5 seconds between requests
+  private static isProcessing = false;
 
   private static async generateHash(str: string): Promise<string> {
     const msgUint8 = new TextEncoder().encode(str);
@@ -15,26 +16,44 @@ export class GeminiAnalyticsService {
   }
 
   static async analyzeData(prompt: string, data: any) {
-    const dataStr = JSON.stringify(data);
-    const cacheKey = await this.generateHash(prompt + dataStr);
-    
-    // 1. Check Cache
-    const cached = localStorage.getItem(this.CACHE_PREFIX + cacheKey);
-    if (cached) {
-      const { result, timestamp } = JSON.parse(cached);
-      if (Date.now() - timestamp < this.CACHE_TTL) {
-        return result;
-      }
+    if (this.isProcessing) {
+      console.warn("⛔ طلب سابق قيد التنفيذ");
+      return "جاري المعالجة، يرجى الانتظار...";
     }
 
-    // 2. Rate Limiting (Cooldown)
-    const now = Date.now();
-    if (now - this.LAST_REQUEST_TIME < this.MIN_REQUEST_INTERVAL) {
-      if (cached) return JSON.parse(cached).result;
-      return "يرجى الانتظار قليلاً قبل طلب تحليل جديد.";
-    }
+    this.isProcessing = true;
 
     try {
+      const dataStr = JSON.stringify(data);
+      const cacheKey = await this.generateHash(prompt + dataStr);
+      
+      // 1. Check Cache
+      const cachedRaw = localStorage.getItem(this.CACHE_PREFIX + cacheKey);
+      let cachedData = null;
+      if (cachedRaw) {
+        cachedData = JSON.parse(cachedRaw);
+        // If valid, return directly
+        if (Date.now() - cachedData.timestamp < this.CACHE_TTL) {
+          return cachedData.result;
+        }
+      }
+
+      // 2. Rate Limiting (Cooldown)
+      const now = Date.now();
+      if (now - this.LAST_REQUEST_TIME < this.MIN_REQUEST_INTERVAL) {
+        console.warn("⛔ تم منع الطلب بسبب Rate Limit");
+        if (cachedData) {
+          console.info("ℹ️ استخدام نسخة مخبأة (Cache) لتجنب الانتظار");
+          return cachedData.result;
+        }
+        throw new Error("Rate limited locally");
+      }
+
+      // 3. Data Validation
+      if (!data || Object.keys(data).length === 0) {
+        throw new Error("لا توجد بيانات للتحليل");
+      }
+
       this.LAST_REQUEST_TIME = now;
       
       const response = await ai.models.generateContent({
@@ -44,7 +63,7 @@ export class GeminiAnalyticsService {
 
       const result = response.text || "لم يتم استلام أي استجابة من الذكاء الاصطناعي.";
       
-      // 3. Save to Cache
+      // 4. Save to Cache
       localStorage.setItem(this.CACHE_PREFIX + cacheKey, JSON.stringify({
         result,
         timestamp: Date.now()
@@ -53,7 +72,12 @@ export class GeminiAnalyticsService {
       return result;
     } catch (error: any) {
       console.error("Analytics Error:", error);
+      if (error.message === "Rate limited locally" || error.message === "لا توجد بيانات للتحليل") {
+        throw error;
+      }
       return "حدث خطأ أثناء إجراء التحليل. يرجى المحاولة لاحقاً.";
+    } finally {
+      this.isProcessing = false;
     }
   }
 

@@ -1,6 +1,6 @@
 
 import { db } from '../lib/database';
-import { FIFOEngine } from './FIFOEngine';
+import { FIFOEngine } from '@/core/engines/fifoEngine';
 import { Sale, Purchase, Product, InventoryTransaction, AccountingEntry } from '../types';
 import { GeminiAnalyticsService } from './GeminiAnalyticsService';
 

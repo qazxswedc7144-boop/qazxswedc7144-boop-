@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { db } from '../lib/database';
 import { Sale, InvoiceHistory, Purchase } from '../types';
-import { InvoiceRepository } from '../repositories/invoice.repository';
+import { InvoiceRepository } from '../services/repositories/invoice.repository';
 import { useUI } from '../store/AppContext';
 import { useAppStore } from '../store/useAppStore';
 import { Button, Card, Badge, Modal } from '../components/SharedUI';

@@ -1,6 +1,6 @@
 
-import { db } from '../lib/database';
-import { PriceHistory } from '../types';
+import { db } from '../../lib/database';
+import { PriceHistory } from '../../types';
 
 // محرك التخزين المؤقت عالي السرعة لتقليل الضغط على قاعدة البيانات
 const PRICE_CACHE = new Map<string, { data: any, timestamp: number }>();

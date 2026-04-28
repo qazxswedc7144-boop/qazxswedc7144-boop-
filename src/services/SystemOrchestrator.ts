@@ -2,13 +2,13 @@
 import { db } from '../lib/database';
 import { ValidationService as validationService } from './ValidationService';
 import { TransactionService } from './TransactionService';
-import { ErrorService } from './ErrorService';
-import { FIFOEngine as fifoEngine } from '@/core/engines/fifoEngine';
-import { StockMovementEngine as stockEngine } from '@/core/engines/stockMovementEngine';
-import { AccountingEngine as accountingEngine } from '@/core/engines/accountingEngine';
-import { ReportEngine as reportEngine } from '@/core/engines/reportEngine';
+import { ErrorService } from '@/services/ErrorService';
+import { FIFOEngine as fifoEngine } from '../core/engines/fifoEngine';
+import { StockMovementEngine as stockEngine } from '../core/engines/stockMovementEngine';
+import { AccountingEngine as accountingEngine } from '../core/engines/accountingEngine';
+import { ReportEngine as reportEngine } from '../core/engines/reportEngine';
 import { InvoiceItem, InvoiceStatus, Sale, Purchase } from '../types';
-import { InvoiceRepository } from '../repositories/invoice.repository';
+import { InvoiceRepository } from './repositories/invoice.repository';
 import { AccountRepository } from '../repositories/account.repository';
 import { authService } from './auth.service';
 import { GlobalGuard } from './GlobalGuard';
@@ -17,8 +17,8 @@ import { BackupService } from './backupService';
 import { LockService } from './LockService';
 import { PeriodLockEngine } from './PeriodLockEngine';
 import { FinancialTransactionRepository } from '../repositories/FinancialTransactionRepository';
-import { SupplierRepository } from '../repositories/SupplierRepository';
-import { ProductRepository } from '@/core/engines/ProductRepository';
+import { SupplierRepository } from './repositories/SupplierRepository';
+import { ProductRepository } from '../core/engines/ProductRepository';
 
 export interface InvoiceProcessingRequest {
   type: 'SALE' | 'PURCHASE';

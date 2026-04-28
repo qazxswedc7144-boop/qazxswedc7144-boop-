@@ -3,10 +3,10 @@ import React from 'react';
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 import { InventoryService } from '../services/InventoryService';
-import { PurchaseRepository } from '../repositories/PurchaseRepository';
+import { PurchaseRepository } from '../services/repositories/PurchaseRepository';
 import { AccountingRepository } from '../repositories/AccountingRepository';
-import { SupplierRepository } from '../repositories/SupplierRepository';
-import { SalesRepository } from '../repositories/SalesRepository';
+import { SupplierRepository } from '../services/repositories/SupplierRepository';
+import { SalesRepository } from '../services/repositories/SalesRepository';
 import { transactionOrchestrator, InvoiceRequest } from '../services/transactionOrchestrator';
 import { eventBus, EVENTS } from '../services/eventBus';
 import { 

@@ -2,7 +2,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { useInventory, useUI } from '../store/AppContext';
 import BaseReportPage from '../components/BaseReportPage';
-import { SalesRepository } from '../repositories/SalesRepository';
+import { SalesRepository } from '../services/repositories/SalesRepository';
 import { Sale } from '../types';
 
 const ItemProfitsReport: React.FC<{ onNavigate?: (view: any) => void }> = ({ onNavigate }) => {

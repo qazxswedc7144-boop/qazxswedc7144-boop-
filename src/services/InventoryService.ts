@@ -46,20 +46,37 @@ export class InventoryService {
   }
 
   /**
-   * Updates the stock quantity of a product in Dexie.
+   * Updates the stock quantity of a product safely.
    */
   static async updateStock(productId: string, quantityChange: number): Promise<Product | undefined> {
     try {
-      const product = await db.products.get(productId);
-
-      if (!product) {
-        console.error('Product not found for stock update:', productId);
+      // 1. Validation
+      if (!productId || typeof productId !== 'string') {
+        console.warn('InventoryService.updateStock: Missing or invalid productId');
         return undefined;
       }
 
-      const newStock = (product.StockQuantity || product.stock || 0) + quantityChange;
-      const now = new Date().toISOString();
+      if (typeof quantityChange !== 'number' || !Number.isFinite(quantityChange) || !Number.isInteger(quantityChange)) {
+        console.warn('InventoryService.updateStock: Invalid or non-integer quantityChange for product', productId);
+        return undefined;
+      }
 
+      const product = await db.products.get(productId);
+      if (!product) {
+        console.warn('InventoryService.updateStock: Product not found:', productId);
+        return undefined;
+      }
+
+      // 2. Calculation with negative protection
+      const currentStock = Number(product.StockQuantity || product.stock || 0);
+      let newStock = currentStock + quantityChange;
+      
+      if (newStock < 0) {
+        console.warn(`InventoryService.updateStock: Stock for ${productId} would be negative (${newStock}). Adjusting to 0.`);
+        newStock = 0;
+      }
+
+      const now = new Date().toISOString();
       await db.products.update(productId, { 
         StockQuantity: newStock, 
         stock: newStock,
@@ -70,8 +87,65 @@ export class InventoryService {
 
       return await db.products.get(productId);
     } catch (updateError) {
-      console.error('Error updating stock in Dexie:', updateError);
+      console.error('InventoryService.updateStock: Unexpected error:', updateError);
       return undefined;
+    }
+  }
+
+  /**
+   * Resets the stock of a specific product to 0.
+   */
+  static async resetStock(productId: string): Promise<void> {
+    if (!productId || typeof productId !== 'string') {
+      console.warn("InventoryService.resetStock: Invalid productId");
+      return;
+    }
+    
+    try {
+      const now = new Date().toISOString();
+      await db.products.update(productId, {
+        StockQuantity: 0,
+        stock: 0,
+        updatedAt: now,
+        updated_at: now,
+        lastModified: now
+      });
+      console.log(`InventoryService: Stock reset to 0 for product ${productId}`);
+    } catch (error) {
+      console.error("InventoryService.resetStock: Failed to reset stock", error);
+    }
+  }
+
+  /**
+   * Batch processes a list of inventory items safely.
+   */
+  static async processItems(items: any[], type: 'SALE' | 'PURCHASE' | 'ADJUSTMENT' | 'TRANSFER' | 'RETURN', userId: string): Promise<void> {
+    if (!Array.isArray(items)) {
+      console.warn("InventoryService.processItems: Input 'items' is not an array. Ignoring.");
+      return;
+    }
+
+    for (const item of items) {
+      try {
+        const productId = item.productId || item.product_id;
+        const quantity = item.quantity !== undefined ? item.quantity : (item.qty !== undefined ? item.qty : 0);
+
+        if (!productId) {
+          console.warn("InventoryService.processItems: Skipping item with missing productId", item);
+          continue;
+        }
+
+        await this.recordMovement({
+          type,
+          productId,
+          warehouseId: item.warehouseId || 'WH-MAIN',
+          quantity: Number(quantity),
+          userId,
+          notes: item.notes || `Batch ${type} processing`
+        });
+      } catch (err) {
+        console.warn("InventoryService.processItems: Error processing individual item, continuing...", err);
+      }
     }
   }
 
@@ -96,7 +170,7 @@ export class InventoryService {
   }
 
   /**
-   * Records a stock movement.
+   * Records a stock movement with validation and negative stock protection.
    */
   static async recordMovement(movement: {
     type: 'SALE' | 'PURCHASE' | 'ADJUSTMENT' | 'TRANSFER' | 'RETURN',
@@ -111,29 +185,53 @@ export class InventoryService {
     notes?: string
   }): Promise<void> {
     try {
+      // 1. Basic Validation
+      if (!movement || typeof movement !== 'object') {
+        console.warn("InventoryService.recordMovement: Invalid movement object");
+        return;
+      }
+
       if (!movement.productId) {
-        throw new Error("Movement productId is required");
+        console.warn("InventoryService.recordMovement: productId is required");
+        return;
+      }
+
+      if (typeof movement.quantity !== 'number' || !Number.isFinite(movement.quantity) || !Number.isInteger(movement.quantity)) {
+        console.warn(`InventoryService.recordMovement: Invalid or non-integer quantity (${movement.quantity}) for product ${movement.productId}`);
+        return;
       }
 
       const product = await safeGetById(db.products, movement.productId);
       if (!product) {
-        throw new Error(`Product [${movement.productId}] not found.`);
+        console.warn(`InventoryService.recordMovement: Product [${movement.productId}] not found.`);
+        return;
+      }
+
+      const now = new Date().toISOString();
+      const currentQty = Number(product.StockQuantity || product.stock || 0);
+      
+      // 2. Prevent Negative Stock
+      let actualChange = movement.quantity;
+      let newQty = currentQty + actualChange;
+      
+      if (newQty < 0) {
+        console.warn(`InventoryService: Prevented negative stock for ${movement.productId}. Clamping to 0.`);
+        newQty = 0;
+        actualChange = -currentQty;
       }
 
       const finalSourceId = movement.sourceId || movement.sourceDocId || 'N/A';
       const finalSourceType = movement.sourceType || movement.sourceDocType || 'MANUAL';
 
-      const now = new Date().toISOString();
-      const currentQty = product.StockQuantity || product.stock || 0;
       const transaction: InventoryTransaction = {
         TransactionID: db.generateId('ITX'),
         productId: movement.productId,
         warehouseId: movement.warehouseId || 'WH-MAIN',
         SourceDocumentType: finalSourceType as any,
         SourceDocumentID: finalSourceId,
-        QuantityChange: movement.quantity,
+        QuantityChange: actualChange,
         before_qty: currentQty,
-        after_qty: currentQty + movement.quantity,
+        after_qty: newQty,
         TransactionType: movement.type,
         TransactionDate: now,
         UserID: movement.userId || 'system',
@@ -146,7 +244,7 @@ export class InventoryService {
 
       await db.inventoryTransactions.add(transaction);
       
-      // NEW: Log to central audit system
+      // Central audit log
       await auditLogService.log({
         table: 'products',
         action: movement.type === 'ADJUSTMENT' ? 'INVENTORY_ADJUSTMENT' : 
@@ -154,13 +252,12 @@ export class InventoryService {
                 movement.type === 'PURCHASE' ? 'STOCK_IN' : 'UPDATE' as any,
         entityId: movement.productId,
         oldData: { qty: currentQty },
-        newData: { qty: currentQty + movement.quantity },
-        details: movement.notes || `Inventory ${movement.type}: ${movement.quantity}`,
+        newData: { qty: newQty },
+        details: movement.notes || `Inventory ${movement.type}: ${actualChange}`,
         userId: movement.userId
       });
       
-      // Update the product stock
-      const newQty = currentQty + movement.quantity;
+      // Update product record
       await db.products.update(movement.productId, {
         StockQuantity: newQty,
         stock: newQty,
@@ -173,10 +270,7 @@ export class InventoryService {
       const warehouseId = movement.warehouseId || 'WH-MAIN';
       const productId = movement.productId;
 
-      if (!warehouseId || !productId || typeof warehouseId !== 'string' || typeof productId !== 'string') {
-        console.warn("Skipping warehouse stock update: invalid IDs", { warehouseId, productId });
-        return;
-      }
+      if (!warehouseId || !productId) return;
 
       try {
         const warehouseStock = await db.warehouseStock
@@ -185,23 +279,25 @@ export class InventoryService {
           .first();
 
         if (warehouseStock) {
-          warehouseStock.quantity += movement.quantity;
-          await db.warehouseStock.put(warehouseStock);
+          const wNewQty = Math.max(0, warehouseStock.quantity + actualChange);
+          await db.warehouseStock.update(warehouseStock.id, { 
+            quantity: wNewQty,
+            lastUpdated: now
+          });
         } else {
           await db.warehouseStock.add({
             id: db.generateId('WHS'),
             warehouseId: warehouseId,
             productId: productId,
-            quantity: movement.quantity,
-            lastUpdated: new Date().toISOString()
+            quantity: Math.max(0, actualChange),
+            lastUpdated: now
           });
         }
       } catch (err) {
-        console.error("❌ Warehouse stock update failed:", err);
+        console.warn("InventoryService: Warehouse update swallowed error:", err);
       }
     } catch (error) {
-      console.error("Error recording movement:", error);
-      throw error;
+      console.error("InventoryService.recordMovement: Critical error:", error);
     }
   }
 

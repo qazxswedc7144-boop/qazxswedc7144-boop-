@@ -1,5 +1,5 @@
 
-import { PurchaseRepository } from '../repositories/PurchaseRepository';
+import { PurchaseRepository } from './repositories/PurchaseRepository';
 import { Purchase } from '../types';
 import { transactionOrchestrator } from './transactionOrchestrator';
 

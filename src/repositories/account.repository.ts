@@ -78,11 +78,22 @@ export const AccountRepository = {
       throw new Error(`قيد غير متزن: إجمالي المدين (${totalDebit}) لا يساوي إجمالي الدائن (${totalCredit}) للفاتورة #${entry.sourceId}`);
     }
 
-    const { error: entryError } = await supabase
-      .from('journal_entries')
-      .insert(entry);
-    
-    if (entryError) throw new Error(`Failed to add journal entry: ${entryError.message}`);
+    try {
+      const { error: entryError } = await supabase
+        .from('journal_entries')
+        .insert(entry);
+      
+      if (entryError) {
+        console.error('Supabase error detailed:', entryError);
+        throw new Error(`Failed to add journal entry: [${entryError.code}] ${entryError.message}`);
+      }
+    } catch (err: any) {
+      console.error('CRITICAL: Supabase connection/fetch error:', err);
+      if (err.message?.includes('Failed to fetch')) {
+        throw new Error(`خطأ في الاتصال بالسيرفر السحابي (Supabase): ${err.message}. يرجى التأكد من أن رابط Supabase صحيح ومتاح.`);
+      }
+      throw err;
+    }
     
     // Update account balances
     for (const line of entry.lines) {

@@ -14,7 +14,22 @@ export interface ParsedInvoice {
   }[];
 }
 
+let lastAICall = 0;
+
 export async function parseInvoice(text: string): Promise<ParsedInvoice> {
+  const now = Date.now();
+
+  if (now - lastAICall < 3000) {
+    console.warn("⛔ تم منع استدعاء AI (Rate Limit Protection)");
+    throw new Error("Rate limited locally");
+  }
+
+  lastAICall = now;
+
+  if (!text || text.trim().length < 10) {
+    throw new Error("نص الفاتورة غير كافي");
+  }
+
   try {
     const prompt = `استخرج بيانات الفاتورة التالية وقم بإرجاعها ككائن JSON فقط بالشكل التالي:
 {

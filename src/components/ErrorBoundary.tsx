@@ -1,5 +1,5 @@
 import React, { ErrorInfo, ReactNode } from 'react';
-import { Card, Button } from './SharedUI';
+import { Card, Button } from '@/components/SharedUI';
 
 interface Props {
   children?: ReactNode;

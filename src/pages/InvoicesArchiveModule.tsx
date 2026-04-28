@@ -1,8 +1,8 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { InvoiceRepository } from '../repositories/invoice.repository';
-import { AdjustmentRepository } from '../repositories/AdjustmentRepository';
-import { SupplierRepository } from '../repositories/SupplierRepository';
+import { InvoiceRepository } from '../services/repositories/invoice.repository';
+import { AdjustmentRepository } from '../services/repositories/AdjustmentRepository';
+import { SupplierRepository } from '../services/repositories/SupplierRepository';
 import { useUI } from '../store/AppContext';
 import { useAppStore } from '../store/useAppStore';
 import { Card, Badge, Button, Modal } from '../components/SharedUI';

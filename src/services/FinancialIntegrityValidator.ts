@@ -2,8 +2,8 @@
 import { db } from '../lib/database';
 import { ValidationError, AccountingError, InvoiceItem } from '../types';
 import { AccountStatementRepository } from '../repositories/AccountStatementRepository';
-import { SupplierRepository } from '../repositories/SupplierRepository';
-import { InvoiceRepository } from '../repositories/invoice.repository';
+import { SupplierRepository } from './repositories/SupplierRepository';
+import { InvoiceRepository } from './repositories/invoice.repository';
 
 /**
  * FinancialIntegrityValidator - حارس النزاهة المالية السيادي

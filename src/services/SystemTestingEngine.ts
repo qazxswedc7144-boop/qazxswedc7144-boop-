@@ -1,7 +1,7 @@
 
 import { db } from '../lib/database';
 import { AccountingEngine } from './AccountingEngine';
-import { FIFOEngine } from './FIFOEngine';
+import { FIFOEngine } from '@/core/engines/fifoEngine';
 import { InventoryService } from './InventoryService';
 import { transactionOrchestrator } from './transactionOrchestrator';
 import { authService } from './auth.service';

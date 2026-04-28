@@ -29,41 +29,60 @@ import {
   ChevronLeft, LogOut, Clock
 } from 'lucide-react';
 
+// Helper for retrying dynamic imports
+const lazyWithRetry = (componentImport: () => Promise<any>) =>
+  lazy(async () => {
+    const pageHasBeenForceRefreshed = JSON.parse(
+      window.sessionStorage.getItem('page-has-been-force-refreshed') || 'false'
+    );
+
+    try {
+      return await componentImport();
+    } catch (error) {
+      if (!pageHasBeenForceRefreshed) {
+        window.sessionStorage.setItem('page-has-been-force-refreshed', 'true');
+        return window.location.reload();
+      }
+      console.error('Lazy loading failed after retry:', error);
+      throw error;
+    }
+  });
+
 // Lazy loading views
 import PurchasesInvoice from './pages/PurchasesInvoice';
 import SalesModuleStatic from './pages/SalesModule';
 const SalesModule = SalesModuleStatic;
 const PurchasesView = PurchasesInvoice;
-const InventoryModule = lazy(() => import('./pages/InventoryModule'));
-const InventoryAuditModule = lazy(() => import('./pages/InventoryAuditModule'));
-const AuditHistoryModule = lazy(() => import('./pages/AuditHistoryModule')); 
-const SettingsModule = lazy(() => import('./pages/SettingsModule'));
-const AccountingModule = lazy(() => import('./pages/AccountingModule'));
-const ReconciliationModule = lazy(() => import('./pages/ReconciliationModule'));
-const SystemHealthModule = lazy(() => import('./pages/SystemHealthModule'));
-const InvoicesArchiveModule = lazy(() => import('./pages/InvoicesArchiveModule'));
-const InvoiceHistoryModule = lazy(() => import('./pages/InvoiceHistoryModule'));
-const AdjustmentsArchiveModule = lazy(() => import('./pages/AdjustmentsArchiveModule'));
-const SupplierPaymentModule = lazy(() => import('./pages/SupplierPaymentModule'));
-const CustomerReceiptModule = lazy(() => import('./pages/CustomerReceiptModule'));
-const VouchersModule = lazy(() => import('./pages/VouchersModule'));
-const AgingReportModule = lazy(() => import('./pages/AgingReportModule'));
-const FinancialDashboard = lazy(() => import('./pages/FinancialDashboard'));
-const ReportsModule = lazy(() => import('./pages/ReportsModule'));
-const AdvancedReportsModule = lazy(() => import('./pages/AdvancedReportsModule'));
+const InventoryModule = lazyWithRetry(() => import('./pages/InventoryModule'));
+const InventoryAuditModule = lazyWithRetry(() => import('./pages/InventoryAuditModule'));
+const AuditHistoryModule = lazyWithRetry(() => import('./pages/AuditHistoryModule')); 
+const SettingsModule = lazyWithRetry(() => import('./pages/SettingsModule'));
+const AccountingModule = lazyWithRetry(() => import('./pages/AccountingModule'));
+const ReconciliationModule = lazyWithRetry(() => import('./pages/ReconciliationModule'));
+const SystemHealthModule = lazyWithRetry(() => import('./pages/SystemHealthModule'));
+const InvoicesArchiveModule = lazyWithRetry(() => import('./pages/InvoicesArchiveModule'));
+const InvoiceHistoryModule = lazyWithRetry(() => import('./pages/InvoiceHistoryModule'));
+const AdjustmentsArchiveModule = lazyWithRetry(() => import('./pages/AdjustmentsArchiveModule'));
+const SupplierPaymentModule = lazyWithRetry(() => import('./pages/SupplierPaymentModule'));
+const CustomerReceiptModule = lazyWithRetry(() => import('./pages/CustomerReceiptModule'));
+const VouchersModule = lazyWithRetry(() => import('./pages/VouchersModule'));
+const AgingReportModule = lazyWithRetry(() => import('./pages/AgingReportModule'));
+const FinancialDashboard = lazyWithRetry(() => import('./pages/FinancialDashboard'));
+const ReportsModule = lazyWithRetry(() => import('./pages/ReportsModule'));
+const AdvancedReportsModule = lazyWithRetry(() => import('./pages/AdvancedReportsModule'));
 
 // Lazy loading individual reports
-const RemainingStockReport = lazy(() => import('./pages/RemainingStockReport'));
-const ItemProfitsReport = lazy(() => import('./pages/ItemProfitsReport'));
-const CustomerProfitReport = lazy(() => import('./pages/CustomerProfitReport'));
-const SupplierProfitReport = lazy(() => import('./pages/SupplierProfitReport'));
-const AccountMovementReport = lazy(() => import('./pages/AccountMovementReport'));
-const PurchasesByItemReport = lazy(() => import('./pages/PurchasesByItemReport'));
-const SalesByItemReport = lazy(() => import('./pages/SalesByItemReport'));
-const ItemMovementDetailsReport = lazy(() => import('./pages/ItemMovementDetailsReport'));
-const ExpiryItemsReport = lazy(() => import('./pages/ExpiryItemsReport'));
-const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'));
-const TermsOfService = lazy(() => import('./pages/TermsOfService'));
+const RemainingStockReport = lazyWithRetry(() => import('./pages/RemainingStockReport'));
+const ItemProfitsReport = lazyWithRetry(() => import('./pages/ItemProfitsReport'));
+const CustomerProfitReport = lazyWithRetry(() => import('./pages/CustomerProfitReport'));
+const SupplierProfitReport = lazyWithRetry(() => import('./pages/SupplierProfitReport'));
+const AccountMovementReport = lazyWithRetry(() => import('./pages/AccountMovementReport'));
+const PurchasesByItemReport = lazyWithRetry(() => import('./pages/PurchasesByItemReport'));
+const SalesByItemReport = lazyWithRetry(() => import('./pages/SalesByItemReport'));
+const ItemMovementDetailsReport = lazyWithRetry(() => import('./pages/ItemMovementDetailsReport'));
+const ExpiryItemsReport = lazyWithRetry(() => import('./pages/ExpiryItemsReport'));
+const PrivacyPolicy = lazyWithRetry(() => import('./pages/PrivacyPolicy'));
+const TermsOfService = lazyWithRetry(() => import('./pages/TermsOfService'));
 
 import { useAuth } from './hooks/useAuth';
 import { can } from './lib/permissions';

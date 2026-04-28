@@ -2,10 +2,10 @@
 import { ValidationError, AccountingError, InventoryError, AccountingEntry, Product, ValidationRule } from '../types';
 import { db } from '../lib/database';
 import { periodService } from './period.service';
-import { PurchaseRepository } from '../repositories/PurchaseRepository';
-import { SalesRepository } from '../repositories/SalesRepository';
-import { PriceHistoryRepository } from '../repositories/PriceHistoryRepository';
-import { InvoiceRepository } from '../repositories/invoice.repository';
+import { PurchaseRepository } from './repositories/PurchaseRepository';
+import { SalesRepository } from './repositories/SalesRepository';
+import { PriceHistoryRepository } from './repositories/PriceHistoryRepository';
+import { InvoiceRepository } from './repositories/invoice.repository';
 import { useAppStore } from '../store/useAppStore';
 
 /**

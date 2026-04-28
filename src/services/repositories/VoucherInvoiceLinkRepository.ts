@@ -1,7 +1,7 @@
 
-import { db } from '../lib/database';
-import { VoucherInvoiceLink } from '../types';
-import { authService } from '../services/auth.service';
+import { db } from '../../lib/database';
+import { VoucherInvoiceLink } from '../../types';
+import { authService } from '../../services/auth.service';
 
 /**
  * Voucher Invoice Link Repository - محرك ربط السدادات بالفواتير (Phase 11 Update)

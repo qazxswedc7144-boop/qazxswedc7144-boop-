@@ -1,6 +1,6 @@
 
-import { supabase, TABLE_NAMES } from '../lib/supabase';
-import { Supplier, SupplierLedgerEntry, PurchaseRecord, PartnerLedgerEntry } from '../types';
+import { supabase, TABLE_NAMES } from '../../lib/supabase';
+import { Supplier, SupplierLedgerEntry, PurchaseRecord, PartnerLedgerEntry } from '../../types';
 
 export const SupplierRepository = {
   getSuppliers: async (): Promise<Supplier[]> => {

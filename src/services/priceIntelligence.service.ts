@@ -1,7 +1,7 @@
 
 import { db } from '../lib/database';
 import { InvoiceItem, ItemUsageLog } from '../types';
-import { PriceHistoryRepository } from '../repositories/PriceHistoryRepository';
+import { PriceHistoryRepository } from './repositories/PriceHistoryRepository';
 
 const PRICE_CACHE = new Map<string, { result: any, timestamp: number }>();
 const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes

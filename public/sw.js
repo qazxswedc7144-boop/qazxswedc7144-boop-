@@ -1,5 +1,5 @@
 
-const CACHE_NAME = 'pharmaflow-v4-offline-persistence';
+const CACHE_NAME = 'pharmaflow-v5-offline-persistence';
 const OFFLINE_URL = '/index.html';
 
 const ASSETS = [

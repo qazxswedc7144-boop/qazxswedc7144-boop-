@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Supplier, SupplierLedgerEntry } from '../../types';
 import { db } from '../../lib/database';
-import { SupplierRepository } from '../../repositories/SupplierRepository';
+import { SupplierRepository } from '../../services/repositories/SupplierRepository';
 import { useAccounting, useUI } from '../../store/AppContext';
 import { 
   ChevronDown, ChevronUp, Phone, ArrowLeftRight, Search, Plus, ExternalLink, 

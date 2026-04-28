@@ -1,9 +1,9 @@
 
-import { supabase, TABLE_NAMES } from '../lib/supabase';
-import { Purchase, PaymentStatus } from '../types';
+import { supabase, TABLE_NAMES } from '../../lib/supabase';
+import { Purchase, PaymentStatus } from '../../types';
 import { InvoiceCounterRepository } from './InvoiceCounterRepository';
-import { priceIntelligenceService } from '../services/priceIntelligence.service';
-import { InvoiceWorkflowEngine } from '../services/InvoiceWorkflowEngine';
+import { priceIntelligenceService } from '../../services/priceIntelligence.service';
+import { InvoiceWorkflowEngine } from '../../services/InvoiceWorkflowEngine';
 
 const calculatePaymentStatus = (paid: number, total: number): PaymentStatus => {
   const p = parseFloat(paid.toFixed(2));

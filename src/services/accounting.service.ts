@@ -4,11 +4,11 @@ import { CashFlow, AccountingEntry, IntegrityReport, Sale, ReconciliationPoint, 
 import { AccountingEngine } from './AccountingEngine';
 import { dataValidator } from './dataValidator';
 import { AccountRepository } from '../repositories/account.repository';
-import { InvoiceRepository } from '../repositories/invoice.repository';
+import { InvoiceRepository } from './repositories/invoice.repository';
 import { CashFlowRepository } from '../repositories/CashFlowRepository';
-import { PurchaseRepository } from '../repositories/PurchaseRepository';
+import { PurchaseRepository } from './repositories/PurchaseRepository';
 import { FinancialTransactionRepository } from '../repositories/FinancialTransactionRepository';
-import { VoucherInvoiceLinkRepository } from '../repositories/VoucherInvoiceLinkRepository';
+import { VoucherInvoiceLinkRepository } from './repositories/VoucherInvoiceLinkRepository';
 import { reportCache } from './reportCache.service';
 import { periodService } from './period.service';
 import { authService } from './auth.service';

@@ -2,8 +2,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useAccounting, useUI } from '../store/AppContext';
 import { Purchase, Supplier } from '../types';
-import { PurchaseRepository } from '../repositories/PurchaseRepository';
-import { SupplierRepository } from '../repositories/SupplierRepository';
+import { PurchaseRepository } from '../services/repositories/PurchaseRepository';
+import { SupplierRepository } from '../services/repositories/SupplierRepository';
 import { accountingService } from '../services/accounting.service';
 import { db } from '../lib/database';
 import { Card, Button, Badge, Modal } from '../components/SharedUI';

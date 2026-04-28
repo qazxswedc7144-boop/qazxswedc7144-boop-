@@ -11,8 +11,8 @@ import {
   JournalLine
 } from '../../types';
 import { ReportEngine } from './reportEngine';
-import { SupplierRepository } from '../../repositories/SupplierRepository';
-import { InvoiceRepository } from '../../repositories/invoice.repository';
+import { SupplierRepository } from '../../services/repositories/SupplierRepository';
+import { InvoiceRepository } from '../../services/repositories/invoice.repository';
 
 export class AIInsightsEngine {
   private static isRunning = false;

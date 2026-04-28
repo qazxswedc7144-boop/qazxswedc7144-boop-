@@ -2,9 +2,9 @@
 import { db } from '../lib/database';
 import { integrityVerifier } from './integrityVerifier';
 import { InvoiceItem, SecurityError, InvoiceStatus, ValidationError, AccountingEntry, Sale, Purchase } from '../types';
-import { InvoiceRepository } from '../repositories/invoice.repository';
+import { InvoiceRepository } from './repositories/invoice.repository';
 import { AccountRepository } from '../repositories/account.repository';
-import { SupplierRepository } from '../repositories/SupplierRepository';
+import { SupplierRepository } from './repositories/SupplierRepository';
 import { ProductRepository } from '@/core/engines/ProductRepository';
 import { FinancialTransactionRepository } from '../repositories/FinancialTransactionRepository';
 import { authService } from './auth.service';
@@ -21,7 +21,7 @@ import { AIAuditEngine } from './AIAuditEngine';
 import { InventoryService } from './InventoryService';
 import { AccountingEngine } from './AccountingEngine';
 import { PeriodLockEngine } from './PeriodLockEngine';
-import { FIFOEngine } from './FIFOEngine';
+import { FIFOEngine } from '@/core/engines/fifoEngine';
 import { AIInsightsEngine } from '@/core/engines/aiInsightsEngine';
 
 export interface SaleOptions {

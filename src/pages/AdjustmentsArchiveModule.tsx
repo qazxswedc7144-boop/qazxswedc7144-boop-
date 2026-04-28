@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { AdjustmentRepository } from '../repositories/AdjustmentRepository';
+import { AdjustmentRepository } from '../services/repositories/AdjustmentRepository';
 import { useUI } from '../store/AppContext';
 import { useAppStore } from '../store/useAppStore';
 import { Card, Badge, Button } from '../components/SharedUI';

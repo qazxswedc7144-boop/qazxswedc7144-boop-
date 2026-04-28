@@ -3,8 +3,8 @@ import { db } from '../lib/database';
 import { PendingOperation, Sale } from '../types';
 import { eventBus, EVENTS } from './eventBus';
 import { logger } from './logger.service';
-import { SalesRepository } from '../repositories/SalesRepository';
-import { ErrorManager } from './errorManager';
+import { SalesRepository } from './repositories/SalesRepository';
+import { ErrorManager } from '@/services/ErrorManager';
 
 let syncTimer: any = null;
 

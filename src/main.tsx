@@ -2,8 +2,9 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
 import { AppProvider } from './store/AppContext';
-import ErrorBoundary from './components/ErrorBoundary';
+import ErrorBoundary from '@/components/ErrorBoundary';
 import { blockDirectDB, blockDexieErrors } from './core/guard';
+import './core/debug';
 
 blockDirectDB();
 blockDexieErrors();
