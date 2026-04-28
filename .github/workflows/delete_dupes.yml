@@ -1,0 +1,22 @@
+name: Remove Duplicate Files
+on: workflow_dispatch
+
+jobs:
+  remove-dupes:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Find and Delete Duplicates
+        run: |
+          find . -type f -not -path '*/.*' -exec md5sum {} + | sort | awk 'BEGIN{last=""} {if($1==last) print $2; last=$1}' | xargs -I {} rm "{}"
+          
+      - name: Commit and Push changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add .
+          git commit -m "تصفية المستودع من الملفات المكررة" || echo "لا يوجد مكررات لحذفها"
+          git push
+          
