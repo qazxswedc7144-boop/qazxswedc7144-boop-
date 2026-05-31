@@ -1,8 +1,11 @@
 {
-  "name": "PharmaFlow",
-  "description": "نظام ERP سيادي متكامل لإدارة مبيعات ومخازن الصيدليات، يعتمد على محرك مالي ورياضي محلي 100%.",
+  "name": "PharmaFlow PRO ERP",
+  "description": "Enterprise-grade ERP for pharmacies with Offline-First, encrypted local storage, AI analytics, and strict financial auditing.",
   "requestFramePermissions": [
     "camera",
     "geolocation"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
   ]
 }

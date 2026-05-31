@@ -1,0 +1,442 @@
+// prisma/schema.prisma
+
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider   = "prisma-client-js"
+  engineType = "library"
+}
+
+enum UserRole {
+  ADMIN
+  ACCOUNTANT
+  PHARMACIST
+  CASHIER
+  AUDITOR
+  INVENTORY_MANAGER
+}
+
+enum SyncStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
+enum ReservationStatus {
+  ACTIVE
+  COMPLETED
+  EXPIRED
+  CANCELLED
+}
+
+enum AuditActionType {
+  CREATE
+  UPDATE
+  DELETE
+  POST_JOURNAL
+  USER_REGISTER
+  USER_LOGIN
+}
+
+enum Role {
+  ADMIN
+  ACCOUNTANT
+  PHARMACIST
+  CASHIER
+  AUDITOR
+  INVENTORY_MANAGER
+}
+
+enum AccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  REVENUE
+  EXPENSE
+}
+
+enum InvoiceType {
+  SALE
+  PURCHASE
+  RETURN_SALE
+  RETURN_PURCHASE
+}
+
+enum InvoiceStatus {
+  DRAFT
+  PENDING
+  CONFIRMED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PAID
+  UNPAID
+  PARTIALLY_PAID
+}
+
+enum DocumentStatus {
+  ACTIVE
+  POSTED
+  ARCHIVED
+  LOCKED
+}
+
+enum MovementType {
+  STOCK_IN
+  STOCK_OUT
+  ADJUSTMENT
+  TRANSFER
+  RETURN
+}
+
+model User {
+  id           String         @id @default(uuid())
+  username     String         @unique
+  passwordHash String
+  role         Role           @default(CASHIER)
+  isActive     Boolean        @default(true)
+  version      Int            @default(0)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  auditLogs    AuditLog[]
+  sessions     Session[]
+  refreshTokens RefreshToken[]
+
+  @@map("users")
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  ipAddress String?
+  userAgent String?
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  revoked   Boolean  @default(false)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model Permission {
+  id        String   @id @default(uuid())
+  role      Role
+  action    String // "READ", "WRITE", "DELETE", "POST_JOURNAL"
+  resource  String // "INVOICES", "ACCOUNTS", "INVENTORY"
+  createdAt DateTime @default(now())
+
+  @@unique([role, action, resource])
+  @@map("permissions")
+}
+
+model Account {
+  id           String        @id @default(uuid())
+  code         String        @unique
+  name         String
+  type         AccountType
+  parentId     String?
+  parent       Account?      @relation("AccountHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children     Account[]     @relation("AccountHierarchy")
+  isSystem     Boolean       @default(false)
+  balance      Decimal       @default(0.00) @db.Decimal(18, 4)
+  version      Int           @default(0)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  journalLines JournalLine[]
+
+  @@index([parentId])
+  @@map("accounts")
+}
+
+model JournalEntry {
+  id          String        @id @default(uuid())
+  date        DateTime      @default(now())
+  sourceId    String? // e.g. Link to Invoice ID
+  sourceType  String? // "INVOICE", "VOUCHER", "MANUAL"
+  referenceId String? // Invoice/receipt reference number
+  status      String        @default("DRAFT") // DRAFT, POSTED, REVERSED
+  description String?
+  debitTotal  Decimal       @default(0.00) @db.Decimal(18, 4)
+  creditTotal Decimal       @default(0.00) @db.Decimal(18, 4)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  lines       JournalLine[]
+
+  @@index([sourceId, sourceType])
+  @@index([date])
+  @@map("journal_entries")
+}
+
+model JournalLine {
+  id          String       @id @default(uuid())
+  entryId     String
+  entry       JournalEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  accountId   String
+  account     Account      @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  debit       Decimal      @default(0.00) @db.Decimal(18, 4)
+  credit      Decimal      @default(0.00) @db.Decimal(18, 4)
+  description String?
+  createdAt   DateTime     @default(now())
+
+  @@index([entryId])
+  @@index([accountId])
+  @@map("journal_lines")
+}
+
+model Product {
+  id                 String              @id @default(uuid())
+  name               String
+  barcode            String?             @unique
+  sku                String?             @unique
+  description        String?
+  price              Decimal             @default(0.00) @db.Decimal(18, 4)
+  cost               Decimal             @default(0.00) @db.Decimal(18, 4)
+  stockQuantity      Int                 @default(0)
+  version            Int                 @default(0)
+  isSystem           Boolean             @default(false)
+  isActive           Boolean             @default(true)
+  deletedAt          DateTime?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  invoiceItems       InvoiceItem[]
+  inventoryBatches   InventoryBatch[]
+  inventoryMovements InventoryMovement[]
+  reservations       Reservation[]
+
+  @@index([deletedAt])
+  @@index([createdAt])
+  @@map("products")
+}
+
+model Customer {
+  id        String   @id @default(uuid())
+  name      String
+  phone     String?
+  email     String?
+  balance   Decimal  @default(0.00) @db.Decimal(18, 4)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("customers")
+}
+
+model Supplier {
+  id        String   @id @default(uuid())
+  name      String
+  phone     String?
+  email     String?
+  balance   Decimal  @default(0.00) @db.Decimal(18, 4)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("suppliers")
+}
+
+model Invoice {
+  id             String         @id @default(uuid())
+  invoiceNumber  String         @unique
+  date           DateTime       @default(now())
+  type           InvoiceType
+  partnerId      String? // References Customer or Supplier uuid
+  partnerType    String? // "CUSTOMER" or "SUPPLIER"
+  totalAmount    Decimal        @default(0.00) @db.Decimal(18, 4)
+  status         InvoiceStatus  @default(DRAFT)
+  paymentStatus  PaymentStatus  @default(UNPAID)
+  documentStatus DocumentStatus @default(ACTIVE)
+  isSynced       Boolean        @default(false)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  items          InvoiceItem[]
+
+  @@index([date])
+  @@index([partnerId])
+  @@index([createdAt])
+  @@map("invoices")
+}
+
+model InvoiceItem {
+  id         String   @id @default(uuid())
+  invoiceId  String
+  invoice    Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
+  qty        Int
+  price      Decimal  @db.Decimal(18, 4)
+  cost       Decimal  @db.Decimal(18, 4)
+  total      Decimal  @db.Decimal(18, 4)
+  expiryDate DateTime?
+  note       String?
+  category   String?
+  createdAt  DateTime @default(now())
+
+  @@index([invoiceId])
+  @@index([productId])
+  @@map("invoice_items")
+}
+
+model InventoryBatch {
+  id                 String              @id @default(uuid())
+  productId          String
+  product            Product             @relation(fields: [productId], references: [id], onDelete: Restrict)
+  batchNumber        String
+  initialQty         Int
+  stockQuantity      Int
+  cost               Decimal             @db.Decimal(18, 4)
+  expiryDate         DateTime?
+  version            Int                 @default(0)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  inventoryMovements InventoryMovement[]
+  reservations       Reservation[]
+
+  @@unique([productId, batchNumber])
+  @@index([expiryDate])
+  @@index([batchNumber])
+  @@index([createdAt])
+  @@map("inventory_batches")
+}
+
+model InventoryMovement {
+  id            String          @id @default(uuid())
+  productId     String
+  product       Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
+  batchId       String?
+  batch         InventoryBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  qty           Int // Positive for additions, negative for reductions
+  type          MovementType
+  referenceId   String? // Document ID triggering this
+  referenceType String? // "INVOICE", "ADJUSTMENT", "TRANSFER"
+  reason        String?
+  previousStock Int
+  currentStock  Int
+  createdAt     DateTime        @default(now())
+
+  @@index([productId])
+  @@index([batchId])
+  @@index([createdAt])
+  @@map("inventory_movements")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  timestamp  DateTime @default(now())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action     String // "CREATE", "UPDATE", "DELETE", "POST_JOURNAL"
+  entity     String // "Account", "Invoice", "Product"
+  entityId   String
+  before     String?  @db.Text // JSON string state
+  after      String?  @db.Text // JSON string state
+  ipAddress  String?
+  requestId  String?
+  createdAt  DateTime @default(now())
+
+  @@index([timestamp])
+  @@index([userId])
+  @@index([entity, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model IdempotencyKey {
+  id             String    @id @default(uuid())
+  key            String    @unique
+  requestHash    String
+  endpoint       String
+  requestMethod  String
+  userId         String?
+  responseBody   Json?
+  responseStatus Int?
+  processing     Boolean   @default(false)
+  lockedAt       DateTime?
+  expiresAt      DateTime
+  createdAt      DateTime  @default(now())
+
+  @@index([key])
+  @@index([expiresAt])
+  @@index([createdAt])
+  @@map("idempotency_keys")
+}
+
+model SyncQueue {
+  id         String     @id @default(uuid())
+  syncStatus SyncStatus @default(PENDING)
+  payload    Json
+  entityType String
+  entityId   String
+  action     String
+  attempts   Int        @default(0)
+  lastError  String?    @db.Text
+  version    Int        @default(1)
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  @@index([syncStatus])
+  @@index([createdAt])
+  @@map("sync_queue")
+}
+
+model SyncEvent {
+  id          String   @id @default(uuid())
+  eventId     String   @unique @default(uuid())
+  sequence    BigInt   @unique @default(autoincrement())
+  clientTime  DateTime
+  serverTime  DateTime @default(now())
+  userId      String?
+  deviceId    String?
+  eventType   String
+  entityType  String
+  entityId    String
+  payload     Json
+  vectorClock Json?    // for vector-ready event ordering
+  checksum    String?  // for data integrity check
+  createdAt   DateTime @default(now())
+
+  @@index([eventId])
+  @@index([sequence])
+  @@index([createdAt])
+  @@map("sync_events")
+}
+
+model Reservation {
+  id            String            @id @default(uuid())
+  reservationId String            @unique @default(uuid())
+  productId     String
+  product       Product           @relation(fields: [productId], references: [id], onDelete: Restrict)
+  batchId       String?
+  batch         InventoryBatch?   @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  quantity      Int
+  status        ReservationStatus @default(ACTIVE)
+  userId        String?
+  expiresAt     DateTime
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  @@index([reservationId])
+  @@index([status])
+  @@index([expiresAt])
+  @@index([createdAt])
+  @@map("reservations")
+}
+
+

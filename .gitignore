@@ -1,8 +1,11 @@
 node_modules
-build
 dist
+.git
 .env
+.env.*
+!.env.example
 .idx
 cache
 config
 *.log
+.eslintcache

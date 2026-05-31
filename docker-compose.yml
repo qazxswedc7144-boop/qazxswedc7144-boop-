@@ -1,0 +1,64 @@
+# docker-compose.yml
+version: "3.8"
+
+services:
+  # 1. Authoritative PostgreSQL Database Service
+  postgres:
+    image: postgres:15-alpine
+    container_name: pharmaflow_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: pharmaadmin
+      POSTGRES_PASSWORD: SecretSecurePassword2026!
+      POSTGRES_DB: pharmaflow_erp
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pharmaadmin -d pharmaflow_erp"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 2. Redis Cache & Job Queue Service
+  redis:
+    image: redis:7-alpine
+    container_name: pharmaflow_redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 3. Enterprise ERP Server Application
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: pharmaflow_app
+    restart: always
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DATABASE_URL=postgresql://pharmaadmin:SecretSecurePassword2026!@postgres:5432/pharmaflow_erp?schema=public
+      - JWT_SECRET=ProductionSuperSecretKey_2026_ChangeMeInProduction
+      - ENCRYPTION_KEY=pharmaflow-fallback-secure-master-key-gcm-sha256-2026
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local

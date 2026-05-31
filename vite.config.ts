@@ -1,0 +1,45 @@
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+export default defineConfig(({ mode }) => {
+    return {
+      server: {
+        port: 3000,
+        host: '0.0.0.0',
+        hmr: false,
+      },
+      plugins: [react(), tailwindcss()],
+      base: '/',
+      define: {
+        'process.env.GEMINI_API_KEY': JSON.stringify(process.env.GEMINI_API_KEY || "")
+      },
+      assetsInclude: ['**/*.png', '**/*.jpg', '**/*.svg', '**/*.PNG', '**/*.JPG', '**/*.JPEG', '**/*.jpeg'],
+      resolve: {
+        alias: {
+          '@': path.resolve(__dirname, 'src')
+        }
+      },
+      build: {
+        outDir: 'dist',
+        emptyOutDir: true,
+        sourcemap: true,
+        rollupOptions: {
+          output: {
+            manualChunks: {
+              'vendor': ['react', 'react-dom', 'react-router-dom'],
+              'financial-core': ['dexie', 'zustand'],
+              'analysis-engine': ['recharts', 'chart.js'],
+              'ui-lib': ['motion', 'lucide-react']
+            }
+          }
+        },
+        chunkSizeWarningLimit: 1000
+      }
+    };
+});

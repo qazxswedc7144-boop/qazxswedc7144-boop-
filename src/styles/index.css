@@ -1,0 +1,127 @@
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-cairo: "Cairo", sans-serif;
+}
+
+/* Global UI Overrides for PharmaFlow Pro ERP */
+
+@layer base {
+  html, body, #root {
+    width: 100%;
+    height: 100%;
+    overflow-x: hidden;
+    scroll-behavior: smooth;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+  body {
+    background-color: #f8fafc;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    overscroll-behavior: none;
+  }
+  input, select, textarea {
+    font-size: 16px !important; /* Prevents auto-zoom on mobile focus */
+    min-width: 0;
+  }
+  html {
+    font-family: "Cairo", sans-serif;
+  }
+  body {
+    @apply antialiased text-slate-800 bg-slate-50 font-medium;
+  }
+
+  /* Hide default calendar icon in date inputs */
+  input[type="date"]::-webkit-calendar-picker-indicator {
+    display: none;
+    -webkit-appearance: none;
+  }
+}
+
+.animate-spin-slow {
+  animation: spin 3s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Custom scrollbars */
+.custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    @apply bg-slate-200 rounded-full;
+}
+
+/* Systemic Enterprise Typography Override */
+
+th, thead th {
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  color: #64748b !important; /* text-slate-500 */
+  padding: 14px 16px !important;
+}
+
+td, tbody td {
+  font-size: 16px !important;
+  font-weight: 500 !important;
+  color: #1e293b !important; /* text-slate-800 */
+  padding: 14px 16px !important;
+}
+
+/* Label styling */
+label {
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  color: #64748b !important;
+}
+
+/* Large dashboard indicator styles */
+.dashboard-stat-title {
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  color: #64748b !important;
+}
+
+.dashboard-stat-value {
+  font-size: 24px !important;
+  font-weight: 700 !important;
+  color: #1E4D4D !important;
+}
+
+/* Responsive layout for all screen sizes */
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+}
+
+.container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 1rem;
+  max-width: 100%;
+}
+
+@media (max-width: 640px) {
+  .container {
+    padding: 0.5rem;
+  }
+  .header, .buttons {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
