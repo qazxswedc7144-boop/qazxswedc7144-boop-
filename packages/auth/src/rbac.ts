@@ -9,7 +9,12 @@ export type Permission =
   | 'stock.adjust'
   | 'journal.view'
   | 'audit.view'
-  | 'user.manage';
+  | 'user.manage'
+  | 'branch.view'
+  | 'branch.create'
+  | 'branch.edit'
+  | 'branch.transfer'
+  | 'branch.report';
 
 export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   ADMIN: [
@@ -20,26 +25,40 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'journal.view',
     'audit.view',
     'user.manage',
+    'branch.view',
+    'branch.create',
+    'branch.edit',
+    'branch.transfer',
+    'branch.report',
   ],
   ACCOUNTANT: [
     'invoice.create',
     'invoice.approve',
     'invoice.post',
     'journal.view',
+    'branch.view',
+    'branch.report',
   ],
   PHARMACIST: [
     'invoice.create',
     'stock.adjust',
+    'branch.view',
+    'branch.transfer',
   ],
   CASHIER: [
     'invoice.create',
+    'branch.view',
   ],
   AUDITOR: [
     'journal.view',
     'audit.view',
+    'branch.view',
+    'branch.report',
   ],
   INVENTORY_MANAGER: [
     'stock.adjust',
+    'branch.view',
+    'branch.transfer',
   ],
 };
 

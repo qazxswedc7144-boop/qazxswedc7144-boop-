@@ -1,6 +1,7 @@
 import { db } from '@/core/db';
 import { processTransaction } from '@/services/transactions/TransactionEngine';
 import { safeWhereEqual } from '@/utils/dexieSafe';
+import { NotificationService } from '@/context/NotificationContext';
 
 let isProcessing = false
 
@@ -114,7 +115,7 @@ export const safeProcessTransaction = async (type: string, data: any) => {
       isSynced: false
     })
 
-    alert(e.message)
+    NotificationService.error(e.message);
     throw e;
   } finally {
     unlock()

@@ -3,6 +3,7 @@ import { db } from '@/core/db';
 import { authService } from '@/modules/auth/services/authService';
 import { useAppStore } from '@/hooks/useAppStore';
 import { SystemErrorLog } from '@/types';
+import { NotificationService } from '@/context/NotificationContext';
 
 export class ErrorManager {
   /**
@@ -58,7 +59,7 @@ export class ErrorManager {
     db.addAuditLog('SYSTEM', 'OTHER', context, error.message || "حدث خطأ غير معروف");
     
     if (error.message?.includes("QuotaExceededError")) {
-       alert("تنبيه: مساحة تخزين المتصفح ممتلئة. يرجى حذف بعض البيانات القديمة.");
+       NotificationService.warning("تنبيه: مساحة تخزين المتصفح ممتلئة. يرجى حذف بعض البيانات القديمة.");
     }
   }
 }

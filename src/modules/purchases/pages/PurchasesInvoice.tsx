@@ -14,6 +14,9 @@ import { useUI } from '@/contexts/AppContext';
 import { CameraModule } from '@/modules/shared/pages/CameraModule';
 import { DocumentViewer } from '@/components/shared/DocumentViewer';
 import { AnimatedNumber } from '@/components/shared/AnimatedNumber';
+import { PullToRefresh } from '@/components/shared/PullToRefresh';
+import { SupplierBalanceAlert } from '../components/SupplierBalanceAlert';
+import { InvoiceItemEditModal } from '@/components/shared/InvoiceItemEditModal';
 
 const formatDateDisplay = (dateStr: string) => {
   if (!dateStr) return '';
@@ -88,10 +91,13 @@ const InvoiceItemRow = React.memo(({
 ));
 
 const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => void }> = ({ onNavigate }) => {
-  const { addToast } = useUI();
+  const { addToast, refreshGlobal } = useUI();
   const [isAddItemModalOpen, setIsAddItemModalOpen] = React.useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [editingItem, setEditingItem] = React.useState<any | null>(null);
+  const [supplierBalance, setSupplierBalance] = React.useState<number>(0);
+  const [showAlert, setShowAlert] = React.useState<boolean>(false);
+  const [isEditModalOpen, setIsEditModalOpen] = React.useState<boolean>(false);
 
   const {
     items, setItems,
@@ -103,11 +109,6 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
     adjData, setAdjData,
     selectedProduct, setSelectedProduct,
     manualItemName, setManualItemName,
-    setTempQty,
-    setTempPrice,
-    setTempExpiry,
-    setTempNote,
-    setManualCategoryName,
     showSearchDropdown, setShowSearchDropdown,
     invNumInputRef,
     itemNameInputRef,
@@ -145,6 +146,20 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
     applyAIParsedData,
     resetInvoiceState
   } = usePurchases(onNavigate);
+
+  // Hook to show a supplier's balance when selected
+  React.useEffect(() => {
+    if (header?.supplier_id) {
+      db.table('suppliers').get(header.supplier_id).then((sup: any) => {
+        if (sup && typeof sup.balance === 'number') {
+          setSupplierBalance(sup.balance);
+          setShowAlert(true);
+        }
+      }).catch(err => console.error("Error fetching supplier balance:", err));
+    } else {
+      setShowAlert(false);
+    }
+  }, [header?.supplier_id]);
 
   // Navigation Guard: Browser Refresh/Close
   React.useEffect(() => {
@@ -212,26 +227,40 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
     }
   };
 
-  const handleRowClick = React.useCallback(async (item: any) => {
+  const handleRowClick = React.useCallback((item: any) => {
     if (isLocked) return;
 
-    setManualItemName(item.name);
-    setTempQty(item.qty);
-    setTempPrice(item.price);
-    setTempExpiry(item.expiryDate || '');
-    setTempNote(item.note || item.notes || '');
-    setManualCategoryName(item.category || '');
+    setEditingItem({
+      id: item.id,
+      name: item.name,
+      qty: item.qty,
+      price: item.price,
+      expiryDate: item.expiryDate || '',
+      category: item.category || '',
+      notes: item.note || item.notes || ''
+    });
+    setIsEditModalOpen(true);
+  }, [isLocked]);
 
-    if (item.product_id) {
-      const prod = await db.products.get(item.product_id);
-      if (prod) {
-        setSelectedProduct(prod);
+  const handleSaveModalData = React.useCallback((updatedItem: any) => {
+    setItems((prev: any[]) => prev.map(i => {
+      if (i.id === updatedItem.id) {
+        return {
+          ...i,
+          name: updatedItem.name,
+          qty: updatedItem.qty,
+          price: updatedItem.price,
+          expiryDate: updatedItem.expiryDate,
+          note: updatedItem.notes,
+          notes: updatedItem.notes,
+          sum: updatedItem.qty * updatedItem.price
+        };
       }
-    }
-
-    setEditingItem(item);
-    setIsAddItemModalOpen(true);
-  }, [isLocked, setManualItemName, setTempQty, setTempPrice, setTempExpiry, setTempNote, setManualCategoryName, setSelectedProduct, setIsAddItemModalOpen]);
+      return i;
+    }));
+    setIsEditModalOpen(false);
+    setEditingItem(null);
+  }, [setItems]);
 
   const handleSaveInvoice = () => {
     // Auto-Fix: Generate temporary invoice number if empty
@@ -403,8 +432,8 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
             </div>
           </div>
           
-          <div className="flex border-b border-slate-100 flex-row gap-4 px-3 py-2 bg-white">
-            <div className="basis-1/4 relative min-w-[120px]">
+          <div className="flex border-b border-slate-100 flex-row gap-[2%] px-3 py-2 bg-white">
+            <div className="basis-[25%] relative">
               <input 
                 type="text"
                 inputMode="numeric"
@@ -415,7 +444,7 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
                 className="w-full h-10 border-b border-gray-400 focus:outline-none focus:border-green-500 rounded-none text-black text-right placeholder-gray-400 bg-transparent"
               />
             </div>
-            <div className="basis-3/4 relative min-w-[180px] flex items-center">
+            <div className="basis-[73%] relative flex items-center">
               <textarea 
                 placeholder="ملاحظات الفاتورة..."
                 value={header.notes || ''}
@@ -523,7 +552,7 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
       </div>
 
       {/* ITEMS LIST SECTION - SIMPLE LIST */}
-      <div className="flex-1 overflow-y-auto bg-white pb-32">
+      <PullToRefresh onRefresh={async () => { await refreshGlobal(); }} className="flex-1 overflow-y-auto bg-white pb-32">
         <div className="sticky top-0 bg-white/90 backdrop-blur-sm z-10 border-b border-slate-50 flex items-center px-4 py-2">
           <span className="flex-[2] text-[11px] font-black text-slate-400 uppercase tracking-widest">الصنف</span>
           <span className="flex-1 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">الكمية</span>
@@ -554,7 +583,7 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
             </div>
           )}
         </div>
-      </div>
+      </PullToRefresh>
 
       {/* FIXED FOOTER SECTION */}
       <div className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 p-2 shadow-lg space-y-2">
@@ -799,6 +828,27 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
           </div>
         </div>
       </Modal>
+
+      {/* Supplier balance alert */}
+      <SupplierBalanceAlert 
+        balance={supplierBalance}
+        currency={currency || "YER"}
+        isVisible={showAlert}
+        onClose={() => setShowAlert(false)}
+      />
+
+      {/* Item edit modal */}
+      <InvoiceItemEditModal 
+        isOpen={isEditModalOpen}
+        item={editingItem}
+        mode="purchase"
+        currency={currency || "YER"}
+        onSave={handleSaveModalData}
+        onClose={() => {
+          setIsEditModalOpen(false);
+          setEditingItem(null);
+        }}
+      />
     </div>
   );
 };

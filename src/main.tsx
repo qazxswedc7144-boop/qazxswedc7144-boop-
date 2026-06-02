@@ -3,13 +3,17 @@ import App from '@/app/App';
 import '@/styles/index.css';
 import { AppProvider } from '@/contexts/AppContext';
 import { ReportProvider } from '@/contexts/ReportContext';
+import { NotificationProvider } from '@/context/NotificationContext';
 import AppFaultBoundary from '@/shared/faults/AppFaultBoundary';
 import { SyncWorker } from '../packages/sync-engine/src/workers/sync.worker';
 
 console.log("[BOOT] Loader script starting module evaluation...");
 
 // Initiate Phase 3 Enterprise offline synchronization worker 
+import { LockService } from '@/modules/locking/lock.service';
+
 try {
+  LockService.initialize().catch(err => console.error("[LOCK MANAGER] Initialization error:", err));
   if (typeof window !== "undefined") {
     SyncWorker.getInstance().start(30000); // 30s intervals
     console.log("[SYNC ENGINE] Background mutation sync engine booted successfully.");
@@ -61,7 +65,9 @@ root.render(
     <AppFaultBoundary>
       <AppProvider>
         <ReportProvider>
-          <App />
+          <NotificationProvider>
+            <App />
+          </NotificationProvider>
         </ReportProvider>
       </AppProvider>
     </AppFaultBoundary>

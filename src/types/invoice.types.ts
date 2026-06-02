@@ -38,6 +38,7 @@ export interface UnifiedInvoice extends SyncableEntity {
   items: InvoiceItem[];
   isReturn: boolean;
   notes?: string;
+  branchId?: string;
 
   // Compatibility fields
   SaleID?: string;

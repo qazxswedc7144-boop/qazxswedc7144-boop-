@@ -15,11 +15,18 @@ import { authRouter } from "./server/routes/auth.routes";
 import { invoiceRouter } from "./server/routes/invoice.routes";
 import { accountingRouter } from "./server/routes/accounting.routes";
 import { inventoryRouter } from "./server/routes/inventory.routes";
+import { lockingRouter } from "./server/modules/locking/locking.router";
+import { consolidationRouter } from "./server/modules/consolidation/consolidation.router";
+import { replicationRouter } from "./server/modules/replication/replication.router";
+import { saasRouter } from "./server/modules/saas/saas.router";
+import { ReplicationGateway } from "./server/modules/replication/replication.gateway";
+import { ReplicationSubscriber } from "./server/modules/replication/replication.subscriber";
 import { idempotencyMiddleware } from "./server/modules/idempotency/idempotency.middleware";
 import { registerIdempotencyCleanupCron } from "./server/jobs/cleanup-idempotency.job";
 import { requestContextPlugin } from "./apps/api/src/plugins/request-context";
 import { authV1Router } from "./apps/api/src/modules/auth/auth.routes";
 import { syncV1Router } from "./apps/api/src/modules/sync/sync.routes";
+import { subscriptionGuard } from "./server/middleware/subscription.middleware";
 
 
 function killStaleProcesses(port: number) {
@@ -42,7 +49,7 @@ function killStaleProcesses(port: number) {
 
 
 async function startServer() {
-  const PORT = 3000;
+  const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
   
   // Clean up any stale processes that might be holding onto the port or 24678
   killStaleProcesses(PORT);
@@ -97,8 +104,20 @@ async function startServer() {
     res.json({ status: "ok", mode: process.env.NODE_ENV });
   });
 
+  // Top-level endpoints to support load balancer and ingress orchestrator health and readiness probes
+  app.get("/health", (_req, res) => {
+    res.json({ status: "ok", mode: process.env.NODE_ENV });
+  });
+
+  app.get("/ready", (_req, res) => {
+    res.json({ status: "ok", db_host: process.env.DATABASE_URL ? "configured" : "fallback" });
+  });
+
   // Mount Backend Security Layer
   app.use("/api/security", securityRouter);
+
+  // Mount subscription checks guard globally for all mutating APIs
+  app.use("/api", subscriptionGuard);
 
   // Mount Unified Enterprise ERP Core Modules
   app.use("/api/auth", authRouter);
@@ -107,6 +126,10 @@ async function startServer() {
   app.use("/api/invoices", invoiceRouter);
   app.use("/api/accounting", accountingRouter);
   app.use("/api/inventory", inventoryRouter);
+  app.use("/api/locks", lockingRouter);
+  app.use("/api/consolidation", consolidationRouter);
+  app.use("/api/replication", replicationRouter);
+  app.use("/api/saas", saasRouter);
 
   // Enterprise SaaS Gateway - API Keys Auth Helper
   const validateSaasApiKey = (requiredScope: string) => {
@@ -319,6 +342,14 @@ async function startServer() {
     console.log(`Server running on http://localhost:${PORT}`);
     registerIdempotencyCleanupCron();
     runBackgroundDbSync();
+    
+    // Initialize Real-Time Replication Engine
+    ReplicationGateway.init(server);
+    ReplicationSubscriber.start().then(() => {
+      console.log("[REPLICATION] Subscriber task listener successfully running.");
+    }).catch((subErr) => {
+      console.error("[REPLICATION] Failed to run subscriber:", subErr);
+    });
   });
 
   server.on("error", (errVal: any) => {

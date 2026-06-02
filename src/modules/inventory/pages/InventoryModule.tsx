@@ -16,6 +16,7 @@ import {
   ChevronRight, Box, BarChart3, Save, Users
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { PullToRefresh } from '@/components/shared/PullToRefresh';
 
 import SupplierManagement from '@/modules/accounting/components/SupplierManagement';
 
@@ -283,38 +284,40 @@ const ProductItem = React.memo(({ product, currency, onClick }: { product: Produ
 
       {/* List Area */}
       <div className="flex-1 bg-[#F8FAFA] pt-6" ref={containerRef}>
-        {isLoading ? (
-          <div className="flex flex-col items-center justify-center h-full text-slate-400 font-black gap-4">
-            <div className="w-10 h-10 border-4 border-slate-200 border-t-[#1E4D4D] rounded-full animate-spin"></div>
-            <span>جاري التحميل...</span>
-          </div>
-        ) : (
-          <List 
-            height={containerRef.current?.offsetHeight || 600} 
-            itemCount={filteredProducts.length} 
-            itemSize={120} 
-            width="100%" 
-            className="custom-scrollbar"
-            itemKey={(index) => {
-              const p = filteredProducts[index];
-              return p ? p.id : index.toString();
-            }}
-          >
-            {({ index, style }) => {
-              const prod = filteredProducts[index];
-              if (!prod) return null;
-              return (
-                <div style={style} className="px-8 py-3" key={prod.id}>
-                  <ProductItem 
-                    product={prod} 
-                    currency={currency} 
-                    onClick={() => handleProductClick(prod)}
-                  />
-                </div>
-              );
-            }}
-          </List>
-        )}
+        <PullToRefresh onRefresh={async () => { await refreshGlobal(); }} className="h-full w-full">
+          {isLoading ? (
+            <div className="flex flex-col items-center justify-center h-full text-slate-400 font-black gap-4">
+              <div className="w-10 h-10 border-4 border-slate-200 border-t-[#1E4D4D] rounded-full animate-spin"></div>
+              <span>جاري التحميل...</span>
+            </div>
+          ) : (
+            <List 
+              height={containerRef.current?.offsetHeight || 600} 
+              itemCount={filteredProducts.length} 
+              itemSize={120} 
+              width="100%" 
+              className="custom-scrollbar"
+              itemKey={(index) => {
+                const p = filteredProducts[index];
+                return p ? p.id : index.toString();
+              }}
+            >
+              {({ index, style }) => {
+                const prod = filteredProducts[index];
+                if (!prod) return null;
+                return (
+                  <div style={style} className="px-8 py-3" key={prod.id}>
+                    <ProductItem 
+                      product={prod} 
+                      currency={currency} 
+                      onClick={() => handleProductClick(prod)}
+                    />
+                  </div>
+                );
+              }}
+            </List>
+          )}
+        </PullToRefresh>
       </div>
 
       {/* Edit Modal */}

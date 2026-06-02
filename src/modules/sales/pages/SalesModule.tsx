@@ -8,13 +8,15 @@ import {
   Percent, User
 } from 'lucide-react';
 import { useSales } from '@/modules/sales/hooks/useSales';
-import { db } from '@/core/db';
 import { motion, AnimatePresence } from 'motion/react';
 import { DocumentViewer } from '@/components/shared/DocumentViewer';
 import { AnimatedNumber } from '@/components/shared/AnimatedNumber';
 
 import { SaleItemRow } from '@/modules/sales/components/SalesInvoiceUI';
 import { UnifiedModal } from '@/components/shared/UnifiedModal';
+import { useUI } from '@/contexts/AppContext';
+import { PullToRefresh } from '@/components/shared/PullToRefresh';
+import { InvoiceItemEditModal } from '@/components/shared/InvoiceItemEditModal';
 
 const formatDateDisplay = (dateStr: string) => {
   if (!dateStr) return '';
@@ -32,14 +34,15 @@ const formatDateDisplay = (dateStr: string) => {
 };
 
 const SalesModule: React.FC<{ onNavigate?: (view: any, params?: any) => void }> = ({ onNavigate }) => {
+  const { refreshGlobal } = useUI();
   const {
     items, setItems,
     manualItemName, setManualItemName,
-    tempQty, setTempQty,
-    tempPrice, setTempPrice,
+    tempQty,
+    tempPrice,
     selectedIndex, setSelectedIndex,
-    tempExpiry, setTempExpiry,
-    tempNote, setTempNote,
+    tempExpiry,
+    tempNote,
     showSearchDropdown, setShowSearchDropdown,
     isDetailModalOpen, setIsDetailModalOpen,
     isConfirmSaveOpen, setIsConfirmSaveOpen,
@@ -60,7 +63,6 @@ const SalesModule: React.FC<{ onNavigate?: (view: any, params?: any) => void }> 
     selectedProduct,
     setSelectedProduct,
     categoryName,
-    setCategoryName,
     isRecovery,
     printData,
     customerSearchTerm,
@@ -79,6 +81,7 @@ const SalesModule: React.FC<{ onNavigate?: (view: any, params?: any) => void }> 
   } = useSales(onNavigate);
 
   const [editingItem, setEditingItem] = React.useState<any | null>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = React.useState<boolean>(false);
 
   const handleAddItem = React.useCallback((item: any) => {
     const newItem = {
@@ -127,25 +130,38 @@ const SalesModule: React.FC<{ onNavigate?: (view: any, params?: any) => void }> 
     setItems(prev => prev.filter((_, i) => i !== idx));
   }, [setItems]);
 
-  const handleRowClick = React.useCallback(async (item: any) => {
-    setManualItemName(item.name);
-    setTempQty(item.qty);
-    setTempPrice(item.price);
-    setTempExpiry(item.expiryDate || '');
-    setTempNote(item.note || item.notes || '');
-    setCategoryName(item.category || '');
-    
-    // Find the product to set as selected
-    if (item.product_id) {
-      const prod = await db.products.get(item.product_id);
-      if (prod) {
-        setSelectedProduct(prod);
+  const handleRowClick = React.useCallback((item: any) => {
+    setEditingItem({
+      id: item.id,
+      name: item.name,
+      qty: item.qty,
+      price: item.price,
+      expiryDate: item.expiryDate || '',
+      category: item.category || '',
+      notes: item.note || item.notes || ''
+    });
+    setIsEditModalOpen(true);
+  }, []);
+
+  const handleSaveModalData = React.useCallback((updatedItem: any) => {
+    setItems((prev: any[]) => prev.map(i => {
+      if (i.id === updatedItem.id) {
+        return {
+          ...i,
+          name: updatedItem.name,
+          qty: updatedItem.qty,
+          price: updatedItem.price,
+          expiryDate: updatedItem.expiryDate,
+          note: updatedItem.notes,
+          notes: updatedItem.notes,
+          sum: updatedItem.qty * updatedItem.price
+        };
       }
-    }
-    
-    setEditingItem(item);
-    setIsDetailModalOpen(true);
-  }, [setManualItemName, setTempQty, setTempPrice, setTempExpiry, setTempNote, setCategoryName, setSelectedProduct, setIsDetailModalOpen]);
+      return i;
+    }));
+    setIsEditModalOpen(false);
+    setEditingItem(null);
+  }, [setItems]);
 
   return (
     <div className="flex flex-col min-h-full h-full bg-white font-cairo w-full relative overflow-x-hidden" dir="rtl">
@@ -264,9 +280,9 @@ const SalesModule: React.FC<{ onNavigate?: (view: any, params?: any) => void }> 
             </div>
           </div>
           
-          <div className="flex border-b border-slate-100 flex-row gap-4 px-3 py-2 bg-white">
-            <div className="basis-1/4 relative min-w-[120px]">
-              <input 
+          <div className="flex border-b border-slate-100 flex-row gap-[2%] px-3 py-2 bg-white">
+            <div className="basis-[25%] relative">
+               <input 
                 type="text"
                 value={header.invoice_number}
                 onChange={(e) => setHeader({...header, invoice_number: e.target.value})}
@@ -274,7 +290,7 @@ const SalesModule: React.FC<{ onNavigate?: (view: any, params?: any) => void }> 
                 className="w-full h-10 border-b border-gray-400 focus:outline-none focus:border-green-500 rounded-none text-black text-right placeholder-gray-400 bg-transparent"
               />
             </div>
-            <div className="basis-3/4 relative min-w-[180px] flex items-center">
+            <div className="basis-[73%] relative flex items-center">
               <textarea 
                 placeholder="ملاحظات الفاتورة..."
                 rows={1}
@@ -359,7 +375,7 @@ const SalesModule: React.FC<{ onNavigate?: (view: any, params?: any) => void }> 
         </div>
 
         {/* ITEMS LIST SECTION - SIMPLE LIST MATCHING PURCHASES */}
-        <div className="flex-1 overflow-y-auto bg-white custom-scrollbar pb-32">
+        <PullToRefresh onRefresh={async () => { await refreshGlobal(); }} className="flex-1 overflow-y-auto bg-white custom-scrollbar pb-32">
           <div className="sticky top-0 bg-white/90 backdrop-blur-sm z-10 border-b border-slate-50 flex items-center px-2 py-2 w-full flex-nowrap">
             <span className="flex-[2] text-[11px] font-black text-slate-400 uppercase tracking-widest text-right">الصنف</span>
             <span className="flex-1 text-[11px] font-black text-slate-400 uppercase tracking-widest text-center">الكمية</span>
@@ -388,7 +404,7 @@ const SalesModule: React.FC<{ onNavigate?: (view: any, params?: any) => void }> 
               ))
             )}
           </AnimatePresence>
-        </div>
+        </PullToRefresh>
       </div>
 
       {/* FIXED FOOTER SECTION - MATCHING PURCHASES DESIGN */}
@@ -587,6 +603,19 @@ const SalesModule: React.FC<{ onNavigate?: (view: any, params?: any) => void }> 
           </Button>
         </div>
       </Modal>
+
+      {/* Item edit modal */}
+      <InvoiceItemEditModal 
+        isOpen={isEditModalOpen}
+        item={editingItem}
+        mode="sale"
+        currency={currency || "YER"}
+        onSave={handleSaveModalData}
+        onClose={() => {
+          setIsEditModalOpen(false);
+          setEditingItem(null);
+        }}
+      />
     </div>
   );
 };

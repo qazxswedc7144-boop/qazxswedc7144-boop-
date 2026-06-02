@@ -33,6 +33,14 @@ export class PharmaFlowDB extends Dexie {
   medicineBatches!: Table<any>;
   exchangeRates!: Table<any>;
   systemBackups!: Table<SystemBackup>;
+
+  // Multi-branch Tables
+  branches!: Table<any>;
+  branchSettings!: Table<any>;
+  branchInventory!: Table<any>;
+  branchTransfers!: Table<any>;
+  branchTransferItems!: Table<any>;
+  branchUsers!: Table<any>;
   
   // Legacy / Compatibility Tables (added to satisfy linter and services)
   sales!: Table<any>;
@@ -182,6 +190,16 @@ export class PharmaFlowDB extends Dexie {
       readInvoices: 'invoiceId, invoiceNumber, status, createdAt',
       readLedgers: 'accountNumber, currentBalance',
       aggregateSnapshots: '[aggregateId+version], aggregateType',
+    });
+
+    // Version 17: Phase 4.1 Multi-Branch Architecture
+    this.version(17).stores({
+      branches: '&id, code, name, isActive',
+      branchSettings: '&id, branchId',
+      branchInventory: '&id, branchId, productId, [branchId+productId]',
+      branchTransfers: '&id, transferNumber, sourceBranchId, targetBranchId, status, createdAt',
+      branchTransferItems: '&id, transferId, productId, [transferId+productId]',
+      branchUsers: '&id, branchId, userId, [branchId+userId]'
     });
 
     // Handle structural integrity and recovery

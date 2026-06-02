@@ -5,7 +5,6 @@ import { Logo, BrandName, Tagline } from '@/components/shared/Logo';
 import { useUI } from '@/contexts/AppContext';
 import Header from '@/layouts/Header';
 import { useAppStore } from '@/hooks/useAppStore';
-import { Toast } from '@/components/Toast';
 import { motion, AnimatePresence } from 'motion/react';
 import { db } from '@/core/db';
 import { heartbeatService } from '@/services/heartbeatService';
@@ -15,12 +14,20 @@ import { FinancialHealthService } from '@/modules/accounting/services/FinancialH
 import { CurrencyService } from '@/services/localization/CurrencyService';
 import { SafeModePanel } from '@/layouts/SafeModePanel';
 import { FinancialDefenseSystem } from '@/services/integrity/FinancialDefenseSystem';
+import { RealtimeReplicationService } from '@/modules/replication/services/RealtimeReplicationService';
 import { Permission } from '@/types';
 import RoleGuard from '@/components/shared/RoleGuard';
 import { IS_PREVIEW } from '@/constants';
 import { 
-  X, AlertTriangle, RefreshCw, LogOut, ShieldCheck
+  X, AlertTriangle, RefreshCw, LogOut, ShieldCheck, Building2, Sparkles, ArrowRightLeft, TrendingUp
 } from 'lucide-react';
+
+import {
+  SubscriptionOnboardingModal,
+  SubscriptionGlobalUsageRibbon,
+  SubscriptionWarningInterceptor,
+  SubscriptionBlockadeBackdrop
+} from '@/components/saas/SubscriptionWidgets';
 
 // Error Boundary Component
 class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean, error: any }> {
@@ -134,6 +141,12 @@ const AdvancedReportsModule = lazyWithRetry(() => import('@/modules/reports/page
 const PartnersModule = lazyWithRetry(() => import('@/modules/partners/pages/PartnersModule'));
 const SaaSModule = lazyWithRetry(() => import('@/modules/saas/pages/SaaSModule'));
 
+// Multi-branch module views
+const BranchesList = lazyWithRetry(() => import('@/modules/branches/pages/BranchesList').then(m => ({ default: m.BranchesList })));
+const BranchTransfers = lazyWithRetry(() => import('@/modules/branches/pages/BranchTransfers').then(m => ({ default: m.BranchTransfers })));
+const BranchReports = lazyWithRetry(() => import('@/modules/branches/pages/BranchReports').then(m => ({ default: m.BranchReports })));
+const ConsolidationDashboard = lazyWithRetry(() => import('@/modules/consolidation/pages/ConsolidationDashboard'));
+
 // Lazy loading individual reports
 const RemainingStockReport = lazyWithRetry(() => import('@/modules/reports/pages/RemainingStockReport'));
 const ItemProfitsReport = lazyWithRetry(() => import('@/modules/reports/pages/ItemProfitsReport'));
@@ -181,7 +194,7 @@ function MainLayout() {
   const [viewParams, setViewParams] = useState<any>(null); 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [, startTransition] = useTransition();
-  const { setHeaderAction, refreshGlobal, toasts, removeToast, isSettingsOpen, setSettingsOpen } = useUI();
+  const { setHeaderAction, refreshGlobal, isSettingsOpen, setSettingsOpen } = useUI();
   const setEditingInvoiceId = useAppStore(state => state.setEditingInvoiceId);
   const systemStatus = useAppStore(state => state.systemStatus);
   const setSystemStatus = useAppStore(state => state.setSystemStatus);
@@ -190,6 +203,25 @@ function MainLayout() {
   const [riskScore, setRiskScore] = useState<number>(0);
   const [isLocked, setIsLocked] = useState(false);
   const [isReady, setIsReady] = useState(false);
+
+  // SaaS Onboarding Lifecycle hooks
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
+
+  useEffect(() => {
+    const onboarded = localStorage.getItem('pharmaflow_onboarded');
+    if (!onboarded) {
+      setOnboardingOpen(true);
+    }
+  }, []);
+
+  const handleCloseOnboarding = () => {
+    localStorage.setItem('pharmaflow_onboarded', 'true');
+    setOnboardingOpen(false);
+  };
+
+  const handleUpgradeTrial = () => {
+    handleNav('saas-portal');
+  };
 
   useEffect(() => {
     setTimeout(() => setIsReady(true), 300);
@@ -327,7 +359,7 @@ function MainLayout() {
       'reports/remaining-stock', 'reports/item-profits', 'reports/customer-profit', 
       'reports/supplier-profit', 'reports/account-movement', 'reports/purchases-by-item',
       'reports/sales-by-item', 'reports/item-movement-details', 'reports/expiry-items',
-      'reports/financial-engine'
+      'reports/financial-engine', 'consolidation'
     ];
 
     if (view === 'settings') {
@@ -435,6 +467,9 @@ function MainLayout() {
 
       refreshGlobal(); 
       parseRoute();
+
+      // Initialize real-time replication stream
+      RealtimeReplicationService.connect("BRH-MAIN-001");
     };
     init().catch(err => {
       console.error("CRITICAL: Application failed to initialize:", err);
@@ -446,6 +481,7 @@ function MainLayout() {
       clearInterval(syncTimer);
       if (stopCurrencyObserver) stopCurrencyObserver();
       window.removeEventListener('hashchange', parseRoute);
+      RealtimeReplicationService.disconnect();
     };
   }, [refreshGlobal, parseRoute, setCurrency, setSystemStatus, addToast]);
 
@@ -479,6 +515,7 @@ function MainLayout() {
     if (currentView === 'customer-receipt') return 'سند قبض عميل';
     if (currentView === 'aging-report') return 'تقرير تعمير الذمم';
     if (currentView === 'accounting') return 'دفتر الأستاذ العام';
+    if (currentView === 'consolidation') return 'الاندماج المالي الموحد';
     return 'العملية';
   };
 
@@ -510,6 +547,11 @@ function MainLayout() {
 
   return (
     <div className="flex h-[100dvh] min-h-screen w-full mx-auto bg-[#F8FAFA] overflow-hidden font-sans relative text-slate-800 shadow-sm" dir="rtl">
+      {/* SaaS Trial & Onboarding Gateways */}
+      <SubscriptionOnboardingModal isOpen={onboardingOpen} onClose={handleCloseOnboarding} />
+      <SubscriptionWarningInterceptor />
+      <SubscriptionBlockadeBackdrop onUpgrade={handleUpgradeTrial} />
+
       <AnimatePresence>
         {isLocked && <LockScreen onUnlock={() => setIsLocked(false)} />}
       </AnimatePresence>
@@ -596,6 +638,64 @@ function MainLayout() {
               </div>
             </div>
 
+            {/* Custom Multi-Branch Suite Sidebar Section (Subject to RBAC guards) */}
+            <div>
+              <p className="px-4 text-[11px] font-black text-slate-400 uppercase tracking-[2px] mb-3">إدارة الفروع والإمداد</p>
+              <div className="space-y-1">
+                {can(profile?.role, 'BRANCH_VIEW') && (
+                  <button 
+                    onClick={() => handleNav('branches')}
+                    className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-2xl text-[11px] font-black transition-all group ${currentView === 'branches' ? 'bg-[#1E4D4D] text-white shadow-lg shadow-emerald-950/10' : 'text-slate-500 hover:bg-slate-50 hover:text-[#1E4D4D]'}`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className={`${currentView === 'branches' ? 'text-emerald-400' : 'text-slate-400 group-hover:text-[#1E4D4D]'}`}><Building2 size={15} /></span>
+                      <span>إدارة الفروع والصيدليات</span>
+                    </div>
+                    {currentView === 'branches' && <motion.div layoutId="active-nav-branches" className="w-1.5 h-1.5 bg-emerald-400 rounded-full" />}
+                  </button>
+                )}
+
+                {can(profile?.role, 'BRANCH_TRANSFER') && (
+                  <button 
+                    onClick={() => handleNav('branch-transfers')}
+                    className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-2xl text-[11px] font-black transition-all group ${currentView === 'branch-transfers' ? 'bg-[#1E4D4D] text-white shadow-lg shadow-emerald-950/10' : 'text-slate-500 hover:bg-slate-50 hover:text-[#1E4D4D]'}`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className={`${currentView === 'branch-transfers' ? 'text-emerald-400' : 'text-slate-400 group-hover:text-[#1E4D4D]'}`}><ArrowRightLeft size={15} /></span>
+                      <span>التحويل الدوائي البيني</span>
+                    </div>
+                    {currentView === 'branch-transfers' && <motion.div layoutId="active-nav-transfers" className="w-1.5 h-1.5 bg-emerald-400 rounded-full" />}
+                  </button>
+                )}
+
+                {can(profile?.role, 'BRANCH_REPORT') && (
+                  <button 
+                    onClick={() => handleNav('branch-reports')}
+                    className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-2xl text-[11px] font-black transition-all group ${currentView === 'branch-reports' ? 'bg-[#1E4D4D] text-white shadow-lg shadow-emerald-950/10' : 'text-slate-500 hover:bg-slate-50 hover:text-[#1E4D4D]'}`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className={`${currentView === 'branch-reports' ? 'text-emerald-400' : 'text-slate-400 group-hover:text-[#1E4D4D]'}`}><Sparkles size={15} /></span>
+                      <span>تقرير تحليلات الفروع الذكي</span>
+                    </div>
+                    {currentView === 'branch-reports' && <motion.div layoutId="active-nav-reports" className="w-1.5 h-1.5 bg-emerald-400 rounded-full" />}
+                  </button>
+                )}
+
+                {can(profile?.role, 'FINANCIAL_ACCESS') && (
+                  <button 
+                    onClick={() => handleNav('consolidation')}
+                    className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-[16px] text-[11px] font-black transition-all group ${currentView === 'consolidation' ? 'bg-[#1E4D4D] text-white shadow-lg shadow-emerald-950/10' : 'text-slate-500 hover:bg-slate-50 hover:text-[#1E4D4D]'}`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className={`${currentView === 'consolidation' ? 'text-emerald-400' : 'text-slate-400 group-hover:text-[#1E4D4D]'}`}><TrendingUp size={15} /></span>
+                      <span>الاندماج المالي الموحد</span>
+                    </div>
+                    {currentView === 'consolidation' && <motion.div layoutId="active-nav-consolidation" className="w-1.5 h-1.5 bg-emerald-400 rounded-full" />}
+                  </button>
+                )}
+              </div>
+            </div>
+
             <div>
               <p className="px-4 text-[11px] font-bold text-slate-400 uppercase tracking-[2px] mb-3">النظام</p>
               <div className="space-y-1">
@@ -629,6 +729,7 @@ function MainLayout() {
       </aside>
 
       <div className="flex-1 flex flex-col min-w-0 relative h-full">
+        <SubscriptionGlobalUsageRibbon onUpgrade={handleUpgradeTrial} />
         {systemStatus === 'RECOVERY_MODE' && <SafeModePanel />}
         
         {riskScore >= 30 && systemStatus !== 'RECOVERY_MODE' && (
@@ -683,6 +784,12 @@ function MainLayout() {
                   case 'saas-portal': return <SaaSModule onNavigate={handleNav} />;
                   case 'advanced-reports': return <RoleGuard permission="VIEW_REPORTS"><AdvancedReportsModule onBack={() => handleNav('dashboard')} /></RoleGuard>;
                   
+                  // Multi-branch module routing definitions
+                  case 'branches': return <RoleGuard permission="BRANCH_VIEW"><BranchesList onNavigate={handleNav} /></RoleGuard>;
+                  case 'branch-transfers': return <RoleGuard permission="BRANCH_TRANSFER"><BranchTransfers /></RoleGuard>;
+                  case 'branch-reports': return <RoleGuard permission="BRANCH_REPORT"><BranchReports /></RoleGuard>;
+                  case 'consolidation': return <RoleGuard permission="FINANCIAL_ACCESS"><ConsolidationDashboard onNavigate={handleNav} /></RoleGuard>;
+                  
                   case 'reports/remaining-stock': return <RoleGuard permission="VIEW_REPORTS"><RemainingStockReport onNavigate={handleNav} /></RoleGuard>;
                   case 'reports/item-profits': return <RoleGuard permission="VIEW_REPORTS"><ItemProfitsReport onNavigate={handleNav} /></RoleGuard>;
                   case 'reports/customer-profit': return <RoleGuard permission="VIEW_REPORTS"><CustomerProfitReport onNavigate={handleNav} /></RoleGuard>;
@@ -700,10 +807,6 @@ function MainLayout() {
             </Suspense>
           </div>
         </main>
-      </div>
-
-      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[9999] w-full max-w-[320px] px-4 pointer-events-none flex flex-col items-center">
-        {toasts.map(t => <div key={t.id} className="w-full pointer-events-auto"><Toast message={t.message} type={t.type as any} onClose={() => removeToast(t.id)} /></div>)}
       </div>
 
       <AnimatePresence>

@@ -8,6 +8,7 @@ export interface AuthenticatedRequest extends Request {
     userId: string;
     username: string;
     role: Role;
+    tenantId?: string | null;
   };
 }
 
@@ -32,7 +33,8 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
     (req as AuthenticatedRequest).user = {
       userId: decoded.userId,
       username: decoded.username,
-      role: decoded.role as Role
+      role: decoded.role as Role,
+      tenantId: decoded.tenantId || null
     };
     next();
     return;

@@ -11,11 +11,13 @@ import { InvoiceWorkflowEngine } from '@/modules/sales/services/InvoiceWorkflowE
 import { predictionService } from '@/modules/ai/services/predictionService';
 import { saveLearning } from '@/modules/ai/services/learningService';
 import { safeProcessTransaction } from '@/services/transactions/TransactionSafety';
+import { useAppNotification } from '@/context/NotificationContext';
 
 const DRAFT_KEY = 'pharmaflow_purchase_draft';
 
 export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
   const { addToast, currency, refreshGlobal } = useUI();
+  const { showNotification } = useAppNotification();
   const { addInvoice, suppliers } = useAccounting();
   const { categories, addCategory } = useInventory();
   const setEditingInvoiceId = useAppStore(state => state.setEditingInvoiceId);
@@ -271,9 +273,10 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
     setSupplierSearchTerm(s.Supplier_Name);
     setShowSupplierDropdown(false);
     if (s.balance !== undefined) {
-      addToast(`رصيد المورد الحالي: ${s.balance} ${currency}`, "info");
+      showNotification(`رصيد المورد الحالي: ${s.balance.toLocaleString()} ${currency}`, 'info');
+      addToast(`رصيد المورد الحالي: ${s.balance.toLocaleString()} ${currency}`, "info");
     }
-  }, [addToast, currency]);
+  }, [addToast, currency, showNotification]);
 
   const handleSupplierBlur = useCallback(() => {
     setTimeout(async () => {
@@ -544,6 +547,7 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
     }
 
     // OPTIMISTIC: Show success immediately and block UI only enough to navigate
+    showNotification('⌛ جاري حفظ الفاتورة وتحديث المستودع...', 'info');
     addToast("جاري الحفظ والمزامنة... ⏳", "info");
     const navPromise = new Promise(res => setTimeout(res, 500)); 
 
@@ -591,6 +595,7 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
       const res = await saveTask;
 
       if (res.success) {
+        showNotification('✅ تم حفظ فاتورة المشتريات وتحديث المستودع بنجاح', 'success');
         addToast("تم حفظ وترحيل الفاتورة بنجاح ✅", "success");
 
         localStorage.removeItem(DRAFT_KEY);
@@ -609,11 +614,12 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
       }
     } catch (error) {
       console.error("Save error", error);
+      showNotification('❌ فشل في حفظ الفاتورة وتحديث المستودع', 'error');
       addToast("فشل في حفظ الفاتورة", "error");
     } finally {
       setIsSaving(false);
     }
-  }, [header, items, aiParsedData, suppliers, vTotalSum, editingInvoiceId, currency, addInvoice, addToast, refreshGlobal, onNavigate]);
+  }, [header, items, aiParsedData, suppliers, vTotalSum, editingInvoiceId, currency, addInvoice, addToast, refreshGlobal, onNavigate, showNotification]);
 
   const handleExport = () => {
     // Implementation for export

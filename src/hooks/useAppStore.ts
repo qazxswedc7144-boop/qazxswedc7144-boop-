@@ -14,6 +14,7 @@ import {
   Supplier, User, ToastMessage, Account, SystemStatus, Category 
 } from '@/types';
 import { CurrencyService } from '@/services/localization/CurrencyService';
+import { NotificationService } from '@/context/NotificationContext';
 // Removed unused db import
 
 interface AppState {
@@ -201,8 +202,8 @@ export const useAppStore = create<AppState>()(
       setEditingInvoiceId: (editingInvoiceId) => set({ editingInvoiceId }),
       setSettingsOpen: (isSettingsOpen) => set({ isSettingsOpen }),
       addToast: (message, type = 'info') => {
-        const id = Math.random().toString(36).substr(2, 9);
-        set((state) => ({ toasts: [...state.toasts, { id, message, type }] }));
+        const mappedType = type === 'warning' ? 'warning' : type === 'success' ? 'success' : type === 'error' ? 'error' : 'info';
+        NotificationService.show(message, mappedType);
         
         // Audio feedback logic
         try {
@@ -225,8 +226,6 @@ export const useAppStore = create<AppState>()(
         } catch (e) {
           console.log("Audio Context not supported or blocked");
         }
-
-        setTimeout(() => get().removeToast(id), 4000);
       },
       removeToast: (id) => set((state) => ({ toasts: state.toasts.filter(t => t.id !== id) }))
     };

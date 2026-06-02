@@ -3,6 +3,7 @@ import { Router, Response } from "express";
 import { prisma } from "../database/prisma";
 import { authenticateToken, AuthenticatedRequest } from "../middleware/auth.middleware";
 import { Prisma } from "@prisma/client";
+import { LockingService } from "../modules/locking/locking.service";
 import { AccountingEntrySchema } from "../../src/shared/validation/accounting.schema";
 import { validateRequestBody } from "../middleware/validate";
 
@@ -14,6 +15,25 @@ export const accountingRouter = Router();
  * Uses Row-Level Locking, version checks, and Double-entry balancing enforcement.
  */
 accountingRouter.post("/journal", authenticateToken, validateRequestBody(AccountingEntrySchema), async (req: AuthenticatedRequest, res: Response) => {
+  const userId = req.user?.userId || "SYSTEM";
+  const branchId = "BRH-MAIN-001";
+  const key = `purchase:journal:${userId}`;
+
+  const lock = await LockingService.acquireLock({
+    key,
+    branchId,
+    lockType: "PURCHASE",
+    ownerId: userId,
+    ttl: 15000
+  });
+
+  if (!lock) {
+    return res.status(423).json({
+      error: "LOCK_CONFLICT",
+      message: "An active posting operation is already running for your account. Please wait."
+    });
+  }
+
   try {
     const data = req.body; // sanitized and verified by validateRequestBody
 
@@ -96,6 +116,8 @@ accountingRouter.post("/journal", authenticateToken, validateRequestBody(Account
       error: "JOURNAL_FAILED",
       message: err.message || err
     });
+  } finally {
+    await LockingService.releaseLock(key, lock.id, branchId, userId);
   }
 });
 

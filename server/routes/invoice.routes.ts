@@ -4,10 +4,13 @@ import { z } from "zod";
 import { prisma } from "../database/prisma";
 import { FinancialTransactionService } from "../modules/accounting/services/financialTransaction.service";
 import { authenticateToken, AuthenticatedRequest } from "../middleware/auth.middleware";
+import { LockingService } from "../modules/locking/locking.service";
+import { ReplicationPublisher } from "../modules/replication/replication.publisher";
 import { InvoiceStatus, DocumentStatus } from "@prisma/client";
 import { InvoiceSchema } from "../../src/shared/validation/invoice.schema";
 import { validateRequestBody } from "../middleware/validate";
 import { UUIDSchema } from "../../src/shared/validation/common.schema";
+import { SaasService } from "../modules/saas/saas.service";
 
 export const invoiceRouter = Router();
 
@@ -18,6 +21,17 @@ export const invoiceRouter = Router();
 invoiceRouter.post("/create", authenticateToken, validateRequestBody(InvoiceSchema), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const data = req.body; // sanitized and verified by validateRequestBody
+    const tenantId = req.user?.tenantId;
+
+    if (tenantId) {
+      const checkLimit = await SaasService.checkSubscriptionLimit(tenantId);
+      if (!checkLimit.allowed) {
+        return res.status(403).json({
+          error: "SUBSCRIPTION_LIMIT_REACHED",
+          message: checkLimit.reason
+        });
+      }
+    }
 
     const existing = await prisma.invoice.findUnique({
       where: { invoiceNumber: data.invoiceNumber }
@@ -56,6 +70,7 @@ invoiceRouter.post("/create", authenticateToken, validateRequestBody(InvoiceSche
         status: InvoiceStatus.DRAFT,
         paymentStatus: data.paymentStatus,
         documentStatus: DocumentStatus.ACTIVE,
+        tenantId: tenantId || null,
         items: {
           create: itemData
         }
@@ -77,6 +92,11 @@ invoiceRouter.post("/create", authenticateToken, validateRequestBody(InvoiceSche
         ipAddress: req.ip
       }
     });
+
+    // Increment SaaS usage counter if tenant is configured
+    if (tenantId) {
+      await SaasService.incrementUsage(tenantId);
+    }
 
     return res.status(201).json({
       success: true,
@@ -104,17 +124,66 @@ invoiceRouter.post("/post", authenticateToken, async (req: AuthenticatedRequest,
 
     const { invoiceId } = bodyValidation.data;
 
-    const result = await FinancialTransactionService.postInvoiceToLedger(
-      invoiceId,
-      req.user?.userId || null,
-      req.ip || "127.0.0.1"
-    );
+    const key = `sales:${invoiceId}`;
+    const branchId = "BRH-MAIN-001";
+    const userId = req.user?.userId || "SYSTEM";
 
-    return res.json({
-      success: true,
-      message: "Invoice successfully validated, costed via FIFO/FEFO, and posted to General Ledger accounts.",
-      data: result
+    const lock = await LockingService.acquireLock({
+      key,
+      branchId,
+      lockType: "SALES",
+      ownerId: userId,
+      ttl: 20000
     });
+
+    if (!lock) {
+      return res.status(423).json({
+        error: "LOCK_CONFLICT",
+        message: "The requested invoice is currently being posted. Please wait."
+      });
+    }
+
+    try {
+      const result = await FinancialTransactionService.postInvoiceToLedger(
+        invoiceId,
+        req.user?.userId || null,
+        req.ip || "127.0.0.1"
+      );
+
+      // Distribute replication events in real-time
+      try {
+        const invoice = await prisma.invoice.findUnique({
+          where: { id: invoiceId },
+          include: { items: true }
+        });
+
+        if (invoice) {
+          const type = (invoice.type === "SALE" || invoice.type === "RETURN_SALE") ? "InvoicePosted" : "PurchasePosted";
+          await ReplicationPublisher.publish({
+            type,
+            branchId: invoice.branchId || "BRH-MAIN-001",
+            userId: req.user?.userId || "SYSTEM",
+            payload: {
+              invoiceId: invoice.id,
+              invoiceNumber: invoice.invoiceNumber,
+              totalAmount: Number(invoice.totalAmount),
+              type: invoice.type,
+              itemsCount: invoice.items.length,
+            }
+          });
+        }
+      } catch (repErr: any) {
+        console.warn("[REPLICATION] Failed to publish post-invoice event:", repErr.message);
+      }
+
+      return res.json({
+        success: true,
+        message: "Invoice successfully validated, costed via FIFO/FEFO, and posted to General Ledger accounts.",
+        data: result
+      });
+    } finally {
+      await LockingService.releaseLock(key, lock.id, branchId, userId);
+    }
   } catch (err: any) {
     return res.status(400).json({
       error: "POST_FAILED",

@@ -37,4 +37,9 @@ export type Permission =
   | 'INVENTORY_VIEW'
   | 'MANAGE_PARTNERS'
   | 'AUDIT_VIEW'
-  | 'ARCHIVE_VIEW';
+  | 'ARCHIVE_VIEW'
+  | 'BRANCH_VIEW'
+  | 'BRANCH_CREATE'
+  | 'BRANCH_EDIT'
+  | 'BRANCH_TRANSFER'
+  | 'BRANCH_REPORT';

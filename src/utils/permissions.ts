@@ -6,10 +6,23 @@ import { Permission } from '@/types';
  */
 export const ROLE_PERMISSIONS: Record<string, Permission[]> = {
   owner: ['*'] as any[], // * implies all permissions
-  admin: ['MANAGE_SYSTEM', 'VIEW_REPORTS', 'CREATE_VOUCHER', 'FINANCIAL_ACCESS', 'MANAGE_PARTNERS', 'CREATE_INVOICE', 'EDIT_INVOICE', 'EDIT_VOUCHER', 'ARCHIVE_VIEW'],
-  accountant: ['VIEW_REPORTS', 'CREATE_VOUCHER', 'FINANCIAL_ACCESS', 'ARCHIVE_VIEW'],
-  clerk: ['CREATE_INVOICE', 'POS_ACCESS', 'INVENTORY_VIEW'],
-  user: ['VIEW_REPORTS']
+  admin: [
+    'MANAGE_SYSTEM', 'VIEW_REPORTS', 'CREATE_VOUCHER', 'FINANCIAL_ACCESS', 
+    'MANAGE_PARTNERS', 'CREATE_INVOICE', 'EDIT_INVOICE', 'EDIT_VOUCHER', 
+    'ARCHIVE_VIEW', 'BRANCH_VIEW', 'BRANCH_CREATE', 'BRANCH_EDIT', 
+    'BRANCH_TRANSFER', 'BRANCH_REPORT'
+  ],
+  accountant: [
+    'VIEW_REPORTS', 'CREATE_VOUCHER', 'FINANCIAL_ACCESS', 'ARCHIVE_VIEW', 
+    'BRANCH_VIEW', 'BRANCH_REPORT'
+  ],
+  clerk: [
+    'CREATE_INVOICE', 'POS_ACCESS', 'INVENTORY_VIEW', 
+    'BRANCH_VIEW', 'BRANCH_TRANSFER'
+  ],
+  user: [
+    'VIEW_REPORTS', 'BRANCH_VIEW'
+  ]
 };
 
 /**

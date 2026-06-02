@@ -98,15 +98,21 @@ authRouter.post("/login", validateRequestBody(LoginSchema), async (req: Request,
       });
     }
 
-    // Sign Access JWT Token & Refresh token
+    // Look up tenant registration link for isolation support
+    const tUser = await prisma.tenantUser.findFirst({
+      where: { userId: user.id }
+    });
+    const tenantId = tUser?.tenantId || null;
+
+    // Sign Access JWT Token & Refresh token with tenant context
     const accessToken = jwt.sign(
-      { userId: user.id, username: user.username, role: user.role },
+      { userId: user.id, username: user.username, role: user.role, tenantId },
       JWT_SECRET,
       { expiresIn: "4h" }
     );
 
     const refreshToken = jwt.sign(
-      { userId: user.id },
+      { userId: user.id, tenantId },
       JWT_REFRESH_SECRET,
       { expiresIn: "7d" }
     );
@@ -119,7 +125,7 @@ authRouter.post("/login", validateRequestBody(LoginSchema), async (req: Request,
         entity: "User",
         entityId: user.id,
         before: null,
-        after: "TOKEN_GENERATED",
+        after: JSON.stringify({ tenantId }),
         ipAddress: req.ip
       }
     });
@@ -131,7 +137,8 @@ authRouter.post("/login", validateRequestBody(LoginSchema), async (req: Request,
       user: {
         id: user.id,
         username: user.username,
-        role: user.role
+        role: user.role,
+        tenantId
       }
     });
   } catch (err: any) {

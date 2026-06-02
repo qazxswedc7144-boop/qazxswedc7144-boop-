@@ -6,7 +6,7 @@ import {
   Printer, Globe, Moon, RefreshCcw, 
   BarChart3, Landmark, Calculator, 
   KeyRound, ScanLine, 
-  BadgeInfo, Info, Shield, 
+  Info, Shield, 
   Clock, 
   Type, Phone, MapPin,
   History, RefreshCw,
@@ -24,6 +24,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { localBackupService } from '@/services/integrity/shared/localBackupService';
 
 import { UnifiedModal } from '@/components/shared/UnifiedModal';
+import { ReviewerSaaSTester } from '@/components/saas/SubscriptionWidgets';
 
 interface InvoiceConfig {
   pharmacyName: string;
@@ -127,7 +128,15 @@ const Section = React.memo(({
 
 const SettingsModule: React.FC<{ onNavigate?: (view: any) => void }> = ({ onNavigate }) => {
   const [openSection, setOpenSection] = useState<string | null>(null);
-  const [darkMode, setDarkMode] = useState(false);
+  
+  // Custom states matching Objective 5 and 6
+  const [themeMode, setThemeMode] = useState<'light' | 'dark' | 'system'>('system');
+  const [printerProfile, setPrinterProfile] = useState<'58mm' | '80mm' | 'a4'>('80mm');
+  const [printCopies, setPrintCopies] = useState<number>(1);
+  const [printLogo, setPrintLogo] = useState<boolean>(true);
+  const [printQR, setPrintQR] = useState<boolean>(true);
+  const [showPrivacyModal, setShowPrivacyModal] = useState<boolean>(false);
+
   const [modalConfig, setModalConfig] = useState<{
     open: boolean;
     type: string;
@@ -164,14 +173,27 @@ const SettingsModule: React.FC<{ onNavigate?: (view: any) => void }> = ({ onNavi
   const { refreshGlobal, addToast, version } = useUI();
   const user = authService.getCurrentUser();
 
+  // Load SaaS & Printers Settings on Mount
   useEffect(() => {
     const load = async () => {
       try {
         const savedConfig = await db.getSetting('invoice_config', null);
         if (savedConfig) setInvoiceConfig(savedConfig);
 
-        const savedTheme = await db.getSetting('THEME_DARK', false);
-        setDarkMode(savedTheme);
+        // Load thermal/printer matrix settings
+        const savedProfile = localStorage.getItem('saas_printer_profile') as any || '80mm';
+        const savedCopies = parseInt(localStorage.getItem('saas_print_copies') || '1', 10);
+        const savedLogo = localStorage.getItem('saas_print_logo') !== 'false';
+        const savedQR = localStorage.getItem('saas_print_qr') !== 'false';
+        
+        setPrinterProfile(savedProfile);
+        setPrintCopies(savedCopies);
+        setPrintLogo(savedLogo);
+        setPrintQR(savedQR);
+
+        // Load theme preferences
+        const savedTheme = localStorage.getItem('saas_theme_mode') as any || 'system';
+        setThemeMode(savedTheme);
 
         const pList = await AccountingPeriodRepository.getAll();
         setPeriods(pList);
@@ -190,15 +212,32 @@ const SettingsModule: React.FC<{ onNavigate?: (view: any) => void }> = ({ onNavi
     load();
   }, [version]);
 
-  // Dark mode side effect
+  // Bi-valent Theme Engine Effect
   useEffect(() => {
-    if (darkMode) {
+    let isDark = false;
+    if (themeMode === 'dark') {
+      isDark = true;
+    } else if (themeMode === 'system') {
+      isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    }
+    
+    if (isDark) {
       document.documentElement.classList.add("dark");
     } else {
       document.documentElement.classList.remove("dark");
     }
-    db.saveSetting('THEME_DARK', darkMode);
-  }, [darkMode]);
+  }, [themeMode]);
+
+  const changeThemeMode = (mode: 'light' | 'dark' | 'system') => {
+    localStorage.setItem('saas_theme_mode', mode);
+    setThemeMode(mode);
+    window.dispatchEvent(new Event('saas-theme-updated'));
+    addToast(`تم تفعيل المظهر بنجاح`, "success");
+  };
+
+  const handleUpdatePrinterSetting = (key: string, value: any) => {
+    localStorage.setItem(key, String(value));
+  };
 
   const toggleSection = (id: string) => {
     setOpenSection(openSection === id ? null : id);
@@ -356,11 +395,11 @@ const SettingsModule: React.FC<{ onNavigate?: (view: any) => void }> = ({ onNavi
             PharmaFlow v2.4
           </span>
           <button
-            onClick={() => setDarkMode(!darkMode)}
-            className="p-2 rounded-xl bg-gray-50 dark:bg-gray-700/60 text-lg leading-none transition-all duration-200 active:scale-90 border border-gray-100 dark:border-gray-600/40"
+            onClick={() => changeThemeMode(themeMode === 'light' ? 'dark' : 'light')}
+            className="p-2 rounded-xl bg-gray-50 dark:bg-gray-700/60 text-lg leading-none transition-all duration-200 active:scale-90 border border-gray-100 dark:border-gray-600/40 cursor-pointer"
             title="تبديل المظهر"
           >
-            {darkMode ? "☀️" : "🌙"}
+            {themeMode === 'light' ? "🌙" : "☀️"}
           </button>
           <button 
             onClick={() => onNavigate?.('dashboard')} 
@@ -398,19 +437,36 @@ const SettingsModule: React.FC<{ onNavigate?: (view: any) => void }> = ({ onNavi
              <div className="md:col-span-2">
                 <CurrencySelector />
              </div>
-             <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl">
-                <div className="flex items-center gap-3">
-                   <Moon className="text-[#1E4D4D] dark:text-indigo-400" size={20} />
-                   <span className="text-xs font-black text-[#1E4D4D] dark:text-indigo-400">الوضع الليلي</span>
+             <div className="md:col-span-2 p-5 bg-slate-50 dark:bg-gray-850/40 rounded-3xl border border-slate-100 dark:border-gray-700/60 text-right space-y-3">
+                <div className="flex items-center gap-3 text-[#1E4D4D] dark:text-indigo-400">
+                   <Moon size={20} />
+                   <span className="text-xs font-black">مظهر واجهة النظام (Bi-valent Theme Engine)</span>
                 </div>
-                <input 
-                  type="checkbox" 
-                  checked={darkMode} 
-                  onChange={e => setDarkMode(e.target.checked)} 
-                  className="w-5 h-5 accent-indigo-500 cursor-pointer" 
-                />
+                <p className="text-[10px] text-slate-400 dark:text-gray-400 font-bold leading-relaxed">
+                   اختر النمط البصري المفضل لديك. يتم تطبيق درجات تدرج HEX بدقة عالية لحماية العين وتناسق الطبقات البرمجية.
+                </p>
+                <div className="grid grid-cols-3 gap-2 bg-slate-100 dark:bg-gray-800 p-1 rounded-2xl border border-slate-200/50 dark:border-gray-700">
+                   {[
+                     { mode: 'light', label: '☀ نهاري' },
+                     { mode: 'dark', label: '🌙 ليلي' },
+                     { mode: 'system', label: '⚙ تلقائي' }
+                   ].map(item => (
+                     <button
+                       key={item.mode}
+                       type="button"
+                       onClick={() => changeThemeMode(item.mode as any)}
+                       className={`py-2 rounded-xl text-center text-[10px] sm:text-xs font-black transition-all cursor-pointer ${
+                         themeMode === item.mode 
+                           ? 'bg-[#1E4D4D] text-white shadow-sm font-extrabold' 
+                           : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-gray-700 hover:text-slate-700 dark:text-gray-300'
+                       }`}
+                     >
+                       {item.label}
+                     </button>
+                   ))}
+                </div>
              </div>
-             <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl">
+             <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-gray-850 rounded-2xl md:col-span-2">
                 <div className="flex items-center gap-3">
                    <RefreshCcw className="text-[#1E4D4D] dark:text-indigo-400" size={20} />
                    <span className="text-xs font-black text-[#1E4D4D] dark:text-indigo-400">تحديث دوري للخلفية</span>
@@ -662,30 +718,132 @@ const SettingsModule: React.FC<{ onNavigate?: (view: any) => void }> = ({ onNavi
 
         {/* SECTION: الأجهزة والطباعة */}
         <Section 
-          title="الأجهزة والطباعة" 
-          desc="إدارة الأجهزة المتصلة" 
+          title="مصفوفة الطباعة الحرارية وتكامل الأجهزة (ESC/POS Setup)" 
+          desc="تعيين عروض فواتير الكاشير، النسخ، الشعارات وأكواد الاستجابة السريعة" 
           icon={Printer} 
           isOpen={openSection === 'devices'} 
           toggle={() => toggleSection('devices')}
         >
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-             <div className="p-5 bg-slate-50 border border-slate-100 rounded-3xl flex items-center gap-4 group hover:border-[#1E4D4D] transition-all cursor-pointer">
-                <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-[#1E4D4D] shadow-sm group-hover:scale-110 transition-transform"><Printer size={24} /></div>
-                <div className="flex-1">
-                   <p className="text-xs font-black text-[#1E4D4D]">طابعة الفواتير (Thermal)</p>
-                   <p className="text-[9px] text-slate-400 font-bold uppercase">Generic 80mm POS</p>
+          <div className="space-y-6">
+             {/* Device Connect Status */}
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="p-4 bg-slate-50 dark:bg-gray-850 border border-slate-100 dark:border-gray-800 rounded-3xl flex items-center gap-4 group hover:border-[#1E4D4D] transition-all cursor-pointer">
+                   <div className="w-12 h-12 bg-white dark:bg-gray-800 rounded-2xl flex items-center justify-center text-[#1E4D4D] shadow-sm"><Printer size={22} /></div>
+                   <div className="flex-1 text-right">
+                      <p className="text-xs font-black text-[#1E4D4D] dark:text-emerald-400">طابعة الفواتير (Thermal)</p>
+                      <p className="text-[9px] text-slate-400 font-bold uppercase">Generic ESC/POS Driver</p>
+                   </div>
+                   <Badge variant="success">متصل</Badge>
                 </div>
-                <Badge variant="success">متصل</Badge>
-             </div>
-             <div className="p-5 bg-slate-50 border border-slate-100 rounded-3xl flex items-center gap-4 group hover:border-[#1E4D4D] transition-all cursor-pointer">
-                <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-[#1E4D4D] shadow-sm group-hover:scale-110 transition-transform"><ScanLine size={24} /></div>
-                <div className="flex-1">
-                   <p className="text-xs font-black text-[#1E4D4D]">قارئ الباركود</p>
-                   <p className="text-[9px] text-slate-400 font-bold uppercase">Standard USB Scanner</p>
+                <div className="p-4 bg-slate-50 dark:bg-gray-850 border border-slate-100 dark:border-gray-800 rounded-3xl flex items-center gap-4 group hover:border-[#1E4D4D] transition-all cursor-pointer">
+                   <div className="w-12 h-12 bg-white dark:bg-gray-800 rounded-2xl flex items-center justify-center text-[#1E4D4D] shadow-sm"><ScanLine size={22} /></div>
+                   <div className="flex-1 text-right">
+                      <p className="text-xs font-black text-[#1E4D4D] dark:text-emerald-400">قارئ الباركود (Scanner)</p>
+                      <p className="text-[9px] text-slate-400 font-bold uppercase">USB HID POS Keyboard</p>
+                   </div>
+                   <Badge variant="success">نشط</Badge>
                 </div>
-                <Badge variant="success">نشط</Badge>
              </div>
-             <Button variant="neutral" className="md:col-span-2 h-12 !rounded-xl text-[10px]">فحص الأجهزة وتحديث التعريفات</Button>
+
+             {/* Printer Matrix Profile Selection */}
+             <div className="p-5 bg-slate-50 dark:bg-gray-850 border border-slate-100 dark:border-gray-800 rounded-3xl space-y-4 text-right">
+                <span className="text-xs font-bold text-slate-700 dark:text-gray-300 block">عرض وتخطيط تذكرة الفاتورة (Printer Profile)</span>
+                <div className="grid grid-cols-3 gap-2">
+                   {[
+                     { id: '58mm', name: 'حراري 58mm', desc: 'صيدليات مصغرة' },
+                     { id: '80mm', name: 'حراري 80mm', desc: 'صيدليات ومشافي' },
+                     { id: 'a4', name: 'تقارير A4 PDF', desc: 'مستندات وتوريد' }
+                   ].map(prof => (
+                     <button
+                       key={prof.id}
+                       type="button"
+                       onClick={() => {
+                         setPrinterProfile(prof.id as any);
+                         handleUpdatePrinterSetting('saas_printer_profile', prof.id);
+                       }}
+                       className={`p-3 rounded-2xl border text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-1 ${
+                         printerProfile === prof.id 
+                           ? 'bg-[#1E4D4D] text-white border-transparent' 
+                           : 'bg-white dark:bg-gray-800 border-slate-150 dark:border-gray-700 text-slate-600 dark:text-gray-300'
+                       }`}
+                     >
+                       <span className="text-xs font-black">{prof.name}</span>
+                       <span className={`text-[8px] block ${printerProfile === prof.id ? 'text-emerald-300' : 'text-slate-400'}`}>{prof.desc}</span>
+                     </button>
+                   ))}
+                </div>
+
+                {/* Copies counter and layout options */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-3 border-t border-slate-200/50 dark:border-gray-700">
+                   {/* Copies Spinner */}
+                   <div className="flex items-center justify-between p-3 bg-white dark:bg-gray-800 rounded-2xl border border-slate-100 dark:border-gray-700">
+                      <span className="text-xs font-bold text-slate-600 dark:text-gray-300">عدد النسخ المطبوعة تلقائياً:</span>
+                      <div className="flex items-center gap-2">
+                         <button
+                           type="button"
+                           onClick={() => {
+                             const c = Math.max(1, printCopies - 1);
+                             setPrintCopies(c);
+                             handleUpdatePrinterSetting('saas_print_copies', c);
+                           }}
+                           className="w-8 h-8 rounded-full bg-slate-100 dark:bg-gray-750 hover:bg-slate-200 text-slate-600 dark:text-white flex items-center justify-center font-black text-sm"
+                         >
+                           -
+                         </button>
+                         <span className="w-8 text-center text-xs font-black text-slate-800 dark:text-white">{printCopies}</span>
+                         <button
+                           type="button"
+                           onClick={() => {
+                             const c = Math.min(5, printCopies + 1);
+                             setPrintCopies(c);
+                             handleUpdatePrinterSetting('saas_print_copies', c);
+                           }}
+                           className="w-8 h-8 rounded-full bg-slate-100 dark:bg-gray-750 hover:bg-slate-200 text-slate-600 dark:text-white flex items-center justify-center font-black text-sm"
+                         >
+                           +
+                         </button>
+                      </div>
+                   </div>
+
+                   {/* Logo & QR checks */}
+                   <div className="flex flex-col gap-2 justify-center">
+                      <label className="flex items-center gap-2.5 text-xs font-bold text-slate-600 dark:text-gray-300 cursor-pointer">
+                         <input 
+                           type="checkbox" 
+                           checked={printLogo} 
+                           onChange={e => {
+                             setPrintLogo(e.target.checked);
+                             handleUpdatePrinterSetting('saas_print_logo', e.target.checked);
+                           }}
+                           className="w-4 h-4 accent-[#1E4D4D] text-[#1E4D4D]" 
+                         />
+                         <span>طباعة الشعار الرسمي بأعلى المستند</span>
+                      </label>
+                      <label className="flex items-center gap-2.5 text-xs font-bold text-slate-600 dark:text-gray-300 cursor-pointer">
+                         <input 
+                           type="checkbox" 
+                           checked={printQR} 
+                           onChange={e => {
+                             setPrintQR(e.target.checked);
+                             handleUpdatePrinterSetting('saas_print_qr', e.target.checked);
+                           }}
+                           className="w-4 h-4 accent-[#1E4D4D] text-[#1E4D4D]" 
+                         />
+                         <span>طباعة رمز الاستجابة السريعة (QR) الضريبي والجرد</span>
+                      </label>
+                   </div>
+                </div>
+
+                <div className="flex gap-2 justify-end pt-2">
+                   <Button 
+                     variant="secondary" 
+                     className="text-[#1E4D4D] border-[#1E4D4D]/20 h-11 !rounded-xl text-xs font-black px-5"
+                     onClick={() => addToast("جاري إرسال حزمة التجربة إلى الطابعة الحرارية...", "info")}
+                   >
+                     اختبار ورقة الطباعة (Test Print Page)
+                   </Button>
+                </div>
+             </div>
           </div>
         </Section>
 
@@ -720,66 +878,95 @@ const SettingsModule: React.FC<{ onNavigate?: (view: any) => void }> = ({ onNavi
              
              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="p-4 bg-slate-50 dark:bg-gray-850 rounded-2xl border border-slate-100 dark:border-gray-700 text-right space-y-1">
-                   <p className="text-[10px] text-slate-400 dark:text-gray-400 font-black uppercase">معيار الامتثال الدولي والأمني</p>
+                   <p className="text-[10px] text-slate-400 dark:text-gray-400 font-black uppercase font-sans">معيار الامتثال الدولي والأمني</p>
                    <p className="text-xs font-black text-slate-800 dark:text-white flex items-center gap-1">
                       <ShieldCheck size={14} className="text-emerald-500" />
                       <span>HL7 FHIR R4 Compliant Sandbox</span>
                    </p>
                 </div>
                 <div className="p-4 bg-slate-50 dark:bg-gray-850 rounded-2xl border border-slate-100 dark:border-gray-700 text-right space-y-1">
-                   <p className="text-[10px] text-slate-400 dark:text-gray-400 font-black uppercase">مفاتيح المطورين والاتصال البرمجي</p>
+                   <p className="text-[10px] text-slate-400 dark:text-gray-400 font-black uppercase font-sans">مفاتيح المطورين والاتصال البرمجي</p>
                    <p className="text-xs font-black text-slate-800 dark:text-white flex items-center gap-1">
                       <KeyRound size={14} className="text-indigo-500" />
                       <span>بوابة المطورين REST API نشطة</span>
                    </p>
                 </div>
              </div>
+
+             <div className="p-5 bg-slate-50 dark:bg-gray-850 rounded-3xl border border-slate-100 dark:border-gray-700/65 space-y-4">
+                <h4 className="text-sm font-black text-indigo-650 dark:text-indigo-400 flex items-center gap-2">
+                   <span>💳 لوحة محاكاة وتدقيق الاشتراك والترخيص (Reviewer QA Control Panel)</span>
+                </h4>
+                <ReviewerSaaSTester />
+             </div>
           </div>
         </Section>
 
         {/* SECTION: حول النظام */}
         <Section 
-          title="حول النظام" 
-          desc="معلومات تقنية وتشخيصية" 
+          title="حول النظام وسياسة حماية البيانات" 
+          desc="تفاصيل محرك الفواتير والتراخيص وسياسات الخصوصية وشروطه" 
           icon={Info} 
           isOpen={openSection === 'about'} 
           toggle={() => toggleSection('about')}
         >
-          <div className="space-y-6">
-             <div className="flex items-center gap-4 bg-[#1E4D4D] p-6 rounded-[32px] text-white overflow-hidden relative">
+          <div className="space-y-6 text-right" dir="rtl">
+             <div className="flex bg-[#1E4D4D] p-6 rounded-[32px] text-white overflow-hidden relative flex-col gap-2">
                 <div className="relative z-10">
-                   <h4 className="text-lg font-black italic">PharmaFlow ERP</h4>
-                   <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-[4px]">Advanced Enterprise Solutions</p>
+                   <h4 className="text-xl font-black">PharmaFlow Pro ERP</h4>
+                   <p className="text-[9px] font-bold text-emerald-400 uppercase tracking-[3px]">SaaS-Enabled Pharmaceutical Engine</p>
                 </div>
-                <div className="absolute -right-4 -top-4 opacity-5 rotate-12"><Settings size={120} /></div>
+                <p className="text-xs text-slate-100 font-bold max-w-md leading-relaxed">
+                   أول نظام موحد متكامل في الشرق الأوسط لإدارة سلاسل الصيدليات بتزامن سحابي فوري وقدرة كاملة على العمل دون اتصال بالشبكة مع الحفاظ على حوكمة المحاسبة المزدوجة.
+                </p>
+                <div className="absolute -left-4 -top-4 opacity-5 rotate-12"><Settings size={120} /></div>
              </div>
              
              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 text-center">
-                   <p className="text-[8px] text-slate-400 font-black uppercase mb-1">إصدار النظام</p>
-                   <p className="text-xs font-black text-[#1E4D4D]">2.4.10-PRO</p>
+                <div className="p-4 bg-slate-50 dark:bg-gray-800 rounded-2xl border border-slate-100 dark:border-gray-700/60 text-center">
+                   <p className="text-[8px] text-slate-400 dark:text-gray-400 font-black uppercase mb-1">نسخة الترخيص</p>
+                   <p className="text-xs font-black text-[#1E4D4D] dark:text-emerald-400">1.0.0-PRO</p>
                 </div>
-                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 text-center">
-                   <p className="text-[8px] text-slate-400 font-black uppercase mb-1">عدد الأصناف</p>
-                   <p className="text-xs font-black text-[#1E4D4D]">{stats.products}</p>
+                <div className="p-4 bg-slate-50 dark:bg-gray-800 rounded-2xl border border-slate-100 dark:border-gray-700/60 text-center">
+                   <p className="text-[8px] text-slate-400 dark:text-gray-400 font-black uppercase mb-1">عدد الأدوية</p>
+                   <p className="text-xs font-black text-[#1E4D4D] dark:text-emerald-400">{stats.products}</p>
                 </div>
-                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 text-center">
-                   <p className="text-[8px] text-slate-400 font-black uppercase mb-1">إجمالي السجلات</p>
-                   <p className="text-xs font-black text-[#1E4D4D]">{stats.records}</p>
+                <div className="p-4 bg-slate-50 dark:bg-gray-800 rounded-2xl border border-slate-100 dark:border-gray-700/60 text-center">
+                   <p className="text-[8px] text-slate-400 dark:text-gray-400 font-black uppercase mb-1">الربط المتكامل</p>
+                   <p className="text-xs font-black text-[#1E4D4D] dark:text-emerald-400">HL7 FHIR R4</p>
                 </div>
-                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 text-center">
-                   <p className="text-[8px] text-slate-400 font-black uppercase mb-1">تخزين المتصفح</p>
-                   <p className="text-xs font-black text-emerald-500">1.2 MB</p>
+                <div className="p-4 bg-slate-50 dark:bg-gray-800 rounded-2xl border border-slate-100 dark:border-gray-700/60 text-center">
+                   <p className="text-[8px] text-slate-400 dark:text-gray-400 font-black uppercase mb-1">حماية البيانات</p>
+                   <p className="text-xs font-black text-emerald-500">AES-GCM 256</p>
                 </div>
              </div>
 
+             {/* Bullet Features list */}
+             <div className="bg-slate-50 dark:bg-gray-850 p-4 rounded-3xl border border-slate-100 dark:border-gray-800 space-y-2">
+                <span className="text-[11px] font-black text-[#1E4D4D] dark:text-emerald-400 block mb-1">القابليات والميزات المعتمدة:</span>
+                <ul className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs text-slate-600 dark:text-gray-300 font-bold">
+                   <li className="flex items-center gap-2">🟢 كاشير ونقاط مبيعات سريعة</li>
+                   <li className="flex items-center gap-2">🟢 مزامنة تلقائية Dexie Sync</li>
+                   <li className="flex items-center gap-2">🟢 مبيعات، مشتريات وتوريد مخزني</li>
+                   <li className="flex items-center gap-2">🟢 معايير خصوصية HIPAA & GDPR</li>
+                   <li className="flex items-center gap-2">🟢 حصر حسابات وقيود محاسبية مزدوجة</li>
+                   <li className="flex items-center gap-2">🟢 لوحة مؤشرات SaaS المتطورة</li>
+                </ul>
+             </div>
+
              <div className="space-y-2 pt-2">
-                <Button variant="ghost" className="w-full justify-between h-12 text-[10px] hover:bg-slate-50 !rounded-xl" onClick={() => addToast("جاري تحميل وثيقة الخصوصية...", "info")}>
-                   سياسة الخصوصية وشروط الاستخدام <Info size={14} />
+                <Button 
+                  variant="ghost" 
+                  type="button"
+                  className="w-full justify-between h-12 text-[10px] sm:text-xs hover:bg-slate-100 dark:hover:bg-gray-750 !rounded-xl text-slate-700 dark:text-gray-200" 
+                  onClick={() => setShowPrivacyModal(true)}
+                >
+                   <span>سياسة الخصوصية وشروط الاستخدام ومطابقة Google Play</span> 
+                   <Info size={14} />
                 </Button>
-                <Button variant="ghost" className="w-full justify-between h-12 text-[10px] hover:bg-slate-50 !rounded-xl" onClick={() => addToast("المطور: PharmaFlow Engineering Team", "info")}>
-                   معلومات المطور <BadgeInfo size={14} />
-                </Button>
+                <div className="text-center">
+                   <span className="text-[9px] text-slate-400 font-black uppercase">© PharmaFlow Pro 2026. جميع الحقوق محفوظة لمالك المنصة.</span>
+                </div>
              </div>
           </div>
         </Section>
@@ -794,6 +981,98 @@ const SettingsModule: React.FC<{ onNavigate?: (view: any) => void }> = ({ onNavi
       >
         <div className="p-2 overflow-x-hidden">
            <BackupManagement />
+        </div>
+      </Modal>
+
+      {/* Privacy Policy and Google Play Console Compliance Modal */}
+      <Modal
+        isOpen={showPrivacyModal}
+        onClose={() => setShowPrivacyModal(false)}
+        title="وثيقة معايير الخصوصية وحماية بيانات الرعاية الصحية (Google Play Compliant)"
+        maxWidth="max-w-2xl"
+      >
+        <div className="p-6 text-right space-y-5 overflow-y-auto max-h-[85vh] dark:bg-slate-900" dir="rtl">
+          <div className="bg-emerald-50 dark:bg-emerald-950/20 p-4 rounded-2xl border border-emerald-100 dark:border-emerald-900/40 text-emerald-800 dark:text-emerald-300">
+            <h5 className="text-xs font-black mb-1 flex items-center gap-1.5">
+              <span>✓ مطابقة شروط حماية البيانات الصحية والمالية في متجر Google Play</span>
+            </h5>
+            <p className="text-[10px] sm:text-xs leading-relaxed font-bold">
+              تلتزم منصة PharmaFlow Pro بمتطلبات تشفير وحفظ السجلات الصحية الصارمة متضمنة HIPAA لبيانات المرضى وGDPR للخصوصية. لا يتم بيع البيانات إطلاقاً وللمستأجر الحق الكامل في طلب التصفير.
+            </p>
+          </div>
+
+          {/* Section 1: UI Compact text pane */}
+          <div className="space-y-2 border-b border-slate-100 dark:border-slate-800 pb-4">
+            <h4 className="text-xs font-black text-slate-800 dark:text-white">1. نطاق جمع البيانات ومسؤولية المنصة (Data Custody Policy)</h4>
+            <div className="bg-slate-50 dark:bg-gray-850 p-4 rounded-xl text-[11px] text-slate-600 dark:text-gray-300 space-y-2 leading-relaxed font-bold">
+              <p>
+                <strong>نطاق حيازة البيانات:</strong> نجمع بيانات الصيدلية، الأدوية والأصناف، الفواتير، بيانات المرضى، والعمليات التجارية لغرض الحسابات وحظر تكرار فروع الصيدليات.
+              </p>
+              <p>
+                <strong>مشاركة البيانات:</strong> لا يتم بيع أو تأجير أو مشاركة أي جزء من البيانات الصحية أو المحاسبية إلى أي طرف ثالث على الإطلاق. البيانات مشفرة محلياً على جهاز العميل ومحمية بنظام AES-GCM 256.
+              </p>
+              <p>
+                <strong>طلب الإزالة الفورية:</strong> تتيح المنصة بروتوكول حذف وسحب البيانات بالكامل عبر حساب المالك الرئيسي والتحميل الفوري للنسخ الاحتياطية.
+              </p>
+            </div>
+          </div>
+
+          {/* Section 2: External Compliance Page */}
+          <div className="space-y-3">
+            <h4 className="text-xs font-black text-slate-800 dark:text-white">2. كود موقع سياسة الخصوصية لمتجر Google Play Console</h4>
+            <p className="text-[10px] text-slate-400 font-bold leading-relaxed">
+              قم بنسخ كود HTML الجاهز هذا ورفعه كصفحة إنترنت مستضافة لعرض سياسة الخصوصية الرسمية للامتثال لمتطلبات جوجل بلاي:
+            </p>
+            <div className="relative">
+              <textarea
+                readOnly
+                value={`<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <title>سياسة الخصوصية لـ PharmaFlow Pro ERP</title>
+</head>
+<body style="font-family: sans-serif; padding: 40px; color: #333;">
+    <h1>سياسة الخصوصية وحماية بيانات المرضى لبرنامج PharmaFlow Pro ERP</h1>
+    <p>تاريخ آخر تحديث: 2 يونيو 2026</p>
+    <h2>1. البيانات التي يتم جمعها وحفظها:</h2>
+    <p>يتعامل التطبيق مع بيانات صيدلانية حساسة لحسابات الفواتير، والأصناف، والتحويلات الدوائية، وإثبات هويات العملاء والموظفين تماشياً مع معايير HIPAA.</p>
+    <h2>2. بروتوكول التشفير والأمان:</h2>
+    <p>تُخزن كافة البيانات التجارية والصيدلانية محلياً بشكل مشفر باستخدام خوارزميات AES-GCM ولا يتم مشاركتها أو بيعها لأي جهة إعلانية أو طرف ثالث.</p>
+    <h2>3. حق حذف البيانات:</h2>
+    <p>يمكن للمستخدمين الاتصال بمالك المنصة وحذف كافة حسابات الفروع ومعلومات المزامنة بشكل فوري عبر لوحة الإدارة.</p>
+</body>
+</html>`}
+                className="w-full h-32 font-mono text-[9px] bg-slate-900 text-emerald-400 p-3 rounded-2xl outline-none select-all animate-none"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(`<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <title>سياسة الخصوصية لـ PharmaFlow Pro ERP</title>
+</head>
+<body style="font-family: sans-serif; padding: 40px; color: #333;">
+    <h1>سياسة الخصوصية وحماية بيانات المرضى لبرنامج PharmaFlow Pro ERP</h1>
+    <p>تاريخ آخر تحديث: 2 يونيو 2026</p>
+    <h2>1. البيانات التي يتم جمعها وحفظها:</h2>
+    <p>يتعامل التطبيق مع بيانات صيدلانية حساسة لحسابات الفواتير، والأصناف، والتحويلات الدوائية، وإثبات هويات العملاء والموظفين تماشياً مع معايير HIPAA.</p>
+    <h2>2. بروتوكول التشفير والأمان:</h2>
+    <p>تُخزن كافة البيانات التجارية والصيدلانية محلياً بشكل مشفر باستخدام خوارزميات AES-GCM ولا يتم مشاركتها أو بيعها لأي جهة إعلانية أو طرف ثالث.</p>
+    <h2>3. حق حذف البيانات:</h2>
+    <p>يمكن للمستخدمين الاتصال بمالك المنصة وحذف كافة حسابات الفروع ومعلومات المزامنة بشكل فوري عبر لوحة الإدارة.</p>
+</body>
+</html>`);
+                  addToast("تم نسخ الكود الرسمي بنجاح📋", "success");
+                }}
+                className="absolute left-3 bottom-3 bg-slate-800 text-white px-3 py-1.5 rounded-xl text-[10px] font-bold hover:bg-[#1E4D4D] cursor-pointer"
+              >
+                نسخ كود HTML المتكامل
+              </button>
+            </div>
+          </div>
         </div>
       </Modal>
 

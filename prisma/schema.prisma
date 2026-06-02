@@ -10,6 +10,8 @@ generator client {
 }
 
 enum UserRole {
+  PLATFORM_OWNER
+  TENANT_ADMIN
   ADMIN
   ACCOUNTANT
   PHARMACIST
@@ -42,6 +44,8 @@ enum AuditActionType {
 }
 
 enum Role {
+  PLATFORM_OWNER
+  TENANT_ADMIN
   ADMIN
   ACCOUNTANT
   PHARMACIST
@@ -105,6 +109,8 @@ model User {
   auditLogs    AuditLog[]
   sessions     Session[]
   refreshTokens RefreshToken[]
+  branchUsers  BranchUser[]
+  tenantUsers  TenantUser[]
 
   @@map("users")
 }
@@ -161,6 +167,8 @@ model Account {
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
   journalLines JournalLine[]
+  tenantId     String?
+  tenant       Tenant?       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([parentId])
   @@map("accounts")
@@ -179,9 +187,13 @@ model JournalEntry {
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
   lines       JournalLine[]
+  branchId    String?
+  tenantId    String?
+  tenant      Tenant?       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([sourceId, sourceType])
   @@index([date])
+  @@index([branchId])
   @@map("journal_entries")
 }
 
@@ -220,6 +232,8 @@ model Product {
   inventoryBatches   InventoryBatch[]
   inventoryMovements InventoryMovement[]
   reservations       Reservation[]
+  tenantId           String?
+  tenant             Tenant?             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([deletedAt])
   @@index([createdAt])
@@ -235,6 +249,8 @@ model Customer {
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  tenantId  String?
+  tenant    Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@map("customers")
 }
@@ -248,6 +264,8 @@ model Supplier {
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  tenantId  String?
+  tenant    Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@map("suppliers")
 }
@@ -267,10 +285,14 @@ model Invoice {
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
   items          InvoiceItem[]
+  branchId       String?
+  tenantId       String?
+  tenant         Tenant?        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([date])
   @@index([partnerId])
   @@index([createdAt])
+  @@index([branchId])
   @@map("invoices")
 }
 
@@ -308,6 +330,8 @@ model InventoryBatch {
   updatedAt          DateTime            @updatedAt
   inventoryMovements InventoryMovement[]
   reservations       Reservation[]
+  tenantId           String?
+  tenant             Tenant?             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([productId, batchNumber])
   @@index([expiryDate])
@@ -330,10 +354,14 @@ model InventoryMovement {
   previousStock Int
   currentStock  Int
   createdAt     DateTime        @default(now())
+  branchId      String?
+  tenantId      String?
+  tenant        Tenant?         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([productId])
   @@index([batchId])
   @@index([createdAt])
+  @@index([branchId])
   @@map("inventory_movements")
 }
 
@@ -350,11 +378,13 @@ model AuditLog {
   ipAddress  String?
   requestId  String?
   createdAt  DateTime @default(now())
+  branchId   String?
 
   @@index([timestamp])
   @@index([userId])
   @@index([entity, entityId])
   @@index([createdAt])
+  @@index([branchId])
   @@map("audit_logs")
 }
 
@@ -411,10 +441,12 @@ model SyncEvent {
   vectorClock Json?    // for vector-ready event ordering
   checksum    String?  // for data integrity check
   createdAt   DateTime @default(now())
+  branchId    String?
 
   @@index([eventId])
   @@index([sequence])
   @@index([createdAt])
+  @@index([branchId])
   @@map("sync_events")
 }
 
@@ -431,12 +463,214 @@ model Reservation {
   expiresAt     DateTime
   createdAt     DateTime          @default(now())
   updatedAt     DateTime          @updatedAt
+  branchId      String?
 
   @@index([reservationId])
   @@index([status])
   @@index([expiresAt])
   @@index([createdAt])
+  @@index([branchId])
   @@map("reservations")
+}
+
+model Branch {
+  id               String            @id @default(uuid())
+  code             String            @unique
+  name             String
+  location         String?
+  phone            String?
+  isActive         Boolean           @default(true)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  settings         BranchSettings?
+  branchInventory  BranchInventory[]
+  branchUsers      BranchUser[]
+  transfersSource  BranchTransfer[]  @relation("SourceBranch")
+  transfersTarget  BranchTransfer[]  @relation("TargetBranch")
+  tenantId         String?
+  tenant           Tenant?           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("branches")
+}
+
+model BranchSettings {
+  id                    String   @id @default(uuid())
+  branchId              String   @unique
+  branch                Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  minStockLevelAlert    Boolean  @default(true)
+  autoReorderTargetDays Int      @default(30)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@map("branch_settings")
+}
+
+model BranchInventory {
+  id              String   @id @default(uuid())
+  branchId        String
+  branch          Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  productId       String
+  stockQuantity   Int      @default(0)
+  reorderPoint    Int      @default(10)
+  reorderQuantity Int      @default(50)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([branchId, productId])
+  @@index([branchId])
+  @@index([productId])
+  @@map("branch_inventory")
+}
+
+model BranchTransfer {
+  id             String               @id @default(uuid())
+  transferNumber String               @unique
+  sourceBranchId String
+  sourceBranch   Branch               @relation("SourceBranch", fields: [sourceBranchId], references: [id], onDelete: Restrict)
+  targetBranchId String
+  targetBranch   Branch               @relation("TargetBranch", fields: [targetBranchId], references: [id], onDelete: Restrict)
+  status         String               @default("DRAFT") // DRAFT, APPROVED, IN_TRANSIT, RECEIVED, CANCELLED
+  reason         String?
+  createdBy      String?
+  approvedBy     String?
+  shippedBy      String?
+  receivedBy     String?
+  shippedAt      DateTime?
+  receivedAt     DateTime?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  items          BranchTransferItem[]
+  tenantId       String?
+  tenant         Tenant?              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([sourceBranchId])
+  @@index([targetBranchId])
+  @@index([status])
+  @@map("branch_transfers")
+}
+
+model BranchTransferItem {
+  id         String         @id @default(uuid())
+  transferId String
+  transfer   BranchTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  productId  String
+  qty        Int
+  receivedQty Int?          @default(0)
+  batchNumber String?
+  expiryDate DateTime?
+  createdAt  DateTime       @default(now())
+
+  @@index([transferId])
+  @@index([productId])
+  @@map("branch_transfer_items")
+}
+
+model BranchUser {
+  id        String   @id @default(uuid())
+  branchId  String
+  branch    Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([branchId, userId])
+  @@index([branchId])
+  @@index([userId])
+  @@map("branch_users")
+}
+
+model Tenant {
+  id                    String               @id @default(uuid())
+  name                  String
+  domain                String?              @unique
+  isActive              Boolean              @default(true)
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  users                 TenantUser[]
+  subscriptions         TenantSubscription[]
+  licenses              License[]
+  usageCounters         UsageCounter[]
+  branches              Branch[]
+  products              Product[]
+  customers             Customer[]
+  suppliers             Supplier[]
+  invoices              Invoice[]
+  accounts              Account[]
+  journalEntries        JournalEntry[]
+  branchTransfers       BranchTransfer[]
+  inventoryMovements    InventoryMovement[]
+  inventoryBatches      InventoryBatch[]
+
+  @@map("tenants")
+}
+
+model TenantUser {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      String   @default("TENANT_ADMIN")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, userId])
+  @@map("tenant_users")
+}
+
+model SubscriptionPlan {
+  id               String               @id @default(uuid())
+  code             String               @unique // TRIAL, BASIC, BUSINESS, ENTERPRISE
+  name             String
+  price            Decimal              @db.Decimal(18, 4)
+  durationDays     Int
+  transactionLimit Int                  @default(-1) // -1 means unlimited, TRIAL has 200
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  subscriptions    TenantSubscription[]
+
+  @@map("subscription_plans")
+}
+
+model TenantSubscription {
+  id        String           @id @default(uuid())
+  tenantId  String
+  tenant    Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  planId    String
+  plan      SubscriptionPlan @relation(fields: [planId], references: [id], onDelete: Restrict)
+  startDate DateTime         @default(now())
+  endDate   DateTime
+  isActive  Boolean          @default(true)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@map("tenant_subscriptions")
+}
+
+model License {
+  id         String   @id @default(uuid())
+  tenantId   String
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  licenseKey String   @unique
+  isActive   Boolean  @default(true)
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("licenses")
+}
+
+model UsageCounter {
+  id               String   @id @default(uuid())
+  tenantId         String
+  tenant           Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  transactionCount Int      @default(0)
+  updatedAt        DateTime @updatedAt
+
+  @@unique([tenantId])
+  @@map("usage_counters")
 }
 
 

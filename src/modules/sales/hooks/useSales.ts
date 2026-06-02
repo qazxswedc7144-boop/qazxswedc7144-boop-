@@ -11,11 +11,13 @@ import { InvoiceWorkflowEngine } from '@/modules/sales/services/InvoiceWorkflowE
 import { ExportService } from '@/services/data/exportService';
 import { predictionService } from '@/modules/ai/services/predictionService';
 import { auditLogService } from '@/services/audit/auditLog';
+import { useAppNotification } from '@/context/NotificationContext';
 
 const DRAFT_KEY = 'pharmaflow_sales_draft';
 
 export const useSales = (onNavigate?: (view: any, params?: any) => void) => {
   const { addToast, currency, refreshGlobal } = useUI();
+  const { showNotification } = useAppNotification();
   const { addInvoice, customers } = useAccounting();
   const { products } = useInventory();
   const setEditingInvoiceId = useAppStore(state => state.setEditingInvoiceId);
@@ -187,9 +189,10 @@ export const useSales = (onNavigate?: (view: any, params?: any) => void) => {
     setCustomerSearchTerm(c.Supplier_Name);
     setShowCustomerDropdown(false);
     if (c.balance !== undefined) {
-      addToast(`رصيد العميل الحالي: ${c.balance} ${currency}`, "info");
+      showNotification(`رصيد العميل الحالي: ${c.balance.toLocaleString()} ${currency}`, "info");
+      addToast(`رصيد العميل الحالي: ${c.balance.toLocaleString()} ${currency}`, "info");
     }
-  }, [addToast, currency]);
+  }, [addToast, currency, showNotification]);
 
   const handleCustomerBlur = useCallback(() => {
     setTimeout(() => {
@@ -459,6 +462,7 @@ export const useSales = (onNavigate?: (view: any, params?: any) => void) => {
     if (items.length === 0 || isLocked || isDuplicate || isSaving) return;
     
     // OPTIMISTIC: Show success immediately and block UI only enough to navigate
+    showNotification('⌛ جاري طباعة الإيصال وترحيل الصندوق...', 'info');
     addToast("جاري الحفظ والمزامنة... ⏳", "info");
     const navPromise = new Promise(res => setTimeout(res, 500)); // Briefly show toast
     
@@ -499,6 +503,7 @@ export const useSales = (onNavigate?: (view: any, params?: any) => void) => {
       const res = await saveTask;
 
       if (res.success) { 
+        showNotification('✅ تم حفظ فاتورة المبيعات وترحيل الصندوق بنجاح', 'success');
         addToast("تم الحفظ والترحيل بنجاح ✅", "success");
         
         await auditLogService.logSale(res.refId || editingInvoiceId || header.invoice_number, `Sale created: ${header.invoice_number}`, { items, total: vTotalSum });
@@ -507,11 +512,12 @@ export const useSales = (onNavigate?: (view: any, params?: any) => void) => {
         onNavigate?.('dashboard'); 
       }
     } catch (err: any) {
+      showNotification('❌ فشل في حفظ مبيعات الكاشير', 'error');
       addToast(err.message || "فشل الحفظ", "error");
     } finally {
       setIsSaving(false);
     }
-  }, [items, isLocked, isDuplicate, isSaving, vTotalSum, header, editingInvoiceId, currency, addInvoice, addToast, onNavigate, setEditingInvoiceId]);
+  }, [items, isLocked, isDuplicate, isSaving, vTotalSum, header, editingInvoiceId, currency, addInvoice, addToast, onNavigate, setEditingInvoiceId, showNotification]);
 
   const getStatusLabel = (status: string) => {
     switch(status) {
