@@ -77,8 +77,11 @@ const SalesModule: React.FC<{ onNavigate?: (view: any, params?: any) => void }> 
     selectCustomer,
     handleCustomerBlur,
     confirmAddCustomer,
-    cancelAddCustomer
+    cancelAddCustomer,
+    customers
   } = useSales(onNavigate);
+
+  const selectedCustomerObj = customers?.find((c: any) => c.id === header.customer_id || c.Supplier_ID === header.customer_id);
 
   const [editingItem, setEditingItem] = React.useState<any | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = React.useState<boolean>(false);
@@ -236,8 +239,15 @@ const SalesModule: React.FC<{ onNavigate?: (view: any, params?: any) => void }> 
                 onFocus={() => setShowCustomerDropdown(true)}
                 onBlur={handleCustomerBlur}
                 placeholder="اسم العميل..."
-                className="w-full h-10 border-b border-gray-400 focus:outline-none focus:border-green-500 rounded-none text-black text-right placeholder-gray-400 bg-transparent"
+                className="w-full h-10 border-b border-gray-400 focus:outline-none focus:border-green-500 rounded-none text-black text-right placeholder-gray-400 bg-transparent pr-1"
               />
+              {selectedCustomerObj && (
+                <div className="absolute left-1 bottom-1 flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-emerald-50 text-emerald-700 dark:bg-emerald-950/45 dark:text-emerald-300 font-sans text-[10px] font-bold border border-emerald-100/50 dark:border-emerald-900/40 shadow-sm pointer-events-none select-none z-10 transition-all">
+                  <span>الرصيد:</span>
+                  <span className="font-mono">{(selectedCustomerObj.balance || 0).toLocaleString()}</span>
+                  <span className="text-[8px] opacity-80">{currency}</span>
+                </div>
+              )}
               <AnimatePresence>
                 {showCustomerDropdown && filteredCustomers.length > 0 && (
                   <motion.div 
@@ -375,7 +385,7 @@ const SalesModule: React.FC<{ onNavigate?: (view: any, params?: any) => void }> 
         </div>
 
         {/* ITEMS LIST SECTION - SIMPLE LIST MATCHING PURCHASES */}
-        <PullToRefresh onRefresh={async () => { await refreshGlobal(); }} className="flex-1 overflow-y-auto bg-white custom-scrollbar pb-32">
+        <PullToRefresh onRefresh={async () => { await refreshGlobal(); }} className="flex-1 overflow-y-auto bg-white custom-scrollbar pb-6">
           <div className="sticky top-0 bg-white/90 backdrop-blur-sm z-10 border-b border-slate-50 flex items-center px-2 py-2 w-full flex-nowrap">
             <span className="flex-[2] text-[11px] font-black text-slate-400 uppercase tracking-widest text-right">الصنف</span>
             <span className="flex-1 text-[11px] font-black text-slate-400 uppercase tracking-widest text-center">الكمية</span>
@@ -407,8 +417,8 @@ const SalesModule: React.FC<{ onNavigate?: (view: any, params?: any) => void }> 
         </PullToRefresh>
       </div>
 
-      {/* FIXED FOOTER SECTION - MATCHING PURCHASES DESIGN */}
-      <div className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 p-2 shadow-lg space-y-2">
+      {/* PERFECTLY ALIGNED STICKY FOOTER SECTION - MATCHING PURCHASES DESIGN */}
+      <div className="sticky bottom-0 w-full z-50 bg-white border-t border-gray-200 p-3 shadow-lg space-y-2 pb-[calc(14px+env(safe-area-inset-bottom))] px-4 rounded-b-2xl">
         <div className="flex items-center justify-between flex-nowrap px-2">
           <div className="flex flex-col items-center">
             <span className="text-[11px] font-black text-slate-400 uppercase">الخصم</span>

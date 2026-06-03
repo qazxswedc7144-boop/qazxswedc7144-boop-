@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { db } from '@/core/db';
 import defaultLogoImg from '@/assets/logo-vector.svg'; 
-import { HeartPulse, Settings, Bell } from 'lucide-react';
+import { HeartPulse, Settings } from 'lucide-react';
 import { useUI } from '@/contexts/AppContext';
 import RoleGuard from '@/components/shared/RoleGuard';
+import NotificationCenter from '@/components/shared/NotificationCenter';
 
 const DynamicLogo = () => {
   const [logoSrc, setLogoSrc] = useState<string | null>(null);
@@ -99,13 +100,7 @@ const Header = ({ pageTitle, showBackButton, onBackClick }: { pageTitle?: string
 
       {/* الجهة اليسرى (نهاية الصف في RTL): أيقونة التنبيهات مع المنبه */}
       <div className="flex items-center gap-3 z-10">
-        <button 
-          className="w-10 h-10 flex items-center justify-center bg-slate-50 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-xl transition-all relative active:scale-95"
-          title="التنبيهات"
-        >
-          <Bell size={20} />
-          <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-red-500 border-2 border-white rounded-full"></span>
-        </button>
+        <NotificationCenter />
       </div>
     </header>
   );

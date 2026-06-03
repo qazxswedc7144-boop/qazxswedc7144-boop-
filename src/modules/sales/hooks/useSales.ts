@@ -188,11 +188,7 @@ export const useSales = (onNavigate?: (view: any, params?: any) => void) => {
     setHeader(prev => ({ ...prev, customer_id: c.id }));
     setCustomerSearchTerm(c.Supplier_Name);
     setShowCustomerDropdown(false);
-    if (c.balance !== undefined) {
-      showNotification(`رصيد العميل الحالي: ${c.balance.toLocaleString()} ${currency}`, "info");
-      addToast(`رصيد العميل الحالي: ${c.balance.toLocaleString()} ${currency}`, "info");
-    }
-  }, [addToast, currency, showNotification]);
+  }, []);
 
   const handleCustomerBlur = useCallback(() => {
     setTimeout(() => {
@@ -601,6 +597,7 @@ export const useSales = (onNavigate?: (view: any, params?: any) => void) => {
     handleCustomerBlur,
     confirmAddCustomer,
     cancelAddCustomer,
-    resetInvoiceState
+    resetInvoiceState,
+    customers
   };
 };

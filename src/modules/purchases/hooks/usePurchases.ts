@@ -272,11 +272,7 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
     setHeader(prev => ({ ...prev, supplier_id: s.id }));
     setSupplierSearchTerm(s.Supplier_Name);
     setShowSupplierDropdown(false);
-    if (s.balance !== undefined) {
-      showNotification(`رصيد المورد الحالي: ${s.balance.toLocaleString()} ${currency}`, 'info');
-      addToast(`رصيد المورد الحالي: ${s.balance.toLocaleString()} ${currency}`, "info");
-    }
-  }, [addToast, currency, showNotification]);
+  }, []);
 
   const handleSupplierBlur = useCallback(() => {
     setTimeout(async () => {

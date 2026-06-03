@@ -1,5 +1,5 @@
 // server/modules/accounting/services/financialTransaction.service.ts
-import { prisma } from "../../../database/prisma";
+import { runInTransaction } from "../../../core/database/transactionGuard";
 import { FifoService } from "../../inventory/services/fifo.service";
 import { Prisma, InvoiceStatus, DocumentStatus, InvoiceType } from "@prisma/client";
 
@@ -37,7 +37,7 @@ export class FinancialTransactionService {
     userId: string | null = null,
     ipAddress: string | null = null
   ) {
-    return await prisma.$transaction(async (tx) => {
+    return await runInTransaction("AccountingService", async (tx) => {
       // 1. Fetch invoice and include all line items with product definitions
       const invoice = await tx.invoice.findUnique({
         where: { id: invoiceId },

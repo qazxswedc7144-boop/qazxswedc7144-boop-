@@ -1,6 +1,7 @@
 // server/routes/inventory.routes.ts
 import { Router, Response } from "express";
 import { prisma } from "../database/prisma";
+import { runInTransaction } from "../core/database/transactionGuard";
 import { FifoService } from "../modules/inventory/services/fifo.service";
 import { authenticateToken, AuthenticatedRequest } from "../middleware/auth.middleware";
 import { LockingService } from "../modules/locking/locking.service";
@@ -39,7 +40,7 @@ inventoryRouter.post("/move", authenticateToken, validateRequestBody(StockMoveSc
   try {
     const refId = `ADJ-${Date.now()}`;
 
-    await prisma.$transaction(async (tx) => {
+    await runInTransaction("InventoryService", async (tx) => {
       if (data.qty > 0) {
         // Stock addition
         await FifoService.addStock(

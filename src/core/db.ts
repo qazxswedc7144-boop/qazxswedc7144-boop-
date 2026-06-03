@@ -241,11 +241,53 @@ export class PharmaFlowDB extends Dexie {
          console.warn(`[DB] Transaction tables missing: ${safeTables.filter(t => !existingTableNames.includes(t))}`);
       }
 
-      return await this.transaction(mode as any, validTables.length > 0 ? validTables : existingTableNames, async (trans) => {
-        return await operation(trans);
+      // 1. Detect Nested Transaction Execution
+      if ((Dexie as any).currentTransaction) {
+        console.log("[DB] Re-using parent active transaction zone to prevent early commit");
+        return await operation((Dexie as any).currentTransaction);
+      }
+
+      // 2. Wrap block using Dexie's explicit transaction system and return via Dexie promise chain
+      return await this.transaction(mode as any, validTables.length > 0 ? validTables : existingTableNames, (trans) => {
+        let finished = false;
+        const dummyTable = validTables[0] || existingTableNames[0];
+
+        const keepAlive = () => {
+          if (finished || !dummyTable) return;
+          this.table(dummyTable).get('__keep_alive_dummy__')
+            .catch(() => {})
+            .then(() => {
+              if (!finished) {
+                keepAlive();
+              }
+            });
+        };
+
+        keepAlive();
+
+        return Dexie.Promise.resolve().then(() => {
+          return operation(trans);
+        }).finally(() => {
+          finished = true;
+        });
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error("[DB] Atomic Transaction Failed:", error);
+      const msg = error?.message || String(error);
+      const shouldStandardize = 
+        msg.includes("committed too early") || 
+        msg.includes("Transaction committed") ||
+        msg.includes("TransactionCompleted") ||
+        msg.includes("Transaction aborted") ||
+        msg.includes("inactive") ||
+        error?.name === "TransactionCommittedTooEarlyError" ||
+        error?.name === "TransactionAbortedError";
+      
+      if (shouldStandardize) {
+        const erpError = new Error("تعذر إكمال العملية حالياً، يرجى إعادة المحاولة.");
+        (erpError as any).technicalDetails = msg;
+        throw erpError;
+      }
       throw error; 
     }
   }

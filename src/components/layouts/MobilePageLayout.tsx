@@ -31,7 +31,7 @@ export const MobilePageLayout: React.FC<MobilePageLayoutProps> = ({
       </main>
 
       {bottomBar && (
-        <div className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-slate-200 px-4 py-3 shadow-[0_-4px_12px_rgba(0,0,0,0.05)] md:static md:shadow-none md:border-t-0 md:bg-transparent md:px-0 md:py-0">
+        <div className="sticky bottom-0 w-full z-50 bg-white border-t border-slate-200 px-4 py-3 shadow-[0_-4px_12px_rgba(0,0,0,0.05)] md:static md:shadow-none md:border-t-0 md:bg-transparent md:px-0 md:py-0">
           <div className="max-w-7xl mx-auto">
             {bottomBar}
           </div>

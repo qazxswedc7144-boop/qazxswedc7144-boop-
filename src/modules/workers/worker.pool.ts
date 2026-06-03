@@ -2,6 +2,7 @@
 // FILE: src/modules/workers/worker.pool.ts
 // ==========================================
 
+import Dexie from 'dexie';
 import { WorkerTask, WorkerResponse, WorkerMetrics } from './worker.types';
 
 export class WorkerPool {
@@ -57,7 +58,48 @@ export class WorkerPool {
     const startTime = performance.now();
     this.executionsCount++;
 
-    return new Promise<WorkerResponse>((resolve, reject) => {
+    // Check if there is an active Dexie transaction.
+    // If so, we MUST execute synchronously to prevent the transaction from committing too early.
+    if ((Dexie as any).currentTransaction) {
+      try {
+        const result = mainThreadFallback();
+        // Handle result if it's a promise
+        if (result && typeof result.then === 'function') {
+          return new Dexie.Promise((resolve) => {
+            result.then((res: any) => {
+              resolve({
+                id: task.id,
+                success: true,
+                result: res,
+                durationMs: performance.now() - startTime
+              });
+            }).catch((err: any) => {
+              resolve({
+                id: task.id,
+                success: false,
+                error: err.message || String(err),
+                durationMs: performance.now() - startTime
+              });
+            });
+          }) as any;
+        }
+        return Dexie.Promise.resolve({
+          id: task.id,
+          success: true,
+          result,
+          durationMs: performance.now() - startTime
+        }) as any;
+      } catch (err: any) {
+        return Dexie.Promise.resolve({
+          id: task.id,
+          success: false,
+          error: err.message || String(err),
+          durationMs: performance.now() - startTime
+        }) as any;
+      }
+    }
+
+    return new Dexie.Promise<WorkerResponse>((resolve, reject) => {
       // 1. Check if Web Workers are supported and enabled
       if (typeof Worker === 'undefined') {
         this.runOnMainThread(task, mainThreadFallback, startTime, resolve);
@@ -65,7 +107,7 @@ export class WorkerPool {
       }
 
       this.enqueueTask(type, task, resolve, reject, mainThreadFallback, startTime);
-    });
+    }) as any;
   }
 
   private enqueueTask(

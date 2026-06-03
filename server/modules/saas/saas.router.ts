@@ -2,7 +2,7 @@
 import { Router, Request, Response } from "express";
 import { SaasService } from "./saas.service";
 import { authenticateToken, AuthenticatedRequest } from "../../middleware/auth.middleware";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 
 export const saasRouter = Router();
 

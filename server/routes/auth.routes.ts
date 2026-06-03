@@ -1,6 +1,6 @@
 // server/routes/auth.routes.ts
 import { Router, Request, Response } from "express";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { prisma } from "../database/prisma";
 import { Role } from "@prisma/client";

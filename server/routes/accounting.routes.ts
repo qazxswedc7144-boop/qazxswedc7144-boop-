@@ -1,6 +1,7 @@
 // server/routes/accounting.routes.ts
 import { Router, Response } from "express";
 import { prisma } from "../database/prisma";
+import { runInTransaction } from "../core/database/transactionGuard";
 import { authenticateToken, AuthenticatedRequest } from "../middleware/auth.middleware";
 import { Prisma } from "@prisma/client";
 import { LockingService } from "../modules/locking/locking.service";
@@ -37,7 +38,7 @@ accountingRouter.post("/journal", authenticateToken, validateRequestBody(Account
   try {
     const data = req.body; // sanitized and verified by validateRequestBody
 
-    const result = await prisma.$transaction(async (tx) => {
+    const result = await runInTransaction("AccountingService", async (tx) => {
       const sumDebits = data.lines.reduce((sum: number, l: any) => sum + l.debit, 0);
       const sumCredits = data.lines.reduce((sum: number, l: any) => sum + l.credit, 0);
 

@@ -2,6 +2,7 @@
 // FILE: src/modules/workers/worker.client.ts
 // ==========================================
 
+import Dexie from 'dexie';
 import { WorkerPool } from './worker.pool';
 import { 
   WorkerTask, 
@@ -20,7 +21,7 @@ export const WorkerClient = {
   /**
    * Calculates FIFO layers consumption and updates
    */
-  async runFIFO(invoice: any, layers: any[]): Promise<FIFOResult> {
+  runFIFO(invoice: any, layers: any[]): Promise<FIFOResult> {
     const taskId = generateTaskId();
     const task: WorkerTask = {
       id: taskId,
@@ -131,15 +132,18 @@ export const WorkerClient = {
       return { totalCost, itemCosts, updatedLayers, consumptionLogs };
     };
 
-    const res = await WorkerPool.getInstance().runTask('inventory', task, fallbackImplementation);
-    if (!res.success) throw new Error(res.error || 'Failed to complete FIFO worker calculation');
-    return res.result!;
+    return Dexie.Promise.resolve().then(() => {
+      return WorkerPool.getInstance().runTask('inventory', task, fallbackImplementation);
+    }).then(res => {
+      if (!res.success) throw new Error(res.error || 'Failed to complete FIFO worker calculation');
+      return res.result!;
+    }) as any;
   },
 
   /**
    * Calculates FEFO batch depletion and updates (expiry-date based First-Expired First-Out)
    */
-  async runFEFO(invoice: any, batches: any[]): Promise<FEFOResult> {
+  runFEFO(invoice: any, batches: any[]): Promise<FEFOResult> {
     const taskId = generateTaskId();
     const task: WorkerTask = {
       id: taskId,
@@ -232,15 +236,18 @@ export const WorkerClient = {
       return { totalCost, itemCosts, updatedBatches, consumptionLogs };
     };
 
-    const res = await WorkerPool.getInstance().runTask('inventory', task, fallbackImplementation);
-    if (!res.success) throw new Error(res.error || 'Failed to complete FEFO worker calculation');
-    return res.result!;
+    return Dexie.Promise.resolve().then(() => {
+      return WorkerPool.getInstance().runTask('inventory', task, fallbackImplementation);
+    }).then(res => {
+      if (!res.success) throw new Error(res.error || 'Failed to complete FEFO worker calculation');
+      return res.result!;
+    }) as any;
   },
 
   /**
    * Generates double-entry schema-mappings for invoices
    */
-  async runJournalMapping(
+  runJournalMapping(
     invoice: any, 
     items: any[], 
     settings: Record<string, string>, 
@@ -311,15 +318,18 @@ export const WorkerClient = {
       return { lines, totalDebit, totalCredit, isBalanced };
     };
 
-    const res = await WorkerPool.getInstance().runTask('accounting', task, fallbackImplementation);
-    if (!res.success) throw new Error(res.error || 'Failed to complete Journal Mapping in worker');
-    return res.result!;
+    return Dexie.Promise.resolve().then(() => {
+      return WorkerPool.getInstance().runTask('accounting', task, fallbackImplementation);
+    }).then(res => {
+      if (!res.success) throw new Error(res.error || 'Failed to complete Journal Mapping in worker');
+      return res.result!;
+    }) as any;
   },
 
   /**
    * Reconciles stock movements ledger entries
    */
-  async runInventoryReconciliation(
+  runInventoryReconciliation(
     productId: string, 
     movements: any[], 
     currentStock: number
@@ -345,15 +355,18 @@ export const WorkerClient = {
       };
     };
 
-    const res = await WorkerPool.getInstance().runTask('inventory', task, fallbackImplementation);
-    if (!res.success) throw new Error(res.error || 'Failed to execute Inventory Reconciliation in worker');
-    return res.result!;
+    return Dexie.Promise.resolve().then(() => {
+      return WorkerPool.getInstance().runTask('inventory', task, fallbackImplementation);
+    }).then(res => {
+      if (!res.success) throw new Error(res.error || 'Failed to execute Inventory Reconciliation in worker');
+      return res.result!;
+    }) as any;
   },
 
   /**
    * Generates a GAAP-compliant Trial Balance
    */
-  async runTrialBalance(
+  runTrialBalance(
     accounts: any[], 
     entries: any[], 
     start?: string, 
@@ -410,15 +423,18 @@ export const WorkerClient = {
       });
     };
 
-    const res = await WorkerPool.getInstance().runTask('accounting', task, fallbackImplementation);
-    if (!res.success) throw new Error(res.error || 'Failed to calculate Trial Balance in worker');
-    return res.result!;
+    return Dexie.Promise.resolve().then(() => {
+      return WorkerPool.getInstance().runTask('accounting', task, fallbackImplementation);
+    }).then(res => {
+      if (!res.success) throw new Error(res.error || 'Failed to calculate Trial Balance in worker');
+      return res.result!;
+    }) as any;
   },
 
   /**
    * Run heavy aggregation queries across journal entries and general ledger lines
    */
-  async runLedgerAggregation(accounts: any[], entries: any[], filterAccountId?: string): Promise<any> {
+  runLedgerAggregation(accounts: any[], entries: any[], filterAccountId?: string): Promise<any> {
     const taskId = generateTaskId();
     const task: WorkerTask = {
       id: taskId,
@@ -486,8 +502,11 @@ export const WorkerClient = {
       return filterAccountId ? ledgerMap[filterAccountId] : Object.values(ledgerMap);
     };
 
-    const res = await WorkerPool.getInstance().runTask('reporting', task, fallbackImplementation);
-    if (!res.success) throw new Error(res.error || 'Failed to aggregate ledger data in worker');
-    return res.result!;
+    return Dexie.Promise.resolve().then(() => {
+      return WorkerPool.getInstance().runTask('reporting', task, fallbackImplementation);
+    }).then(res => {
+      if (!res.success) throw new Error(res.error || 'Failed to aggregate ledger data in worker');
+      return res.result!;
+    }) as any;
   }
 };

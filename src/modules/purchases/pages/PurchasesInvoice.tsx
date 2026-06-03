@@ -2,7 +2,6 @@
 import React from 'react';
 import { Button, Modal } from '@/components/shared/SharedUI';
 import { ItemEntryModal } from '@/modules/sales/components/ItemEntryModal';
-import { db } from '@/core/db';
 import { 
   Search, Trash2, Plus, Camera, RotateCcw, CheckCircle2,
   ShoppingBag, Package, Percent, Edit3, Clock,
@@ -15,7 +14,6 @@ import { CameraModule } from '@/modules/shared/pages/CameraModule';
 import { DocumentViewer } from '@/components/shared/DocumentViewer';
 import { AnimatedNumber } from '@/components/shared/AnimatedNumber';
 import { PullToRefresh } from '@/components/shared/PullToRefresh';
-import { SupplierBalanceAlert } from '../components/SupplierBalanceAlert';
 import { InvoiceItemEditModal } from '@/components/shared/InvoiceItemEditModal';
 
 const formatDateDisplay = (dateStr: string) => {
@@ -95,8 +93,6 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
   const [isAddItemModalOpen, setIsAddItemModalOpen] = React.useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [editingItem, setEditingItem] = React.useState<any | null>(null);
-  const [supplierBalance, setSupplierBalance] = React.useState<number>(0);
-  const [showAlert, setShowAlert] = React.useState<boolean>(false);
   const [isEditModalOpen, setIsEditModalOpen] = React.useState<boolean>(false);
 
   const {
@@ -144,22 +140,11 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
     setShowAIConfirmModal,
     handleAIImport,
     applyAIParsedData,
-    resetInvoiceState
+    resetInvoiceState,
+    suppliers
   } = usePurchases(onNavigate);
 
-  // Hook to show a supplier's balance when selected
-  React.useEffect(() => {
-    if (header?.supplier_id) {
-      db.table('suppliers').get(header.supplier_id).then((sup: any) => {
-        if (sup && typeof sup.balance === 'number') {
-          setSupplierBalance(sup.balance);
-          setShowAlert(true);
-        }
-      }).catch(err => console.error("Error fetching supplier balance:", err));
-    } else {
-      setShowAlert(false);
-    }
-  }, [header?.supplier_id]);
+  const selectedSupplierObj = suppliers?.find((s: any) => s.id === header.supplier_id || s.Supplier_ID === header.supplier_id);
 
   // Navigation Guard: Browser Refresh/Close
   React.useEffect(() => {
@@ -388,8 +373,15 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
                 onFocus={() => setShowSupplierDropdown(true)}
                 onBlur={handleSupplierBlur}
                 placeholder="اسم المورد..."
-                className="w-full h-10 border-b border-gray-400 focus:outline-none focus:border-green-500 rounded-none text-black text-right placeholder-gray-400 bg-transparent"
+                className="w-full h-10 border-b border-gray-400 focus:outline-none focus:border-green-500 rounded-none text-black text-right placeholder-gray-400 bg-transparent pr-1"
               />
+              {selectedSupplierObj && (
+                <div className="absolute left-1 bottom-1 flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-700 dark:bg-amber-950/45 dark:text-amber-300 font-sans text-[10px] font-bold border border-amber-100/50 dark:border-amber-900/40 shadow-sm pointer-events-none select-none z-10 transition-all">
+                  <span>الرصيد:</span>
+                  <span className="font-mono">{(selectedSupplierObj.balance || 0).toLocaleString()}</span>
+                  <span className="text-[8px] opacity-80">{currency}</span>
+                </div>
+              )}
               <AnimatePresence>
                 {showSupplierDropdown && filteredSuppliers.length > 0 && (
                   <motion.div 
@@ -552,7 +544,7 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
       </div>
 
       {/* ITEMS LIST SECTION - SIMPLE LIST */}
-      <PullToRefresh onRefresh={async () => { await refreshGlobal(); }} className="flex-1 overflow-y-auto bg-white pb-32">
+      <PullToRefresh onRefresh={async () => { await refreshGlobal(); }} className="flex-1 overflow-y-auto bg-white pb-6">
         <div className="sticky top-0 bg-white/90 backdrop-blur-sm z-10 border-b border-slate-50 flex items-center px-4 py-2">
           <span className="flex-[2] text-[11px] font-black text-slate-400 uppercase tracking-widest">الصنف</span>
           <span className="flex-1 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">الكمية</span>
@@ -585,8 +577,8 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
         </div>
       </PullToRefresh>
 
-      {/* FIXED FOOTER SECTION */}
-      <div className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 p-2 shadow-lg space-y-2">
+      {/* PERFECTLY ALIGNED STICKY FOOTER SECTION */}
+      <div className="sticky bottom-0 w-full z-50 bg-white border-t border-gray-200 p-3 shadow-lg space-y-2 pb-[calc(14px+env(safe-area-inset-bottom))] px-4 rounded-b-2xl">
         <div className="flex items-center justify-between px-2">
           <div className="flex flex-col items-center">
             <span className="text-[9px] font-black text-slate-400 uppercase">الخصم</span>
@@ -828,14 +820,6 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
           </div>
         </div>
       </Modal>
-
-      {/* Supplier balance alert */}
-      <SupplierBalanceAlert 
-        balance={supplierBalance}
-        currency={currency || "YER"}
-        isVisible={showAlert}
-        onClose={() => setShowAlert(false)}
-      />
 
       {/* Item edit modal */}
       <InvoiceItemEditModal 

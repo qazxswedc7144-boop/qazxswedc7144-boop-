@@ -295,7 +295,7 @@ const CustomerReceiptModule: React.FC<{ onNavigate?: (view: any) => void }> = ({
         </div>
       </div>
 
-      <div className="fixed bottom-0 left-0 right-0 p-3 bg-white border-t border-slate-200 z-[100] shadow-[0_-4px_16px_rgba(0,0,0,0.06)]">
+      <div className="sticky bottom-0 w-full z-50 bg-white border-t border-slate-200 p-3 shadow-lg rounded-b-2xl pb-[calc(14px+env(safe-area-inset-bottom))] px-4">
          <div className="max-w-6xl mx-auto flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-2">
             <div className="flex justify-around sm:justify-start gap-6 sm:gap-10">
                <div className="text-center">

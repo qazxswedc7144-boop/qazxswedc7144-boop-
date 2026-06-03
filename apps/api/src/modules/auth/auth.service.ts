@@ -1,5 +1,5 @@
 // apps/api/src/modules/auth/auth.service.ts
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { prisma } from "../../../../../server/database/prisma";
 import { Role } from "@prisma/client";
