@@ -56,6 +56,11 @@ export class ReplicationSubscriber {
 
       this.subClient = new Redis(REDIS_URL, options);
 
+      // Register error listener immediately to prevent unhandled socket error crashes on startup
+      this.subClient.on("error", (err) => {
+        console.warn("[REPLICATION_SUBSCRIBER] Redis subscription background adapter socket notice:", err.message);
+      });
+
       this.subClient.on("connect", async () => {
         console.log("✅ [REPLICATION_SUBSCRIBER] Redis Pub/Sub connection established.");
         try {
@@ -76,10 +81,6 @@ export class ReplicationSubscriber {
         } catch (jsonErr: any) {
           console.warn(`[REPLICATION_SUBSCRIBER] Failed to parse message on ${channel}:`, jsonErr.message);
         }
-      });
-
-      this.subClient.on("error", (err) => {
-        console.warn("[REPLICATION_SUBSCRIBER] Redis subscription background adapter socket notice:", err.message);
       });
 
       this.isSubscribed = true;

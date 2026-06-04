@@ -74,6 +74,7 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
   }, [supplierSearchTerm]);
 
   const [isSaving, setIsSaving] = useState(false);
+  const [savePhase, setSavePhase] = useState<'idle' | 'saving' | 'failed'>('idle');
   const [hasDependencies, setHasDependencies] = useState(false);
   
   const [isAdjustmentsOpen, setIsAdjustmentsOpen] = useState(false);
@@ -533,6 +534,7 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
   }, [manualItemName, tempQty, tempPrice, header.invoice_number, selectedProduct, items.length, tempExpiry, tempNote, selectedCategoryId, addToast]);
 
   const handlePost = useCallback(async () => {
+    if (savePhase === 'saving') return;
     if (!header.supplier_id) {
       addToast("يرجى اختيار المورد", "error");
       return;
@@ -548,6 +550,7 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
     const navPromise = new Promise(res => setTimeout(res, 500)); 
 
     setIsSaving(true);
+    setSavePhase('saving');
     try {
       if (aiParsedData) {
         const originalSupplier = aiParsedData.supplier;
@@ -564,33 +567,40 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
         });
       }
 
-      // Start saving task
-      const saveTask = addInvoice({
-        type: 'PURCHASE',
-        payload: {
-          supplierId: header.supplier_id,
-          items,
-          total: vTotalSum,
-          invoiceId: header.invoice_number,
-          id: editingInvoiceId || undefined,
-          notes: header.notes,
-          attachment: header.attachment,
-          date: header.date
-        },
-        options: {
-          isCash: header.payment_method === 'Cash',
-          paymentStatus: header.payment_method as any,
-          invoiceStatus: 'POSTED',
-          isReturn: !!header.isReturn,
-          currency,
-          date: header.date
-        }
-      });
+      // سباق برمجي: إما يتم الحفظ أو ينتهي الوقت خلال 15 ثانية ويفك تجميد الأزرار تلقائياً
+      const res = await Promise.race([
+        (async () => {
+          const r = await addInvoice({
+            type: 'PURCHASE',
+            payload: {
+              supplierId: header.supplier_id,
+              items,
+              total: vTotalSum,
+              invoiceId: header.invoice_number,
+              id: editingInvoiceId || undefined,
+              notes: header.notes,
+              attachment: header.attachment,
+              date: header.date
+            },
+            options: {
+              isCash: header.payment_method === 'Cash',
+              paymentStatus: header.payment_method as any,
+              invoiceStatus: 'POSTED',
+              isReturn: !!header.isReturn,
+              currency,
+              date: header.date
+            }
+          });
+          await navPromise;
+          return r;
+        })(),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('SAVE_TIMEOUT')), 15000)
+        )
+      ]) as { success: boolean };
 
-      await navPromise;
-      const res = await saveTask;
-
-      if (res.success) {
+      if (res?.success) {
+        setSavePhase('idle');
         showNotification('✅ تم حفظ فاتورة المشتريات وتحديث المستودع بنجاح', 'success');
         addToast("تم حفظ وترحيل الفاتورة بنجاح ✅", "success");
 
@@ -608,14 +618,26 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
         
         onNavigate?.('dashboard');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Save error", error);
-      showNotification('❌ فشل في حفظ الفاتورة وتحديث المستودع', 'error');
-      addToast("فشل في حفظ الفاتورة", "error");
+      setSavePhase('failed');
+      const isTimeout = error?.message === 'SAVE_TIMEOUT';
+      showNotification(
+        isTimeout 
+          ? '⚠️ تأخر حفظ الفاتورة؛ تم فك تجميد الواجهة حرصاً على استمرار العمل.' 
+          : '❌ فشل في حفظ الفاتورة وتحديث المستودع', 
+        'error'
+      );
+      addToast(
+        isTimeout
+          ? 'تأخر حفظ الفاتورة سحابياً؛ تم فك تجميد الواجهة حرصاً على العمل المستمر. راجع مركز المزامنة.'
+          : (error?.message || "فشل في حفظ الفاتورة"),
+        'error'
+      );
     } finally {
       setIsSaving(false);
     }
-  }, [header, items, aiParsedData, suppliers, vTotalSum, editingInvoiceId, currency, addInvoice, addToast, refreshGlobal, onNavigate, showNotification]);
+  }, [header, items, aiParsedData, suppliers, vTotalSum, editingInvoiceId, currency, addInvoice, addToast, refreshGlobal, onNavigate, showNotification, savePhase]);
 
   const handleExport = () => {
     // Implementation for export
@@ -705,6 +727,8 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
     setShowAIConfirmModal,
     handleAIImport,
     applyAIParsedData,
-    resetInvoiceState
+    resetInvoiceState,
+    savePhase,
+    setSavePhase
   };
 }

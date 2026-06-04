@@ -1,4 +1,6 @@
 import { Component, ErrorInfo, ReactNode } from 'react';
+import { useAuthStore } from '../../store/authStore';
+import { db } from '../../core/db';
 
 interface Props {
   children: ReactNode;
@@ -8,6 +10,7 @@ interface State {
   hasFault: boolean;
   fault: Error | null;
   faultInfo: ErrorInfo | null;
+  syncStatus: 'idle' | 'sending' | 'success' | 'offline_saved' | 'failed';
 }
 
 /**
@@ -17,11 +20,12 @@ export class AppFaultBoundary extends Component<Props, State> {
   public state: State = {
     hasFault: false,
     fault: null,
-    faultInfo: null
+    faultInfo: null,
+    syncStatus: 'idle'
   };
 
   public static getDerivedStateFromError(error: Error): State {
-    return { hasFault: true, fault: error, faultInfo: null };
+    return { hasFault: true, fault: error, faultInfo: null, syncStatus: 'idle' };
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
@@ -36,6 +40,105 @@ export class AppFaultBoundary extends Component<Props, State> {
         timestamp: new Date().toISOString()
       }));
     } catch (e) {}
+
+    const userState = useAuthStore.getState();
+    const user = userState.user;
+    
+    const payload = {
+      tenantId: user?.tenantId || "SYSTEM_TENANT",
+      branchId: user?.branchId || "SYSTEM_BRANCH",
+      userId: user?.id || "anonymous",
+      route: window.location.hash || window.location.pathname || "/",
+      deviceFingerprint: navigator.userAgent || "Unknown Device",
+      appVersion: "1.0.0",
+      stackTrace: errorInfo.componentStack || error.stack || "",
+      errorMessage: error.message || String(error),
+      timestamp: Date.now()
+    };
+
+    // Check online status
+    if (!navigator.onLine) {
+      console.warn("🌐 [OFFLINE] Device is offline. Bypassing live crash telemetry and logging directly to local IndexedDB...");
+      this.setState({ syncStatus: 'sending' });
+      
+      try {
+        db.System_Error_Log.add({
+          id: `CRASH-${Date.now()}`,
+          Error_ID: `CRASH-${Date.now()}`,
+          Module_Name: "CLIENT_CRASH",
+          errorMessage: payload.errorMessage,
+          stackTrace: payload.stackTrace,
+          route: payload.route,
+          timestamp: payload.timestamp,
+          isPendingSync: true
+        }).then(() => {
+          console.log("💾 [OFFLINE_STORAGE] Crash written successfully to offline Dexie store.");
+          this.setState({ syncStatus: 'offline_saved' });
+        }).catch(err => {
+          console.error("✖ Dexie add error:", err);
+          this.setState({ syncStatus: 'failed' });
+        });
+      } catch (e) {
+        this.setState({ syncStatus: 'failed' });
+      }
+    } else {
+      // Device is online! Post telemetry to server and push to Capacitor Crashlytics if available
+      this.setState({ syncStatus: 'sending' });
+
+      // Live Capacitor Plugin integration hook
+      try {
+        const Capacitor = (window as any).Capacitor;
+        if (Capacitor && Capacitor.Plugins && Capacitor.Plugins.FirebaseCrashlytics) {
+          Capacitor.Plugins.FirebaseCrashlytics.log({ message: `Crash: ${payload.errorMessage}` });
+          Capacitor.Plugins.FirebaseCrashlytics.recordException({
+            message: payload.errorMessage,
+            stackTrace: payload.stackTrace
+          }).then(() => {
+            console.log("🚀 [Capacitor Firebase Crashlytics] Dispatched crash package successfully.");
+          }).catch((err: any) => {
+            console.warn("[Capacitor Firebase Crashlytics] Handshake failed:", err);
+          });
+        }
+      } catch (capErr) {
+        console.warn("[CAPACITOR] Crashlytics call error:", capErr);
+      }
+
+      // Live fetch post to API routes
+      fetch('/api/security/crash', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      }).then(response => {
+        if (!response.ok) {
+          console.warn("[CRASH_LOGGER] Failed to dispatch remote crash log:", response.statusText);
+          this.setState({ syncStatus: 'failed' });
+        } else {
+          console.log("🚀 [CRASH_LOGGER] Remote crash trace successfully reported to secure server log.");
+          this.setState({ syncStatus: 'success' });
+        }
+      }).catch(err => {
+        console.warn("[CRASH_LOGGER] Network connection failure to crash logging api:", err.message);
+        // Fallback to local Dexie on fetch network failure
+        try {
+          db.System_Error_Log.add({
+            id: `CRASH-${Date.now()}`,
+            Error_ID: `CRASH-${Date.now()}`,
+            Module_Name: "CLIENT_CRASH",
+            errorMessage: payload.errorMessage,
+            stackTrace: payload.stackTrace,
+            route: payload.route,
+            timestamp: payload.timestamp,
+            isPendingSync: true
+          }).then(() => {
+            this.setState({ syncStatus: 'offline_saved' });
+          });
+        } catch (dexIE) {
+          this.setState({ syncStatus: 'failed' });
+        }
+      });
+    }
     
     this.setState({ faultInfo: errorInfo });
   }
@@ -57,7 +160,7 @@ export class AppFaultBoundary extends Component<Props, State> {
   };
 
   public render(): ReactNode {
-    const { hasFault, fault, faultInfo } = this.state;
+    const { hasFault, fault, faultInfo, syncStatus } = this.state;
     
     if (hasFault) {
       return (
@@ -68,10 +171,38 @@ export class AppFaultBoundary extends Component<Props, State> {
             </div>
             
             <div className="space-y-2">
-              <h1 className="text-2xl sm:text-3xl font-black text-[#1E4D4D]">حدث خطأ في واجهة العرض</h1>
+              <h1 className="text-2xl sm:text-3xl font-black text-[#1E4D4D]">نعتذر، حدث خطأ غير متوقع</h1>
               <p className="text-slate-500 text-sm leading-relaxed">
-                تم عزل الخطأ التقني بنجاح لتجنب فقدان البيانات أو انهيار النظام المالي.
+                جاري إرسال تقرير الدعم الفني بشكل تلقائي وآمن وتأمين عملياتك محلياً.
               </p>
+            </div>
+
+            {/* Sync status loader indicator */}
+            <div className="bg-[#EEF2F6] rounded-2xl p-4 flex items-center justify-center gap-3 text-xs font-bold text-[#1E4D4D]">
+              {syncStatus === 'sending' && (
+                <>
+                  <div className="w-4 h-4 border-2 border-[#1E4D4D] border-t-transparent rounded-full animate-spin"></div>
+                  <span>جاري إرسال تقرير التشخيص فوريًا ومزامنة الخطأ...</span>
+                </>
+              )}
+              {syncStatus === 'success' && (
+                <>
+                  <span className="text-emerald-600">✔</span>
+                  <span className="text-emerald-800">تم إرسال تقرير الأعطال للدعم السحابي بنجاح.</span>
+                </>
+              )}
+              {syncStatus === 'offline_saved' && (
+                <>
+                  <span className="text-amber-600">💾</span>
+                  <span className="text-amber-800">الجهاز أوفلاين. تم حفظ حزمة الأعطال محلياً بمخزن المزامنة الآمن.</span>
+                </>
+              )}
+              {syncStatus === 'failed' && (
+                <>
+                  <span className="text-red-500">⚠</span>
+                  <span className="text-red-700">تعذر الوصول لمركز الاتصال السحابي. تم تأمين النظام محليًا.</span>
+                </>
+              )}
             </div>
 
             <div className="bg-slate-50 rounded-[20px] p-4 text-left border border-slate-100 font-mono text-[11px] text-red-500 max-h-40 overflow-y-auto custom-scrollbar" dir="ltr">

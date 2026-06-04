@@ -32,6 +32,7 @@ export const useSales = (onNavigate?: (view: any, params?: any) => void) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [isAutoSaving, setIsAutoSaving] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [savePhase, setSavePhase] = useState<'idle' | 'saving' | 'failed'>('idle');
   const [isAdding, setIsAdding] = useState(false);
   const [isDuplicate, setIsDuplicate] = useState(false);
   const [hasDependencies, setHasDependencies] = useState(false);
@@ -455,7 +456,8 @@ export const useSales = (onNavigate?: (view: any, params?: any) => void) => {
   }, [isLocked]);
 
   const handlePost = useCallback(async () => {
-    if (items.length === 0 || isLocked || isDuplicate || isSaving) return;
+    if (savePhase === 'saving') return;
+    if (items.length === 0 || isLocked || isDuplicate) return;
     
     // OPTIMISTIC: Show success immediately and block UI only enough to navigate
     showNotification('⌛ جاري طباعة الإيصال وترحيل الصندوق...', 'info');
@@ -463,42 +465,46 @@ export const useSales = (onNavigate?: (view: any, params?: any) => void) => {
     const navPromise = new Promise(res => setTimeout(res, 500)); // Briefly show toast
     
     setIsSaving(true);
+    setSavePhase('saving');
     try {
       const nextStatus = InvoiceWorkflowEngine.determineNextStatus(vTotalSum, header.payment_method === 'Cash' ? vTotalSum : 0, 'PENDING');
       
-      // We start the network call but don't 'await' it for UI responsiveness if it's optimistic.
-      // However, for critical financial data, we usually want some confirmation.
-      // Let's do partial optimistic: show success toast early.
-      
-      const saveTask = addInvoice({
-        type: 'SALE',
-        payload: { 
-          customerId: header.customer_id, 
-          items, 
-          total: vTotalSum, 
-          invoiceId: header.invoice_number,
-          id: editingInvoiceId || undefined,
-          notes: header.notes,
-          attachment: header.attachment,
-          date: header.date
-        },
-        options: { 
-          isCash: header.payment_method === 'Cash', 
-          paymentStatus: header.payment_method as any,
-          invoiceStatus: nextStatus, 
-          isReturn: header.isReturn, 
-          currency,
-          date: header.date
-        }
-      });
+      const savePromise = (async () => {
+        const r = await addInvoice({
+          type: 'SALE',
+          payload: { 
+            customerId: header.customer_id, 
+            items, 
+            total: vTotalSum, 
+            invoiceId: header.invoice_number,
+            id: editingInvoiceId || undefined,
+            notes: header.notes,
+            attachment: header.attachment,
+            date: header.date
+          },
+          options: { 
+            isCash: header.payment_method === 'Cash', 
+            paymentStatus: header.payment_method as any,
+            invoiceStatus: nextStatus, 
+            isReturn: header.isReturn, 
+            currency,
+            date: header.date
+          }
+        });
+        await navPromise;
+        return r;
+      })();
 
-      // Wait for navigation promise to let user see "Saving..." then "Success"
-      await navPromise;
-      
-      // We also wait for the actual results to ensure consistency
-      const res = await saveTask;
+      // سباق برمجي: إما يتم الحفظ أو ينتهي الوقت خلال 15 ثانية ويفك تجميد الأزرار تلقائياً
+      const res = await Promise.race([
+        savePromise,
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('SAVE_TIMEOUT')), 15000)
+        )
+      ]) as { success: boolean; refId?: string };
 
-      if (res.success) { 
+      if (res?.success) { 
+        setSavePhase('idle');
         showNotification('✅ تم حفظ فاتورة المبيعات وترحيل الصندوق بنجاح', 'success');
         addToast("تم الحفظ والترحيل بنجاح ✅", "success");
         
@@ -508,12 +514,24 @@ export const useSales = (onNavigate?: (view: any, params?: any) => void) => {
         onNavigate?.('dashboard'); 
       }
     } catch (err: any) {
-      showNotification('❌ فشل في حفظ مبيعات الكاشير', 'error');
-      addToast(err.message || "فشل الحفظ", "error");
+      setSavePhase('failed');
+      const isTimeout = err?.message === 'SAVE_TIMEOUT';
+      showNotification(
+        isTimeout 
+          ? '⚠️ تأخر حفظ الفاتورة؛ تم فك تجميد الواجهة حرصاً على استمرار العمل.' 
+          : '❌ فشل في حفظ مبيعات الكاشير', 
+        'error'
+      );
+      addToast(
+        isTimeout
+          ? 'تأخر حفظ الفاتورة سحابياً؛ تم فك تجميد الواجهة حرصاً على العمل المستمر. راجع مركز المزامنة.'
+          : (err?.message || "فشل الحفظ"),
+        'error'
+      );
     } finally {
       setIsSaving(false);
     }
-  }, [items, isLocked, isDuplicate, isSaving, vTotalSum, header, editingInvoiceId, currency, addInvoice, addToast, onNavigate, setEditingInvoiceId, showNotification]);
+  }, [items, isLocked, isDuplicate, savePhase, vTotalSum, header, editingInvoiceId, currency, addInvoice, addToast, onNavigate, setEditingInvoiceId, showNotification]);
 
   const getStatusLabel = (status: string) => {
     switch(status) {
@@ -598,6 +616,8 @@ export const useSales = (onNavigate?: (view: any, params?: any) => void) => {
     confirmAddCustomer,
     cancelAddCustomer,
     resetInvoiceState,
-    customers
+    customers,
+    savePhase,
+    setSavePhase
   };
 };

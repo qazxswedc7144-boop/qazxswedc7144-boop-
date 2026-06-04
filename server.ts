@@ -9,7 +9,6 @@ import { exec, execSync } from "child_process";
 import net from "net";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
-import { createServer as createViteServer } from "vite";
 import securityRouter from "./server/routes/security.routes";
 import { authRouter } from "./server/routes/auth.routes";
 import { invoiceRouter } from "./server/routes/invoice.routes";
@@ -51,9 +50,11 @@ function killStaleProcesses(port: number) {
 async function startServer() {
   const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
   
-  // Clean up any stale processes that might be holding onto the port or 24678
-  killStaleProcesses(PORT);
-  killStaleProcesses(24678);
+  // Clean up any stale processes that might be holding onto the port or 24678 in development
+  if (process.env.NODE_ENV !== "production") {
+    killStaleProcesses(PORT);
+    killStaleProcesses(24678);
+  }
 
   const app = express();
   app.set("trust proxy", 1); // Respect reverse proxy headers (e.g., Cloud Run, Nginx router) for rate-limiting
@@ -279,6 +280,7 @@ async function startServer() {
   // Vite middleware for development (explicitly setting hmr to false to avoid WebSocket port 24678 collisions)
   if (process.env.NODE_ENV !== "production") {
     console.log("[DEVELOPMENT] Initializing Vite middleware...");
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: {
         middlewareMode: true,

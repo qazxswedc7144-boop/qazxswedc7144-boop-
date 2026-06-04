@@ -248,28 +248,9 @@ export class PharmaFlowDB extends Dexie {
       }
 
       // 2. Wrap block using Dexie's explicit transaction system and return via Dexie promise chain
-      return await this.transaction(mode as any, validTables.length > 0 ? validTables : existingTableNames, (trans) => {
-        let finished = false;
-        const dummyTable = validTables[0] || existingTableNames[0];
-
-        const keepAlive = () => {
-          if (finished || !dummyTable) return;
-          this.table(dummyTable).get('__keep_alive_dummy__')
-            .catch(() => {})
-            .then(() => {
-              if (!finished) {
-                keepAlive();
-              }
-            });
-        };
-
-        keepAlive();
-
-        return Dexie.Promise.resolve().then(() => {
-          return operation(trans);
-        }).finally(() => {
-          finished = true;
-        });
+      return await this.transaction(mode as any, validTables.length > 0 ? validTables : existingTableNames, async (trans) => {
+        // 🚨 تم إزالة حلقة الـ keepAlive الـ recursive التي كانت تحتجز قاعدة البيانات
+        return await operation(trans);
       });
     } catch (error: any) {
       console.error("[DB] Atomic Transaction Failed:", error);
@@ -556,10 +537,32 @@ export class PharmaFlowDB extends Dexie {
   }
 
   // --- TRANSACTION HELPERS ---
-  async runTransaction<T>(operation: () => Promise<T>, tables: string[] = []): Promise<T> {
-    return await this.safeTransaction('rw', tables || [], async () => {
-      return await operation();
-    });
+  async runTransaction<T>(
+    operation: (tx?: Transaction) => Promise<T>,
+    tables: string[] = [],
+    mode: 'rw' | 'r' = 'rw'
+  ): Promise<T> {
+    const existing = this.getExistingTableNames();
+    const validTables = (tables.length ? tables : existing).filter(t => existing.includes(t));
+
+    try {
+      if ((Dexie as any).currentTransaction) {
+        return await operation((Dexie as any).currentTransaction);
+      }
+
+      return await this.transaction(mode as any, validTables, async (tx) => {
+        // 🚨 تم إزالة حلقة الـ keepAlive الـ recursive التي كانت تحتجز قاعدة البيانات
+        return await operation(tx);
+      });
+    } catch (error: any) {
+      const msg = error?.message || String(error);
+      if (msg.includes('committed too early') || msg.includes('inactive') || msg.includes('aborted')) {
+        const erpError = new Error('تعذر إكمال العملية حالياً، يرجى إعادة المحاولة.');
+        (erpError as any).technicalDetails = msg;
+        throw erpError;
+      }
+      throw error;
+    }
   }
 
   // --- TABLES HELPERS ---

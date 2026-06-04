@@ -673,4 +673,39 @@ model UsageCounter {
   @@map("usage_counters")
 }
 
+model CrashLog {
+  id                String   @id @default(uuid())
+  tenantId          String?
+  branchId          String?
+  userId            String?
+  route             String
+  deviceFingerprint String?
+  appVersion        String?
+  stackTrace        String?  @db.Text
+  errorMessage      String   @db.Text
+  timestamp         DateTime @default(now())
+
+  @@index([timestamp])
+  @@index([tenantId])
+  @@index([branchId])
+  @@map("crash_logs")
+}
+
+model DeviceRegistration {
+  deviceId       String   @id
+  tenantId       String
+  branchId       String
+  deviceName     String
+  androidVersion String?
+  appVersion     String?
+  lastSync       DateTime @default(now())
+  createdAt      DateTime @default(now())
+
+  @@index([tenantId])
+  @@index([branchId])
+  @@map("device_registrations")
+}
+
+
+
 

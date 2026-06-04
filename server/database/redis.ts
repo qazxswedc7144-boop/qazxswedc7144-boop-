@@ -47,14 +47,15 @@ class RedisConnectionManager {
 
       this.instance = new Redis(REDIS_URL, options);
 
-      this.instance.on("connect", () => {
-        console.log("[REDIS] Handshake succeeded. Distributed connection established.");
-        this.isMemoryFallback = false;
-      });
-
+      // Register error listener immediately to prevent unhandled socket error crashes on startup
       this.instance.on("error", (err) => {
         console.warn("[REDIS] Background adapter socket notice:", err.message);
         // Do not crash the node process under any condition. Fallback activates through retryStrategy or direct exception catch
+      });
+
+      this.instance.on("connect", () => {
+        console.log("[REDIS] Handshake succeeded. Distributed connection established.");
+        this.isMemoryFallback = false;
       });
 
       return this.instance;
