@@ -12,6 +12,7 @@ import { IntegritySweepService } from '@/services/integrity/IntegritySweepServic
 import { useAuthStore } from '@/store/authStore';
 import { db } from '@/core/db';
 import { BackupService } from '@/services/backupService';
+import { NotificationService } from '@/context/NotificationContext';
 
 interface TestResult {
   name: string;
@@ -320,7 +321,7 @@ const SystemHealthModule: React.FC<{ onNavigate?: (v: any) => void }> = ({ onNav
       await BackupService.restoreBackup(fileBlob, bkPassword);
 
       setBackupStatusMessage('🎉 تم استعادة البيانات بنجاح تام! إعادة بناء الفهارس والتدقيق المحاسبي ناجح.');
-      alert('تم استعادة قاعدة البيانات المالية كاملة بنجاح!');
+      NotificationService.success('تم استعادة قاعدة البيانات المالية كاملة بنجاح!');
       window.location.reload();
     } catch (err: any) {
       setBackupStatusMessage(`❌ فشل فك التشفير أو الاستعادة: كلمة المرور للمفتاح خاطئة أو الملف غير متطابق. تم التراجع التلقائي لحالة الأمان.`);
@@ -374,14 +375,14 @@ const SystemHealthModule: React.FC<{ onNavigate?: (v: any) => void }> = ({ onNav
         setLicenseSignature(licenseKeyEntered);
         setLicenseVerificationText('مرخص ومفعل بالكامل ✔');
         setIsLicenseLocked(false);
-        alert('🎉 تهانينا! تم مطابقة التوقيع الرقمي الثلاثي وتفعيل رخصة الجهاز بنجاح.');
+        NotificationService.success('🎉 تهانينا! تم مطابقة التوقيع الرقمي الثلاثي وتفعيل رخصة الجهاز بنجاح.');
       } else {
         localStorage.removeItem('erp_license_signature');
         setLicenseVerificationText('تنبيه: الترخيص غير صالح للتفويض الرقمي ❌');
         setIsLicenseLocked(true);
       }
     } catch {
-      alert('فشل الاتصال بخادم رخص البرمجيات.');
+      NotificationService.error('فشل الاتصال بخادم رخص البرمجيات.');
     } finally {
       setDeviceRegLoading(false);
     }
@@ -489,7 +490,7 @@ const SystemHealthModule: React.FC<{ onNavigate?: (v: any) => void }> = ({ onNav
                 loadSystemStats();
                 setReplicationConnected(navigator.onLine);
                 localStorage.setItem('pf_last_sync_time', 'منذ ثوانٍ قليلة');
-                alert('تم تحديث القياسات الحيوية لنواة النظام الموزعة.');
+                NotificationService.success('تم تحديث القياسات الحيوية لنواة النظام الموزعة.');
               }}
             >
               🔄 تحديث المؤشرات الميدانية والاتصال

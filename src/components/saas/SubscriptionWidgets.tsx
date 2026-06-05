@@ -474,3 +474,51 @@ export function ReviewerSaaSTester() {
     </div>
   );
 }
+
+/**
+ * Centered modal shown when trial count is exceeded.
+ */
+export function TrialBlockedModal({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-[3000] flex items-center justify-center p-4 text-center" dir="rtl">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 10 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        className="bg-white dark:bg-gray-900 rounded-[32px] border border-slate-100 dark:border-gray-800 shadow-2xl max-w-md w-full overflow-hidden p-8 relative"
+      >
+        <div className="flex justify-center mb-6">
+          <div className="w-16 h-16 bg-rose-50 dark:bg-rose-950/45 text-rose-500 rounded-full flex items-center justify-center animate-bounce">
+            <ShieldAlert size={36} />
+          </div>
+        </div>
+        
+        <h3 className="text-xl font-black text-rose-600 mb-4">انتهت النسخة التجريبية</h3>
+        <p className="text-slate-700 dark:text-gray-300 text-sm font-bold leading-relaxed mb-6">
+          تم الوصول للحد التجريبي 200 عملية. يرجى الاشتراك للمتابعة.
+        </p>
+
+        <div className="space-y-3">
+          <button
+            onClick={() => {
+              SubscriptionService.setPlan('BUSINESS');
+              onClose();
+              window.dispatchEvent(new Event('saas-usage-updated'));
+            }}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-4 rounded-2xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20 cursor-pointer"
+          >
+            <CreditCard size={16} />
+            <span>اشترك الآن (الترقية الفورية لخطة الأعمال)</span>
+          </button>
+
+          <button
+            onClick={onClose}
+            className="w-full bg-slate-50 hover:bg-slate-100 dark:bg-gray-800 dark:hover:bg-gray-750 text-slate-500 dark:text-gray-300 font-black py-3 rounded-2xl text-xs cursor-pointer"
+          >
+            إغلاق النافذة
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+

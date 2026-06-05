@@ -12,6 +12,7 @@ import { ExportService } from '@/services/data/exportService';
 import { predictionService } from '@/modules/ai/services/predictionService';
 import { auditLogService } from '@/services/audit/auditLog';
 import { useAppNotification } from '@/context/NotificationContext';
+import { DraftService } from '@/services/system/DraftService';
 
 const DRAFT_KEY = 'pharmaflow_sales_draft';
 
@@ -52,6 +53,19 @@ export const useSales = (onNavigate?: (view: any, params?: any) => void) => {
   const [isConfirmSaveOpen, setIsConfirmSaveOpen] = useState(false);
   const [isAdjustmentsOpen, setIsAdjustmentsOpen] = useState(false);
   const [isViewerOpen, setIsViewerOpen] = useState(false);
+  const [saveSuccessData, setSaveSuccessData] = useState<{
+    invoiceNumber: string;
+    totalAmount: number;
+    type: 'SALE' | 'PURCHASE';
+    date?: string;
+    partnerName?: string;
+    accountingStatus?: string;
+    inventoryStatus?: string;
+    balanceStatus?: string;
+  } | null>(null);
+
+  const [isRecoveryModalOpen, setIsRecoveryModalOpen] = useState(false);
+  const [recoveryDraftData, setRecoveryDraftData] = useState<any>(null);
 
   const [customerSearchTerm, setCustomerSearchTerm] = useState('');
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
@@ -160,6 +174,66 @@ export const useSales = (onNavigate?: (view: any, params?: any) => void) => {
 
     return () => clearTimeout(timer);
   }, [customerSearchTerm]);
+
+  // 1. Mount Effect: Check for unsaved local and database drafts for sales
+  const draftPromptCheckedRef = useRef(false);
+  useEffect(() => {
+    if (editingInvoiceId) return;
+
+    const checkDraft = async () => {
+      if (draftPromptCheckedRef.current) return;
+      draftPromptCheckedRef.current = true;
+      try {
+        const hasSavedDraft = await DraftService.hasDraft('sales');
+        if (hasSavedDraft) {
+          const draft = await DraftService.getDraft('sales');
+          if (draft && draft.items && draft.items.length > 0) {
+            setRecoveryDraftData(draft);
+            setIsRecoveryModalOpen(true);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load sales draft recovery status:', err);
+      }
+    };
+    checkDraft().catch(e => console.error("checkDraft error:", e));
+  }, [editingInvoiceId]);
+
+  const restoreDraft = useCallback(async () => {
+    if (recoveryDraftData) {
+      const { payload } = recoveryDraftData;
+      if (payload) {
+        if (payload.header) {
+          setHeader(payload.header);
+        }
+        if (payload.items) {
+          setItems(payload.items);
+        }
+        if (payload.totals && payload.totals.adjData) {
+          setAdjData(payload.totals.adjData);
+        }
+        if (payload.partner?.partnerName) {
+          setCustomerSearchTerm(payload.partner.partnerName);
+        }
+      }
+      addToast("تمت استعادة المسودة الحية بنجاح 💾", "success");
+    }
+    setIsRecoveryModalOpen(false);
+    setRecoveryDraftData(null);
+  }, [recoveryDraftData, addToast]);
+
+  const discardDraft = useCallback(async () => {
+    try {
+      await DraftService.clearDraft('sales');
+      addToast("تم حذف المسودة القديمة وبدء قيد جديد", "info");
+      await resetInvoiceState();
+    } catch (e) {
+      console.error("discardDraft failed:", e);
+    } finally {
+      setIsRecoveryModalOpen(false);
+      setRecoveryDraftData(null);
+    }
+  }, [addToast, resetInvoiceState]);
 
   const handleCustomerSearch = useCallback((val: string) => {
     setCustomerSearchTerm(val);
@@ -300,6 +374,32 @@ export const useSales = (onNavigate?: (view: any, params?: any) => void) => {
     const sub = items.reduce((acc, it) => acc + (it.sum || 0), 0);
     return sub - (sub * (adjData.discountPercent / 100)) + adjData.otherFees + adjData.tax;
   }, [items, adjData]);
+
+  // 2. State Auto-Saver Effect: saves draft on items, header or adjustments changes
+  useEffect(() => {
+    if (editingInvoiceId) return; // Don't auto-save if editing an existing invoice
+    if (items.length === 0 && !header.customer_id) {
+      // Clean / initial state: do not create flat/empty drafts
+      return;
+    }
+
+    const saverTimer = setTimeout(async () => {
+      try {
+        const partner = customers.find(c => c.id === header.customer_id);
+        const partnerName = partner ? partner.Supplier_Name : '';
+        await DraftService.saveDraft('sales', 'Sales Invoice', {
+          header,
+          items,
+          totals: { adjData, subtotal: vTotalSum },
+          partner: { partnerName }
+        });
+      } catch (e) {
+        console.error("Background auto-save draft failed:", e);
+      }
+    }, 10000); // Debounced 10s auto-saver for state changes
+
+    return () => clearTimeout(saverTimer);
+  }, [items, header, adjData, vTotalSum, editingInvoiceId, customers]);
 
   const persistToDB = useCallback(async () => {
     try {
@@ -510,8 +610,26 @@ export const useSales = (onNavigate?: (view: any, params?: any) => void) => {
         
         await auditLogService.logSale(res.refId || editingInvoiceId || header.invoice_number, `Sale created: ${header.invoice_number}`, { items, total: vTotalSum });
         localStorage.removeItem(DRAFT_KEY); 
+        
+        // Capture data for success modal 2.0 (Task 4) and dispose of draft (Task 5)
+        const partner = customers.find(c => c.id === header.customer_id);
+        const partnerName = partner ? partner.Supplier_Name : 'عميل مبيعات كاشير عام';
+        await DraftService.clearDraft('sales');
+
+        setSaveSuccessData({
+          invoiceNumber: header.invoice_number,
+          totalAmount: vTotalSum,
+          type: 'SALE',
+          date: header.date,
+          partnerName: partnerName,
+          accountingStatus: header.payment_method === 'Cash' ? 'ترحيل فوري بالقيد المزدوج' : 'ذمم مدينة مرحلة',
+          inventoryStatus: 'تم فك تجميد الوحدات وصرفها',
+          balanceStatus: 'محدث بالكامل (صندوق كاشير)'
+        });
+
         setEditingInvoiceId(null); 
-        onNavigate?.('dashboard'); 
+        // Instantly generate a clean new invoice state to prevent dirty or stale state reuse
+        await resetInvoiceState();
       }
     } catch (err: any) {
       setSavePhase('failed');
@@ -618,6 +736,13 @@ export const useSales = (onNavigate?: (view: any, params?: any) => void) => {
     resetInvoiceState,
     customers,
     savePhase,
-    setSavePhase
+    setSavePhase,
+    saveSuccessData,
+    setSaveSuccessData,
+    isRecoveryModalOpen,
+    setIsRecoveryModalOpen,
+    recoveryDraftData,
+    restoreDraft,
+    discardDraft
   };
 };

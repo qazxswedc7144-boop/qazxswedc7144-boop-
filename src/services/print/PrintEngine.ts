@@ -23,11 +23,13 @@ export const PrintEngine = {
    * Safe rendering engine that opens a printable window, configures head styles,
    * copies application stylesheets directly, and safely mounts the React component tree
    * dynamically using React createRoot. Completely avoids document.write or unsafe html injections.
+   * 
+   * Fully supports 58mm, 80mm, and A4 responsive paper sizes dynamically.
    */
   async renderAndPrint(
     data: any,
     type: 'SALE' | 'PURCHASE' | 'VOUCHER' | 'REPORT',
-    mode: 'A4' | 'THERMAL' = 'A4',
+    mode: 'A4' | 'THERMAL' | '58mm' | '80mm' = 'A4',
     propItems?: InvoiceItem[]
   ): Promise<void> {
     const refId = data.SaleID || data.invoiceId || data.purchase_id || data.id || 'N/A';
@@ -46,13 +48,27 @@ export const PrintEngine = {
       footerNote: 'شكراً لزيارتكم! متمنين لكم دوام الصحة والعافية.'
     });
 
-    // 2. Open a secure, blank window for rendering
+    // 2. Select paper profile dynamically based on mode & saved settings
+    let finalMode: 'A4' | '58mm' | '80mm' = 'A4';
+    if (mode === 'A4') {
+      finalMode = 'A4';
+    } else if (mode === '58mm') {
+      finalMode = '58mm';
+    } else if (mode === '80mm') {
+      finalMode = '80mm';
+    } else if (mode === 'THERMAL') {
+      // Auto-format based on paper size saved in settings
+      const savedProfile = localStorage.getItem('saas_printer_profile') as any || '80mm';
+      finalMode = savedProfile === 'a4' ? 'A4' : (savedProfile === '58mm' ? '58mm' : '80mm');
+    }
+
+    // 3. Open a secure, blank window for rendering
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
       throw new Error('PRINT_BLOCKED: Could not open the print window. Please allow popups.');
     }
 
-    // 3. Set basic document structure and metadata safely via Document web APIs
+    // 4. Set basic document structure and metadata safely via Document web APIs
     printWindow.document.title = `${type}_Invoice_${refId}`;
     
     // Set direction and baseline responsive styles safely
@@ -71,33 +87,46 @@ export const PrintEngine = {
     fontLink.href = 'https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;700;900&display=swap';
     printWindow.document.head.appendChild(fontLink);
 
+    // Custom preview padded views
+    const viewPadding = finalMode === 'A4' ? '40px' : '4px';
+    const bgPreview = finalMode === 'A4' ? '#f8fafc' : '#ffffff';
+
     // Apply baseline CSS overrides safely to prevent header/footer print line breaks
     const styleOverride = printWindow.document.createElement('style');
     styleOverride.textContent = `
       body {
-        background-color: #f8fafc;
-        padding: 40px;
+        background-color: ${bgPreview};
+        padding: ${viewPadding};
         font-family: 'Cairo', sans-serif;
       }
       @media print {
         body {
-          background-color: #ffffff;
-          padding: 0;
-          margin: 0;
+          background-color: #ffffff !important;
+          padding: 0 !important;
+          margin: 0 !important;
         }
         .no-print-controls {
           display: none !important;
+        }
+        @page {
+          size: auto;
+          margin: 0;
+        }
+        /* Ensure backgrounds render well when printed */
+        * {
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
         }
       }
     `;
     printWindow.document.head.appendChild(styleOverride);
 
-    // 4. Create mounting node container element safely
+    // 5. Create mounting node container element safely
     const container = printWindow.document.createElement('div');
     container.id = 'print-root';
     printWindow.document.body.appendChild(container);
 
-    // 5. Add printed floating action bar safely inside container
+    // 6. Add printed floating action bar safely inside container
     const actionControls = printWindow.document.createElement('div');
     actionControls.className = 'fixed bottom-8 left-0 right-0 flex justify-center gap-4 no-print-controls';
     
@@ -119,26 +148,26 @@ export const PrintEngine = {
     actionControls.appendChild(closeButton);
     printWindow.document.body.appendChild(actionControls);
 
-    // 6. Mount the safe enterprise InvoiceTemplate inside the print window node
+    // 7. Mount the safe enterprise InvoiceTemplate inside the print window node
     const root = createRoot(container);
     
     const props: InvoiceTemplateProps = {
       data,
       type,
-      items: propItems || [],
-      mode,
+      items: propItems || data.items || [],
+      mode: finalMode,
       layoutConfig,
       invoiceConfig: companyConfig
     };
 
     root.render(React.createElement(InvoiceTemplate, props));
 
-    // 7. Insert audit entry for traceability
+    // 8. Insert audit entry for traceability
     await db.addAuditLog(
       'SYSTEM',
       type === 'REPORT' ? 'OTHER' : (type as any),
       refId,
-      `Safe Print triggered using PrintEngine Core for document type: ${type} Reference: ${refId}`
+      `Safe Print triggered using PrintEngine Core for document type: ${type} Reference: ${refId} Size: ${finalMode}`
     );
   },
 
@@ -211,7 +240,7 @@ export const PrintEngine = {
     const total = Number(data.finalTotal || data.totalAmount || data.amount || 0);
     doc.setFontSize(11);
     doc.text(`إجمالي الخاضع للضريبة: ${(total / 1.05).toFixed(2)} AED`, 120, finalY + 15);
-    doc.text(`ضريبة القيمة المضافة (5%): ${(total * 0.05 / 1.05).toFixed(2)} AED`, 120, finalY + 22);
+    doc.text(`ضريبة القيمة المضافة (5% VAT): ${(total * 0.05 / 1.05).toFixed(2)} AED`, 120, finalY + 22);
     
     doc.setFontSize(13);
     doc.setTextColor(30, 77, 77);

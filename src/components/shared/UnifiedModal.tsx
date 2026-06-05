@@ -16,6 +16,9 @@ interface UnifiedModalProps {
   onClose?: () => void;
   title?: string;
   children?: React.ReactNode;
+  isInvoiceSaveConfirm?: boolean;
+  invoiceType?: 'SALE' | 'PURCHASE';
+  invoiceTotal?: number;
 }
 
 export const UnifiedModal: React.FC<UnifiedModalProps> = ({ 
@@ -25,7 +28,10 @@ export const UnifiedModal: React.FC<UnifiedModalProps> = ({
   setFormData: propSetFormData, 
   onClose: propOnClose, 
   title: propTitle = "نافذة معالجة السندات والفواتير الموحدة",
-  children : propChildren
+  children : propChildren,
+  isInvoiceSaveConfirm = false,
+  invoiceType = 'SALE',
+  invoiceTotal = 0
 }) => {
   const toast = useToast();
   const currency = useAppStore(state => state.currency);
@@ -129,7 +135,7 @@ export const UnifiedModal: React.FC<UnifiedModalProps> = ({
         await propSaveFunction(dataToSave);
       }
       
-      if (propSetFormData) {
+      if (propSetFormData && !isInvoiceSaveConfirm) {
         propSetFormData({});
       }
       
@@ -238,7 +244,45 @@ export const UnifiedModal: React.FC<UnifiedModalProps> = ({
 
           {/* Form Content */}
           <div className="space-y-4 mb-7">
-            {isLegacyMode ? (
+            {isInvoiceSaveConfirm ? (
+              <div className="space-y-3.5 bg-slate-50 dark:bg-gray-800/40 p-5 rounded-2xl border border-slate-100 dark:border-gray-800 text-right">
+                <div className="flex justify-between items-center py-1.5 border-b border-slate-100/50 dark:border-gray-800">
+                  <span className="text-xs font-black text-slate-400 dark:text-gray-500">رقم الفاتورة:</span>
+                  <span className="text-xs font-black text-slate-800 dark:text-white font-mono bg-slate-100 dark:bg-gray-800 px-2.5 py-1 rounded-lg">
+                    #{propFormData.invoice_number || 'تلقائي'}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center py-1.5 border-b border-slate-100/50 dark:border-gray-800">
+                  <span className="text-xs font-black text-slate-400 dark:text-gray-500">
+                    {invoiceType === 'SALE' ? 'العميل:' : 'المورد:'}
+                  </span>
+                  <span className="text-xs font-black text-[#1E4D4D] dark:text-emerald-400">
+                    {invoiceType === 'SALE'
+                      ? (customers.find((c: any) => c.id === propFormData.customer_id || c.Supplier_ID === propFormData.customer_id)?.Supplier_Name || 'عميل نقدي عام')
+                      : (suppliers.find((s: any) => s.id === propFormData.supplier_id || s.Supplier_ID === propFormData.supplier_id)?.Supplier_Name || 'مورد عام')}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center py-1.5 border-b border-slate-100/50 dark:border-gray-800">
+                  <span className="text-xs font-black text-slate-400 dark:text-gray-500">التاريخ:</span>
+                  <span className="text-xs font-bold text-slate-700 dark:text-slate-350">
+                    {propFormData.date || new Date().toISOString().split('T')[0]}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center py-1.5 border-b border-slate-100/50 dark:border-gray-800">
+                  <span className="text-xs font-black text-slate-400 dark:text-gray-500">نوع الفاتورة:</span>
+                  <span className="text-xs font-black text-indigo-600 dark:text-indigo-400 font-sans">
+                    {propFormData.isReturn ? 'مرتجع' : ''} {propFormData.payment_method === 'Cash' ? 'نقدي (Cash)' : 'آجل (Credit)'}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center py-1.5 pt-2.5 bg-emerald-500/5 dark:bg-emerald-500/10 rounded-xl px-3 mt-1.5 border border-emerald-100/50 dark:border-emerald-950/20">
+                  <span className="text-xs font-black text-slate-500 dark:text-slate-400">القيمة الإجمالية:</span>
+                  <span className="text-sm font-black text-emerald-600 dark:text-emerald-400 font-mono">
+                    {Number(invoiceTotal || 0).toLocaleString()} {currency}
+                  </span>
+                </div>
+                {propChildren}
+              </div>
+            ) : isLegacyMode ? (
               // Legacy execution block (Standard required dynamic fields)
               <>
                 <div className="space-y-3">

@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '@/core/db';
 import { AuditItem, DailyAuditTask } from '@/types';
+import { NotificationService } from '@/context/NotificationContext';
 
 interface InventoryAuditModuleProps {
   lang: 'en' | 'ar';
@@ -83,7 +84,7 @@ const InventoryAuditModule: React.FC<InventoryAuditModuleProps> = ({ lang, onNav
     if (!task) return;
     const allDone = task.items.every(i => i.status !== 'pending');
     if (!allDone) {
-      alert(isAr ? "يرجى إكمال جرد كافة الأصناف" : "Please complete all items");
+      NotificationService.warning(isAr ? "يرجى إكمال جرد كافة الأصناف" : "Please complete all items");
       return;
     }
     // Fix: Await finalizeAudit

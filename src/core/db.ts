@@ -100,6 +100,10 @@ export class PharmaFlowDB extends Dexie {
   readLedgers!: Table<LedgerReadModel, string>;
   aggregateSnapshots!: Table<AggregateSnapshot, [string, number]>;
 
+  // Phase 5.2.1 tables
+  system_errors!: Table<any>;
+  drafts!: Table<any>;
+
   // Legacy support for code that uses db.db
   get db(): PharmaFlowDB { return this; }
 
@@ -200,6 +204,13 @@ export class PharmaFlowDB extends Dexie {
       branchTransfers: '&id, transferNumber, sourceBranchId, targetBranchId, status, createdAt',
       branchTransferItems: '&id, transferId, productId, [transferId+productId]',
       branchUsers: '&id, branchId, userId, [branchId+userId]'
+    });
+
+    // Version 18: Phase 5.2.1 - Production Hardening & Play Readiness
+    this.version(18).stores({
+      system_errors: '&id, errorId, timestamp, severity, moduleName, screenName',
+      drafts: '&id, moduleName, updatedAt',
+      invoices: '&id, invoice_number, date, Date, partner_id, partnerId, type, payment_status, financial_status, document_status, is_synced, createdAt, transactionUuid'
     });
 
     // Handle structural integrity and recovery
@@ -374,7 +385,8 @@ export class PharmaFlowDB extends Dexie {
   async processSale(
     customerId: string, items: any[], total: number, isReturn: boolean, id: string,
     _currency: string, paymentStatus: string, docStatus: any, _auditScore: number,
-    _riskLevel: string, _totalCost: number, refId: string, _attachment: string, date: string
+    _riskLevel: string, _totalCost: number, refId: string, _attachment: string, date: string,
+    transactionUuid?: string
   ) {
     const sale: UnifiedInvoice = {
       id: id || this.generateId('SALE'),
@@ -393,6 +405,7 @@ export class PharmaFlowDB extends Dexie {
       items: items,
       isReturn: isReturn,
       notes: `Ref: ${refId}`,
+      transactionUuid: transactionUuid,
       updatedAt: new Date().toISOString()
     };
     await this.invoices.put(sale);
@@ -402,7 +415,8 @@ export class PharmaFlowDB extends Dexie {
   async processPurchase(
     supplierId: string, items: any[], total: number, id: string,
     isCash: boolean, _currency: string, docStatus: any, _auditScore: number,
-    _riskLevel: string, refId: string, _attachment: string, isReturn: boolean, date: string
+    _riskLevel: string, refId: string, _attachment: string, isReturn: boolean, date: string,
+    transactionUuid?: string
   ) {
     const purchase: UnifiedInvoice = {
       id: id || this.generateId('PUR'),
@@ -421,6 +435,7 @@ export class PharmaFlowDB extends Dexie {
       items: items,
       isReturn: isReturn,
       notes: `Ref: ${refId}`,
+      transactionUuid: transactionUuid,
       updatedAt: new Date().toISOString()
     };
     await this.invoices.put(purchase);

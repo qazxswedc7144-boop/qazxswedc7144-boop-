@@ -2,7 +2,6 @@
 
 import { randomUUID } from "crypto";
 const uuidv4 = () => randomUUID();
-import { GoogleGenAI } from "@google/genai";
 import { ConsolidationRepository } from "./consolidation.repository";
 import { CONSOLIDATION_DEFAULTS, ELIMINATION_RULES } from "./consolidation.constants";
 import { RedisConnectionManager } from "../../database/redis";
@@ -19,14 +18,16 @@ import {
 } from "./consolidation.types";
 
 export class ConsolidationService {
-  private static getGeminiClient(): GoogleGenAI | null {
+  private static async getGeminiClient(): Promise<any> {
     const key = process.env.GEMINI_API_KEY;
     if (!key) {
       console.warn("[GEMINI WORKER] No GEMINI_API_KEY available in environment. Fallback simulation active.");
       return null;
     }
     try {
-      return new GoogleGenAI({
+      const mod = await Function("return import('@google/genai')")();
+      const GoogleGenAIClass = mod.GoogleGenAI;
+      return new GoogleGenAIClass({
         apiKey: key,
         httpOptions: {
           headers: {
@@ -847,7 +848,7 @@ export class ConsolidationService {
     incomeStatement: ConsolidatedIncomeStatement,
     inventory: ConsolidatedInventoryValuation
   ): Promise<AIConsolidationInsights> {
-    const ai = this.getGeminiClient();
+    const ai = await this.getGeminiClient();
 
     const summaryContext = {
       activeBranches: Object.keys(balanceSheet.branchBreakdown).length,

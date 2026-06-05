@@ -14,6 +14,8 @@ import { AnimatedNumber } from '@/components/shared/AnimatedNumber';
 
 import { SaleItemRow } from '@/modules/sales/components/SalesInvoiceUI';
 import { UnifiedModal } from '@/components/shared/UnifiedModal';
+import { SaveSuccessModal } from '@/components/shared/SaveSuccessModal';
+import { DraftRecoveryDialog } from '@/components/shared/DraftRecoveryDialog';
 import { useUI } from '@/contexts/AppContext';
 import { PullToRefresh } from '@/components/shared/PullToRefresh';
 import { InvoiceItemEditModal } from '@/components/shared/InvoiceItemEditModal';
@@ -78,7 +80,14 @@ const SalesModule: React.FC<{ onNavigate?: (view: any, params?: any) => void }> 
     handleCustomerBlur,
     confirmAddCustomer,
     cancelAddCustomer,
-    customers
+    customers,
+    saveSuccessData,
+    setSaveSuccessData,
+    resetInvoiceState,
+    isRecoveryModalOpen,
+    recoveryDraftData,
+    restoreDraft,
+    discardDraft
   } = useSales(onNavigate);
 
   const selectedCustomerObj = customers?.find((c: any) => c.id === header.customer_id || c.Supplier_ID === header.customer_id);
@@ -233,7 +242,7 @@ const SalesModule: React.FC<{ onNavigate?: (view: any, params?: any) => void }> 
             <div className="flex-1 min-w-0 relative bg-white">
               <input 
                 disabled={isLocked || isRecovery}
-                value={customerSearchTerm}
+                value={customerSearchTerm ?? ''}
                 onChange={(e) => handleCustomerSearch(e.target.value)}
                 onKeyDown={handleCustomerKeyDown}
                 onFocus={() => setShowCustomerDropdown(true)}
@@ -281,7 +290,7 @@ const SalesModule: React.FC<{ onNavigate?: (view: any, params?: any) => void }> 
                 type="date"
                 disabled={isLocked || isRecovery}
                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                value={header.date}
+                value={header.date ?? ''}
                 onChange={(e) => setHeader({...header, date: e.target.value})}
               />
               <div className="absolute inset-0 border-b border-gray-400 text-black text-center bg-transparent px-[2px] flex items-center justify-center text-sm font-semibold pointer-events-none">
@@ -294,7 +303,7 @@ const SalesModule: React.FC<{ onNavigate?: (view: any, params?: any) => void }> 
             <div className="basis-[25%] relative">
                <input 
                 type="text"
-                value={header.invoice_number}
+                value={header.invoice_number ?? ''}
                 onChange={(e) => setHeader({...header, invoice_number: e.target.value})}
                 placeholder="رقم الفاتورة..."
                 className="w-full h-10 border-b border-gray-400 focus:outline-none focus:border-green-500 rounded-none text-black text-right placeholder-gray-400 bg-transparent"
@@ -341,7 +350,7 @@ const SalesModule: React.FC<{ onNavigate?: (view: any, params?: any) => void }> 
               disabled={isLocked || isRecovery}
               className="w-full h-10 bg-slate-50 border border-slate-100 rounded-lg px-3 text-[6px] font-black text-[#1E4D4D] focus:bg-white focus:ring-1 focus:ring-[#1E4D4D]/20 transition-all outline-none text-right" 
               placeholder="ابحث عن صنف..." 
-              value={manualItemName} 
+              value={manualItemName ?? ''} 
               onChange={e => { setManualItemName(e.target.value); setShowSearchDropdown(true); setSelectedIndex(-1); }} 
               onFocus={() => setShowSearchDropdown(true)}
               onKeyDown={handleSearchKeyDown}
@@ -545,19 +554,50 @@ const SalesModule: React.FC<{ onNavigate?: (view: any, params?: any) => void }> 
             setFormData={setHeader}
             onClose={() => setIsConfirmSaveOpen(false)}
             title="تأكيد حفظ الفاتورة"
+            isInvoiceSaveConfirm={true}
+            invoiceType="SALE"
+            invoiceTotal={vTotalSum}
           >
             <div className="space-y-4">
-              <div className="w-16 h-16 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center mx-auto">
-                <CheckCircle2 size={32} />
-              </div>
               <p className="text-[11px] font-bold text-slate-400 text-center">سيتم ترحيل الفاتورة وتحديث المخزون والحسابات.</p>
-              
-              <div className="bg-slate-50 dark:bg-gray-700/50 p-4 rounded-xl border border-slate-100 dark:border-gray-600 flex justify-between items-center">
-                <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest">المبلغ المستحق</span>
-                <span className="text-[11px] font-black text-[#1E4D4D] dark:text-emerald-400">{vTotalSum.toLocaleString()} {currency}</span>
-              </div>
             </div>
           </UnifiedModal>
+        )}
+
+        {/* Save Success Flow overlay */}
+        {saveSuccessData && (
+          <SaveSuccessModal
+            isOpen={!!saveSuccessData}
+            invoiceNumber={saveSuccessData.invoiceNumber}
+            totalAmount={saveSuccessData.totalAmount}
+            currency={currency}
+            type="SALE"
+            date={saveSuccessData.date}
+            partnerName={saveSuccessData.partnerName}
+            accountingStatus={saveSuccessData.accountingStatus}
+            inventoryStatus={saveSuccessData.inventoryStatus}
+            balanceStatus={saveSuccessData.balanceStatus}
+            onClose={() => {
+              setSaveSuccessData(null);
+            }}
+            onNewInvoice={() => {
+              setSaveSuccessData(null);
+              resetInvoiceState();
+            }}
+          />
+        )}
+
+        {/* Live Draft Recovery Dialogue (Task 5) */}
+        {isRecoveryModalOpen && recoveryDraftData && (
+          <DraftRecoveryDialog
+            isOpen={isRecoveryModalOpen}
+            moduleName="فاتورة مبيعات الكاشير"
+            updatedAt={recoveryDraftData.updatedAt}
+            itemCount={recoveryDraftData.payload.items?.length || 0}
+            totalAmount={recoveryDraftData.payload.totals?.subtotal}
+            onRestore={restoreDraft}
+            onDiscard={discardDraft}
+          />
         )}
       </AnimatePresence>
 
@@ -577,7 +617,7 @@ const SalesModule: React.FC<{ onNavigate?: (view: any, params?: any) => void }> 
               <Percent className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-300" size={14} />
               <input 
                 type="number"
-                value={adjData.discountPercent}
+                value={adjData.discountPercent ?? 0}
                 onChange={(e) => setAdjData({...adjData, discountPercent: Number(e.target.value)})}
                 className="w-full h-10 bg-slate-50 border border-slate-200 rounded-xl pr-9 pl-3 text-[12px] font-bold text-[#1E4D4D] focus:bg-white text-right outline-none transition-all"
               />
@@ -589,7 +629,7 @@ const SalesModule: React.FC<{ onNavigate?: (view: any, params?: any) => void }> 
               <label className="text-[11px] font-black text-slate-500 uppercase tracking-widest block text-right">رسوم أخرى</label>
               <input 
                 type="number"
-                value={adjData.otherFees}
+                value={adjData.otherFees ?? 0}
                 onChange={(e) => setAdjData({...adjData, otherFees: Number(e.target.value)})}
                 className="w-full h-10 bg-slate-50 border border-slate-200 rounded-xl px-4 text-[12px] font-bold text-[#1E4D4D] focus:bg-white text-center outline-none transition-all"
               />
@@ -598,7 +638,7 @@ const SalesModule: React.FC<{ onNavigate?: (view: any, params?: any) => void }> 
               <label className="text-[11px] font-black text-slate-500 uppercase tracking-widest block text-right">الضريبة</label>
               <input 
                 type="number"
-                value={adjData.tax}
+                value={adjData.tax ?? 0}
                 onChange={(e) => setAdjData({...adjData, tax: Number(e.target.value)})}
                 className="w-full h-10 bg-slate-50 border border-slate-200 rounded-xl px-4 text-[12px] font-bold text-[#1E4D4D] focus:bg-white text-center outline-none transition-all"
               />

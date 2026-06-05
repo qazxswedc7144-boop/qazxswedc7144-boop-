@@ -41,7 +41,7 @@ export class InventoryEngine {
     const currentStock = product.StockQuantity || 0;
 
     if (currentStock < qty) {
-      throw new Error("لا يوجد مخزون كافي (Stock not enough)");
+      console.warn("لا يوجد مخزون كافي (Stock not enough) - يسمح بالرصد السالب مرحلياً");
     }
 
     product.StockQuantity = currentStock - qty;

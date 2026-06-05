@@ -12,6 +12,7 @@ import { predictionService } from '@/modules/ai/services/predictionService';
 import { saveLearning } from '@/modules/ai/services/learningService';
 import { safeProcessTransaction } from '@/services/transactions/TransactionSafety';
 import { useAppNotification } from '@/context/NotificationContext';
+import { DraftService } from '@/services/system/DraftService';
 
 const DRAFT_KEY = 'pharmaflow_purchase_draft';
 
@@ -84,6 +85,21 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
   const [hasUnsavedAI, setHasUnsavedAI] = useState(false);
   const [showAIConfirmModal, setShowAIConfirmModal] = useState(false);
   const [aiParsedData, setAIParsedData] = useState<any>(null);
+  const [saveSuccessData, setSaveSuccessData] = useState<{
+    invoiceNumber: string;
+    totalAmount: number;
+    type: 'SALE' | 'PURCHASE';
+    date?: string;
+    partnerName?: string;
+    accountingStatus?: string;
+    inventoryStatus?: string;
+    balanceStatus?: string;
+  } | null>(null);
+
+  const [isRecoveryModalOpen, setIsRecoveryModalOpen] = useState(false);
+  const [recoveryDraftData, setRecoveryDraftData] = useState<any>(null);
+
+  const [isConfirmSaveOpen, setIsConfirmSaveOpen] = useState(false);
   const [adjData, setAdjData] = useState({
     discountPercent: 0,
     otherFees: 0,
@@ -237,13 +253,65 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
     };
   }, [header.notes, header.attachment, isLocked, editingInvoiceId]);
 
+  // 1. Mount Effect: Check for unsaved database drafts for purchases
+  const draftPromptCheckedRef = useRef(false);
   useEffect(() => {
-    if (isLocked || isSaving) return;
-    const timer = setTimeout(() => {
-      localStorage.setItem(DRAFT_KEY, JSON.stringify({ header, items, adjData }));
-    }, 1000);
-    return () => clearTimeout(timer);
-  }, [header, items, adjData, isLocked, isSaving]);
+    if (editingInvoiceId) return;
+
+    const checkDraft = async () => {
+      if (draftPromptCheckedRef.current) return;
+      draftPromptCheckedRef.current = true;
+      try {
+        const hasSavedDraft = await DraftService.hasDraft('purchases');
+        if (hasSavedDraft) {
+          const draft = await DraftService.getDraft('purchases');
+          if (draft && draft.items && draft.items.length > 0) {
+            setRecoveryDraftData(draft);
+            setIsRecoveryModalOpen(true);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load purchases draft recovery status:', err);
+      }
+    };
+    checkDraft().catch(e => console.error("checkDraft error:", e));
+  }, [editingInvoiceId]);
+
+  const restoreDraft = useCallback(async () => {
+    if (recoveryDraftData) {
+      const { payload } = recoveryDraftData;
+      if (payload) {
+        if (payload.header) {
+          setHeader(payload.header);
+        }
+        if (payload.items) {
+          setItems(payload.items);
+        }
+        if (payload.totals && payload.totals.adjData) {
+          setAdjData(payload.totals.adjData);
+        }
+        if (payload.partner?.partnerName) {
+          setSupplierSearchTerm(payload.partner.partnerName);
+        }
+      }
+      addToast("تمت استعادة مسودة المشتريات بنجاح 💾", "success");
+    }
+    setIsRecoveryModalOpen(false);
+    setRecoveryDraftData(null);
+  }, [recoveryDraftData, addToast]);
+
+  const discardDraft = useCallback(async () => {
+    try {
+      await DraftService.clearDraft('purchases');
+      addToast("تم حذف مسودة المشتريات المتروكة وبدء قيد جديد", "info");
+      resetInvoiceState();
+    } catch (e) {
+      console.error("discardDraft failed:", e);
+    } finally {
+      setIsRecoveryModalOpen(false);
+      setRecoveryDraftData(null);
+    }
+  }, [addToast, resetInvoiceState]);
 
   const handleSupplierSearch = useCallback((val: string) => {
     setSupplierSearchTerm(val);
@@ -273,7 +341,8 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
     setHeader(prev => ({ ...prev, supplier_id: s.id }));
     setSupplierSearchTerm(s.Supplier_Name);
     setShowSupplierDropdown(false);
-  }, []);
+    showNotification(`رصيد المورد الحالي للفاتورة: ${(s.balance || 0).toLocaleString()} ${currency}`, 'info');
+  }, [showNotification, currency]);
 
   const handleSupplierBlur = useCallback(() => {
     setTimeout(async () => {
@@ -455,6 +524,32 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
     return subtotal - discount + adjData.otherFees + adjData.tax;
   }, [items, adjData]);
 
+  // 2. State Auto-Saver Effect: saves draft on items, header or adjustments changes
+  useEffect(() => {
+    if (editingInvoiceId) return; // Don't auto-save if editing an existing invoice
+    if (items.length === 0 && !header.supplier_id) {
+      // Clean state: ignore
+      return;
+    }
+
+    const saverTimer = setTimeout(async () => {
+      try {
+        const partner = suppliers.find(s => s.id === header.supplier_id);
+        const partnerName = partner ? partner.Supplier_Name : '';
+        await DraftService.saveDraft('purchases', 'Purchase Invoice', {
+          header,
+          items,
+          totals: { adjData, subtotal: vTotalSum },
+          partner: { partnerName }
+        });
+      } catch (e) {
+        console.error("Background auto-save draft failed:", e);
+      }
+    }, 10000); // Debounced 10s auto-saver for state changes
+
+    return () => clearTimeout(saverTimer);
+  }, [items, header, adjData, vTotalSum, editingInvoiceId, suppliers]);
+
   const selectProduct = useCallback((p: Product) => {
     setSelectedProduct(p);
     setManualItemName(p.Name || '');
@@ -616,7 +711,24 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
           details: `Purchase ${header.isReturn ? 'Return' : ''}: ${header.invoice_number}`
         });
         
-        onNavigate?.('dashboard');
+        // Capture data for success modal 2.0 (Task 4) and dispose of draft (Task 5)
+        const supplier = suppliers.find(s => s.id === header.supplier_id);
+        const supplierName = supplier ? supplier.Supplier_Name : 'مورد غير محدد';
+        await DraftService.clearDraft('purchases');
+
+        setSaveSuccessData({
+          invoiceNumber: header.invoice_number,
+          totalAmount: vTotalSum,
+          type: 'PURCHASE',
+          date: header.date,
+          partnerName: supplierName,
+          accountingStatus: 'قيد ذمم دائنة مرحل وتلقائي',
+          inventoryStatus: 'قيد المخزون المتاح والوجبات المدخلة',
+          balanceStatus: 'معدل ومرحل لحساب المورد'
+        });
+
+        // Instantly generate a clean new invoice state to prevent dirty or stale state reuse
+        resetInvoiceState();
       }
     } catch (error: any) {
       console.error("Save error", error);
@@ -729,6 +841,15 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
     applyAIParsedData,
     resetInvoiceState,
     savePhase,
-    setSavePhase
+    setSavePhase,
+    saveSuccessData,
+    setSaveSuccessData,
+    isConfirmSaveOpen,
+    setIsConfirmSaveOpen,
+    isRecoveryModalOpen,
+    setIsRecoveryModalOpen,
+    recoveryDraftData,
+    restoreDraft,
+    discardDraft
   };
 }

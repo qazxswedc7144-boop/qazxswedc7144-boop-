@@ -15,6 +15,10 @@ import { DocumentViewer } from '@/components/shared/DocumentViewer';
 import { AnimatedNumber } from '@/components/shared/AnimatedNumber';
 import { PullToRefresh } from '@/components/shared/PullToRefresh';
 import { InvoiceItemEditModal } from '@/components/shared/InvoiceItemEditModal';
+import { UnifiedModal } from '@/components/shared/UnifiedModal';
+import { SaveSuccessModal } from '@/components/shared/SaveSuccessModal';
+import { DraftRecoveryDialog } from '@/components/shared/DraftRecoveryDialog';
+import PrintMenu from '@/components/shared/PrintMenu';
 
 const formatDateDisplay = (dateStr: string) => {
   if (!dateStr) return '';
@@ -141,7 +145,16 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
     handleAIImport,
     applyAIParsedData,
     resetInvoiceState,
-    suppliers
+    suppliers,
+    printData,
+    saveSuccessData,
+    setSaveSuccessData,
+    isConfirmSaveOpen,
+    setIsConfirmSaveOpen,
+    isRecoveryModalOpen,
+    recoveryDraftData,
+    restoreDraft,
+    discardDraft
   } = usePurchases(onNavigate);
 
   const selectedSupplierObj = suppliers?.find((s: any) => s.id === header.supplier_id || s.Supplier_ID === header.supplier_id);
@@ -252,12 +265,8 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
     if (!header.invoice_number) {
       const tempNum = `TEMP-${Date.now().toString().slice(-6)}`;
       setHeader(prev => ({ ...prev, invoice_number: tempNum }));
-      setTimeout(() => {
-        handlePost().catch(e => console.error("[PurchasesInvoice] auto-post failed:", e));
-      }, 100);
-    } else {
-      handlePost();
     }
+    setIsConfirmSaveOpen(true);
   };
 
   const isPriceHigher = React.useCallback((item: any) => {
@@ -335,6 +344,11 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
                 <RotateCcw size={12} className={header.isReturn ? 'animate-spin-slow' : ''} />
                 <span>المرتجع</span>
               </button>
+
+              {/* Print Menu (compact) */}
+              <div className="shrink-0 scale-90 origin-right">
+                <PrintMenu data={printData} type="PURCHASE" items={items} />
+              </div>
             </div>
           </div>
 
@@ -820,6 +834,63 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
           </div>
         </div>
       </Modal>
+
+      {/* Confirmation Save Modal - Unified Pattern */}
+      <AnimatePresence>
+        {isConfirmSaveOpen && (
+          <UnifiedModal
+            saveFunction={handlePost}
+            requiredFields={['supplier_id', 'invoice_number']}
+            formData={header}
+            setFormData={setHeader}
+            onClose={() => setIsConfirmSaveOpen(false)}
+            title="تأكيد حفظ فاتورة المشتريات"
+            isInvoiceSaveConfirm={true}
+            invoiceType="PURCHASE"
+            invoiceTotal={vTotalSum}
+          >
+            <div className="space-y-4">
+              <p className="text-[11px] font-bold text-slate-400 text-center">سيتم حفظ الفاتورة وتحديث المخزون وقيد الذمم الدائنة.</p>
+            </div>
+          </UnifiedModal>
+        )}
+
+        {/* Save Success Flow overlay */}
+        {saveSuccessData && (
+          <SaveSuccessModal
+            isOpen={!!saveSuccessData}
+            invoiceNumber={saveSuccessData.invoiceNumber}
+            totalAmount={saveSuccessData.totalAmount}
+            currency={currency || "YER"}
+            type="PURCHASE"
+            date={saveSuccessData.date}
+            partnerName={saveSuccessData.partnerName}
+            accountingStatus={saveSuccessData.accountingStatus}
+            inventoryStatus={saveSuccessData.inventoryStatus}
+            balanceStatus={saveSuccessData.balanceStatus}
+            onClose={() => {
+              setSaveSuccessData(null);
+            }}
+            onNewInvoice={() => {
+              setSaveSuccessData(null);
+              resetInvoiceState();
+            }}
+          />
+        )}
+
+        {/* Live Draft Recovery Dialogue (Task 5) */}
+        {isRecoveryModalOpen && recoveryDraftData && (
+          <DraftRecoveryDialog
+            isOpen={isRecoveryModalOpen}
+            moduleName="فاتورة المشتريات والتوريد"
+            updatedAt={recoveryDraftData.updatedAt}
+            itemCount={recoveryDraftData.payload.items?.length || 0}
+            totalAmount={recoveryDraftData.payload.totals?.subtotal}
+            onRestore={restoreDraft}
+            onDiscard={discardDraft}
+          />
+        )}
+      </AnimatePresence>
 
       {/* Item edit modal */}
       <InvoiceItemEditModal 

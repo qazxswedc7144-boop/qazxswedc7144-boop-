@@ -19,6 +19,8 @@ const metrics: IdempotencyMetrics = {
 };
 
 export class IdempotencyService {
+  private static inFlightKeys = new Set<string>();
+
   /**
    * Generates a unique SHA-256 fingerprint for a request based on:
    * - endpoint route
@@ -62,12 +64,57 @@ export class IdempotencyService {
     body: any,
     userId: string | null
   ): Promise<{ status: "PROCESS"; hash: string } | { status: "REPLAY"; code: number; body: any }> {
-    const hash = this.generateRequestHash(endpoint, method, body, userId);
+    // 1. Immediately block if already in-flight in this process thread
+    if (this.inFlightKeys.has(key)) {
+      metrics.concurrentLockPrevention++;
+      logger.warn({ key, endpoint, method }, "Locked concurrent execution prevented via in-flight registry.");
+      throw new Error("CONCURRENT_LOCK");
+    }
 
-    const existing = await IdempotencyRepository.findByKey(key);
+    // Capture the atomic synchronous lock for this thread segment
+    this.inFlightKeys.add(key);
 
-    if (!existing) {
-      // Key is completely free. Attempt to secure lock
+    try {
+      const hash = this.generateRequestHash(endpoint, method, body, userId);
+      const existing = await IdempotencyRepository.findByKey(key);
+
+      if (existing) {
+        // If already marked as processing (meaning another container/thread, or previous crash lock)
+        if (existing.processing) {
+          metrics.concurrentLockPrevention++;
+          logger.warn({ key, endpoint, method }, "Concurrent attempt blocked right after retrieval conflict.");
+          throw new Error("CONCURRENT_LOCK");
+        }
+
+        // Validate request hash integrity
+        if (existing.requestHash !== hash) {
+          metrics.hashMismatches++;
+          logger.error(
+            { key, existingHash: existing.requestHash, incomingHash: hash, endpoint, method },
+            "Idempotency key abuse security check failed. Body payload mismatch."
+          );
+          throw new Error("HASH_MISMATCH");
+        }
+
+        // Safe to replay!
+        metrics.preventedDuplicates++;
+        metrics.replayedRequests++;
+        logger.info(
+          { key, responseStatus: existing.responseStatus, endpoint },
+          "Duplicate attempt intercepted. Replaying previous safe financial outcome."
+        );
+
+        // Remove from dynamic thread lock since we are bypassing the actual route processing anyway
+        this.inFlightKeys.delete(key);
+
+        return {
+          status: "REPLAY",
+          code: existing.responseStatus ?? 200,
+          body: existing.responseBody
+        };
+      }
+
+      // Key is free. Attempt database/memory level transaction lock
       const { record, isNew } = await IdempotencyRepository.acquireLock(
         key,
         hash,
@@ -76,58 +123,26 @@ export class IdempotencyService {
         userId
       );
 
-      if (isNew) {
-        logger.info({ key, endpoint, method, userId, hash }, "Idempotency key acquired. Proceeding to process.");
-        return { status: "PROCESS", hash };
-      }
-
-      // If concurrent request won the race between find and acquireLock
-      if (record.processing) {
+      if (!isNew && record.processing) {
         metrics.concurrentLockPrevention++;
-        logger.warn({ key, endpoint, method }, "Concurrent attempt blocked right after acquisition conflict.");
+        logger.warn({ key, endpoint, method }, "Concurrent attempt blocked on db lock acquisition.");
         throw new Error("CONCURRENT_LOCK");
       }
+
+      logger.info({ key, endpoint, method, userId, hash }, "Idempotency key acquired. Proceeding to process.");
+      return { status: "PROCESS", hash };
+    } catch (err) {
+      // Release inflight lock on pre-request failure to ensure subsequent retries can proceed
+      this.inFlightKeys.delete(key);
+      throw err;
     }
-
-    // Since 'existing' was retrieved or we hit an update
-    const record = existing || (await IdempotencyRepository.findByKey(key))!;
-
-    // 1. Check if it's currently processing (race condition / double-click)
-    if (record.processing) {
-      metrics.concurrentLockPrevention++;
-      logger.warn({ key, endpoint, method }, "Locked concurrent execution prevented.");
-      throw new Error("CONCURRENT_LOCK");
-    }
-
-    // 2. Validate request hash integrity to protect against token reuse/hijacking with different body payloads
-    if (record.requestHash !== hash) {
-      metrics.hashMismatches++;
-      logger.error(
-        { key, existingHash: record.requestHash, incomingHash: hash, endpoint, method },
-        "Idempotency key abuse security check failed. Body payload mismatch."
-      );
-      throw new Error("HASH_MISMATCH");
-    }
-
-    // 3. Request is safe to replay! Re-deliver original response.
-    metrics.preventedDuplicates++;
-    metrics.replayedRequests++;
-    logger.info(
-      { key, responseStatus: record.responseStatus, endpoint },
-      "Duplicate attempt intercepted. Replaying previous safe financial outcome."
-    );
-
-    return {
-      status: "REPLAY",
-      code: record.responseStatus ?? 200,
-      body: record.responseBody
-    };
   }
 
   /**
    * Finalizes an idempotent operations stack with its response payload
    */
   static async resolveRequest(key: string, responseStatus: number, responseBody: any): Promise<void> {
+    this.inFlightKeys.delete(key);
     await IdempotencyRepository.resolveKey(key, responseBody, responseStatus);
     logger.debug({ key, responseStatus }, "Idempotent response result cached successfully.");
   }
@@ -136,6 +151,7 @@ export class IdempotencyService {
    * Cleans/undoes locks in case of errors on non-idempotent exceptions
    */
   static async releaseLock(key: string): Promise<void> {
+    this.inFlightKeys.delete(key);
     await IdempotencyRepository.releaseLock(key);
     logger.warn({ key }, "Processing lock released due to system recovery intervention.");
   }

@@ -15,6 +15,11 @@ import { GlobalGuard } from '@/services/security/GlobalGuard';
 import { BackupService } from '@/services/backupService';
 import { FinancialTransactionRepository } from '@/database/repositories/FinancialTransactionRepository';
 import { SupplierRepository } from '@/database/repositories/SupplierRepository';
+import { useAppStore } from '@/hooks/useAppStore';
+import { SubscriptionService } from '@/services/saas/subscriptionService';
+import { generateTransactionUuid } from '@/utils/uuid';
+import { AuditService } from '@/services/system/AuditService';
+import { ErrorTrackingService } from '@/services/system/ErrorTrackingService';
 
 export interface InvoiceProcessingRequest {
   type: 'SALE' | 'PURCHASE';
@@ -46,6 +51,24 @@ export class SystemOrchestrator {
   static async processInvoice(request: InvoiceProcessingRequest): Promise<{ success: boolean; refId: string }> {
     const { type, payload, options } = request;
     const isEdit = !!payload.id;
+
+    // Generate Global Transaction UUID if not already present
+    const transactionUuid = (payload as any).transactionUuid || generateTransactionUuid(type);
+    (payload as any).transactionUuid = transactionUuid;
+
+    // 0. Enforce Idempotency before entering locks
+    await TransactionService.ensureIdempotency(transactionUuid);
+
+    // Trial limit check
+    const plan = localStorage.getItem('saas_active_plan') || 'TRIAL';
+    if (plan === 'TRIAL') {
+      const usage = await SubscriptionService.getLocalUsageCount();
+      if (usage >= 200 && !isEdit) {
+        useAppStore.getState().setTrialBlockedModalOpen(true);
+        throw new Error("تم الوصول للحد التجريبي 200 عملية. يرجى الاشتراك للمتابعة.");
+      }
+    }
+
     const finalStatus: InvoiceStatus = options?.invoiceStatus || 'POSTED';
     const isPosting = finalStatus === 'POSTED' || finalStatus === 'LOCKED';
     
@@ -56,15 +79,19 @@ export class SystemOrchestrator {
     // 1. Global Guard & Lock
     await GlobalGuard.checkSystemState(isEdit ? 'تعديل فاتورة' : 'إنشاء فاتورة', effectiveDate);
 
+    // Get snapshot of state before (for audit edit tracking)
+    let beforeState: any = null;
+    if (isEdit) {
+      beforeState = type === 'SALE' 
+        ? await InvoiceRepository.getSaleById(resourceId) 
+        : await InvoiceRepository.getPurchaseById(resourceId);
+    }
+
     return await TransactionService.runSafe(resourceId, async () => {
       try {
         // 0. Detect and handle unpost-before-edit if already posted
-        if (isEdit) {
-          const existing = type === 'SALE' 
-            ? await InvoiceRepository.getSaleById(resourceId) 
-            : await InvoiceRepository.getPurchaseById(resourceId);
-          
-          if (existing && (existing.InvoiceStatus === 'POSTED' || existing.invoiceStatus === 'POSTED')) {
+        if (isEdit && beforeState) {
+          if (beforeState.InvoiceStatus === 'POSTED' || beforeState.invoiceStatus === 'POSTED') {
             await this.unpostInvoice(resourceId, type);
           }
         }
@@ -111,7 +138,8 @@ export class SystemOrchestrator {
             costResult.totalCost,
             payload.id,
             payload.attachment,
-            payload.date
+            payload.date,
+            transactionUuid // Parameter 15: transactionUuid
           );
         } else {
           result = await InvoiceRepository.savePurchase(
@@ -127,7 +155,8 @@ export class SystemOrchestrator {
             payload.id,
             payload.attachment,
             !!options?.isReturn,
-            payload.date
+            payload.date,
+            transactionUuid // Parameter 14: transactionUuid
           );
         }
 
@@ -137,7 +166,7 @@ export class SystemOrchestrator {
         // 4. ACCOUNTING ENTRIES
         //--------------------------------
         if (isPosting) {
-          await accountingEngine.postInvoice({ ...payload, type, id: refId }, costResult);
+          await accountingEngine.postInvoice({ ...payload, type, id: refId, transactionUuid }, costResult);
         }
 
         //--------------------------------
@@ -145,14 +174,33 @@ export class SystemOrchestrator {
         //--------------------------------
         await reportEngine.refresh();
         
-        // 9. Audit Log
-        await db.addAuditLog(isEdit ? 'UPDATE' : 'CREATE', type, refId, 
-          `SystemOrchestrator: Invoice ${refId} processed as ${finalStatus} by ${authService.getCurrentUser().User_Email}`);
+        // 9. Centralized Audit Log 2.0
+        await AuditService.log({
+          action: isEdit ? 'EDIT' : 'CREATE',
+          module: type,
+          transactionUuid: transactionUuid,
+          before: beforeState,
+          after: result,
+          recordId: refId
+        });
+
+        // Register completed UUID as successfully processed in-memory
+        TransactionService.registerCompletedUuid(transactionUuid);
 
         console.log('Invoice processed successfully');
         return { success: true, refId };
       } catch (error: any) {
         console.error('PROCESS FAILED:', error);
+        
+        // Log in centralized system_errors table
+        await ErrorTrackingService.log({
+          moduleName: type,
+          screenName: type === 'SALE' ? 'كاشير المبيعات' : 'توريد مشتريات',
+          errorMessage: error.message || String(error),
+          stackTrace: error.stack,
+          severity: 'ERROR'
+        });
+
         FaultService.log({
           type: 'ORCHESTRATOR_FATAL',
           module: 'SYSTEM_ORCHESTRATOR',

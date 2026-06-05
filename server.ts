@@ -48,7 +48,7 @@ function killStaleProcesses(port: number) {
 
 
 async function startServer() {
-  const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+  const PORT = 3000;
   
   // Clean up any stale processes that might be holding onto the port or 24678 in development
   if (process.env.NODE_ENV !== "production") {
@@ -404,7 +404,7 @@ function runBackgroundDbSync() {
       
       // Execute prisma db push asynchronously with explicit 45s timeout and local node module execution
       exec(
-        "node node_modules/prisma/build/index.js db push --accept-data-loss",
+        "npx prisma db push --accept-data-loss",
         { timeout: 45000, env: process.env },
         (errVal, stdout, stderr) => {
           if (errVal) {

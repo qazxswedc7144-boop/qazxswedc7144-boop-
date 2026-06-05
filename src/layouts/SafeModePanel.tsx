@@ -4,6 +4,7 @@ import { ShieldAlert, RefreshCw, Database, Lock, RotateCcw } from 'lucide-react'
 import { db } from '@/core/db';
 import { IntegritySweepService } from '@/services/integrity/IntegritySweepService';
 import { AlertCenter } from '@/services/notifications/AlertCenter';
+import { NotificationService } from '@/context/NotificationContext';
 
 export const SafeModePanel: React.FC = () => {
   const [errors, setErrors] = React.useState<string[]>([]);
@@ -38,15 +39,15 @@ export const SafeModePanel: React.FC = () => {
         if (isHealthy) {
           await AlertCenter.clearCriticalAlerts();
           await AlertCenter.resetSystemStatus();
-          alert("تم الإصلاح بنجاح! سيعاد تشغيل النظام الآن.");
+          NotificationService.success("تم الإصلاح بنجاح! سيعاد تشغيل النظام الآن.");
           window.location.reload();
         } else {
-          alert("فشل الإصلاح التلقائي في معالجة كافة المشاكل. يرجى مراجعة سجلات التدقيق أو استعادة نسخة احتياطية.");
+          NotificationService.error("فشل الإصلاح التلقائي في معالجة كافة المشاكل. يرجى مراجعة سجلات التدقيق أو استعادة نسخة احتياطية.");
         }
       }
     } catch (e) {
       console.error("handleRepair failed:", e);
-      alert("حدث خطأ أثناء محاولة الإصلاح.");
+      NotificationService.error("حدث خطأ أثناء محاولة الإصلاح.");
     }
   };
 

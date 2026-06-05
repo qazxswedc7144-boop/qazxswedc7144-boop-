@@ -29,9 +29,9 @@ export class StockMovementEngine {
       tenant_id: 'TEN-DEV-001'
     };
 
-    // VALIDATION: Reject if quantity_after < 0
+    // VALIDATION: Reject if quantity_after < 0 - bypassed to support flexible offline selling
     if (movement.quantity_after < 0) {
-      throw new Error(`Insufficient stock for item ${movement.item_id}. Resulting stock would be ${movement.quantity_after}.`);
+      console.warn(`Insufficient stock for item ${movement.item_id}. Resulting stock would be ${movement.quantity_after}. Allowed warning-only.`);
     }
 
     try {

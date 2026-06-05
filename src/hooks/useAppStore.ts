@@ -37,6 +37,8 @@ interface AppState {
   headerAction: { icon: React.ReactNode; label: string; onClick: () => void } | null;
   editingInvoiceId: string | null; 
   isSettingsOpen: boolean;
+  isTrialBlockedModalOpen: boolean;
+  setTrialBlockedModalOpen: (isOpen: boolean) => void;
 
   refreshData: () => Promise<void>;
   addInvoice: (invoice: InvoiceRequest) => Promise<{ success: boolean; error?: string; refId?: string }>;
@@ -92,6 +94,8 @@ export const useAppStore = create<AppState>()(
       headerAction: null,
       editingInvoiceId: null,
       isSettingsOpen: false,
+      isTrialBlockedModalOpen: false,
+      setTrialBlockedModalOpen: (isTrialBlockedModalOpen) => set({ isTrialBlockedModalOpen }),
 
       // Fix: refreshData now uses local repositories (Dexie) and coalescing
       refreshData: async () => {

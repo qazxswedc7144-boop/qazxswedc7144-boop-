@@ -12,7 +12,7 @@ export interface InvoiceTemplateProps {
   data: any;
   type: 'SALE' | 'PURCHASE' | 'VOUCHER' | 'REPORT';
   items?: InvoiceItem[];
-  mode: 'A4' | 'THERMAL';
+  mode: 'A4' | 'THERMAL' | '58mm' | '80mm';
   layoutConfig?: {
     primaryColor?: string;
     font?: string;
@@ -59,26 +59,37 @@ export const InvoiceTemplate: React.FC<InvoiceTemplateProps> = ({
   const rawNoteHTML = data.notes || data.Notes || '';
   const sanitizedNote = sanitizeHTML(rawNoteHTML);
 
-  if (mode === 'THERMAL') {
-    // High-performance thermal printer support (80mm narrow POS monochrome structure)
+  // QR Code payload text
+  const qrDataText = `الشركة: ${invoiceConfig.pharmacyName}\nرقم المستند: #${refId}\nالتاريخ: ${displayDate}\nالإجمالي: ${total.toFixed(2)} AED\nالضريبة: ${vatAmount.toFixed(2)} AED`;
+  const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrDataText)}`;
+
+  if (mode === '58mm' || mode === '80mm' || mode === 'THERMAL') {
+    const is58 = mode === '58mm';
+    const paperWidthClass = is58 ? 'w-[58mm] max-w-[58mm]' : 'w-[80mm] max-w-[80mm]';
+    const fontSizeBase = is58 ? 'text-[9px]' : 'text-[11px]';
+    const fontSizeHeader = is58 ? 'text-[11px]' : 'text-sm';
+    const fontSizeSub = is58 ? 'text-[8px]' : 'text-[9px]';
+    const fontSizeDetails = is58 ? 'text-[8px]' : 'text-[10px]';
+
+    // High-performance thermal printer support (58mm/80mm narrow POS monochrome structure)
     return (
       <div 
         dir="rtl" 
-        className="w-[80mm] max-w-[80mm] bg-white text-black text-[11px] font-mono leading-relaxed p-2 mx-auto"
+        className={`${paperWidthClass} bg-white text-black font-mono leading-relaxed p-2 mx-auto`}
         style={{ fontFamily: 'Courier, monospace' }}
       >
         {/* Header */}
         <div className="text-center border-b border-dashed border-gray-400 pb-2 mb-2">
-          <h2 className="text-sm font-bold tracking-tight uppercase m-0 leading-tight">
+          <h2 className={`${fontSizeHeader} font-bold tracking-tight uppercase m-0 leading-tight`}>
             {invoiceConfig.pharmacyName}
           </h2>
-          <p className="text-[9px] m-0 mt-0.5 opacity-80">{invoiceConfig.address}</p>
-          <p className="text-[9px] m-0 opacity-80">هاتف: {invoiceConfig.phone}</p>
-          <p className="text-[9px] m-0 font-bold mt-1">الرقم الضريبي: {invoiceConfig.taxNumber}</p>
+          <p className={`${fontSizeSub} m-0 mt-0.5 opacity-80`}>{invoiceConfig.address}</p>
+          <p className={`${fontSizeSub} m-0 opacity-80`}>هاتف: {invoiceConfig.phone}</p>
+          <p className={`${fontSizeSub} m-0 font-bold mt-1`}>الرقم الضريبي: {invoiceConfig.taxNumber}</p>
         </div>
 
         {/* Invoice Info */}
-        <div className="space-y-0.5 mb-2 pb-2 border-b border-dashed border-gray-400 text-[10px]">
+        <div className={`space-y-0.5 mb-2 pb-2 border-b border-dashed border-gray-400 ${fontSizeDetails}`}>
           <div className="flex justify-between">
             <span>نوع المستند:</span>
             <span className="font-bold">
@@ -96,29 +107,29 @@ export const InvoiceTemplate: React.FC<InvoiceTemplateProps> = ({
             <span>{displayDate}</span>
           </div>
           <div className="flex justify-between">
-            <span>العميل:</span>
-            <span className="font-bold">{data.customerId || data.partnerName || data.name || 'عميل نقدي'}</span>
+            <span>العميل/الطرف الآخر:</span>
+            <span className="font-bold">{data.customerId || data.customerName || data.partnerName || data.name || 'نقدي عام'}</span>
           </div>
         </div>
 
         {/* Table Items */}
         {type !== 'REPORT' ? (
           <div className="mb-2 pb-2 border-b border-dashed border-gray-400">
-            <div className="flex justify-between font-bold border-b border-gray-400 pb-1 mb-1 text-[10px]">
+            <div className={`flex justify-between font-bold border-b border-gray-400 pb-1 mb-1 ${fontSizeDetails}`}>
               <span className="w-1/2 text-right">الصنف</span>
               <span className="w-1/6 text-center">الكمية</span>
               <span className="w-1/3 text-left">المجموع</span>
             </div>
             <div className="space-y-1">
               {finalItems.map((item, index) => (
-                <div key={index} className="flex justify-between">
+                <div key={index} className={`flex justify-between ${fontSizeDetails}`}>
                   <span className="w-1/2 text-right truncate font-bold">{item.name}</span>
                   <span className="w-1/6 text-center">x{item.qty}</span>
                   <span className="w-1/3 text-left font-bold">{(item.sum || (item.price * item.qty)).toFixed(2)}</span>
                 </div>
               ))}
               {type === 'VOUCHER' && (
-                <div className="text-center py-2 italic text-[10px]">
+                <div className={`text-center py-2 italic ${fontSizeDetails}`}>
                   {sanitizedNote ? (
                     <div dangerouslySetInnerHTML={{ __html: sanitizedNote }} />
                   ) : (
@@ -131,7 +142,7 @@ export const InvoiceTemplate: React.FC<InvoiceTemplateProps> = ({
         ) : (
           <div className="mb-2 pb-2 border-b border-dashed border-gray-400">
             <p className="text-center font-bold tracking-wider underline mb-1">{data.reportName || 'تقرير عام'}</p>
-            <div className="space-y-1 text-[10px]">
+            <div className={`space-y-1 ${fontSizeDetails}`}>
               {(data.summary || []).map((s: any, idx: number) => (
                 <div key={idx} className="flex justify-between">
                   <span>{s.label}:</span>
@@ -143,31 +154,44 @@ export const InvoiceTemplate: React.FC<InvoiceTemplateProps> = ({
         )}
 
         {/* Totals Section */}
-        <div className="space-y-1 text-[11px] pb-2 mb-2 border-b border-dashed border-gray-400">
-          <div className="flex justify-between text-[10px]">
-            <span>الإجمالي الخاضع للضريبة (Net):</span>
+        <div className={`space-y-1 ${fontSizeBase} pb-2 mb-2 border-b border-dashed border-gray-400`}>
+          <div className="flex justify-between text-opacity-80">
+            <span>الإجمالي الخاضع (Net):</span>
             <span>{netTotal.toFixed(2)} AED</span>
           </div>
-          <div className="flex justify-between text-[10px]">
-            <span>ضريبة القيمة المضافة (5% VAT):</span>
+          <div className="flex justify-between text-opacity-80">
+            <span>الضريبة (5% VAT):</span>
             <span>{vatAmount.toFixed(2)} AED</span>
           </div>
-          <div className="flex justify-between text-xs font-black pt-1 border-t border-dotted border-gray-500">
-            <span>الإجمالي المستحق (Total):</span>
+          <div className="flex justify-between text-[11px] font-black pt-1 border-t border-dotted border-gray-500">
+            <span>المجموع النهائي (Total):</span>
             <span>{total.toFixed(2)} AED</span>
           </div>
         </div>
 
-        {/* Footer Barcode / QR Placeholder and message */}
-        <div className="text-center space-y-1 text-[9px] mt-2 opacity-90 leading-normal">
+        {/* Footer Barcode / QR Code and message */}
+        <div className="text-center space-y-1.5 text-[9px] mt-2 opacity-90 leading-normal">
           <p className="font-bold">{invoiceConfig.footerNote}</p>
-          <div className="py-2 inline-block">
+          
+          {/* QR Code image in thermal layout */}
+          <div className="flex justify-center py-1">
+            <div className="w-24 h-24 bg-white border border-dashed border-gray-400 p-1">
+              <img 
+                src={qrCodeUrl}
+                alt="QR Code"
+                className="w-full h-full object-contain grayscale"
+                referrerPolicy="no-referrer"
+              />
+            </div>
+          </div>
+
+          <div className="py-1 inline-block">
             {/* Safe visual custom barcode layout for thermal POS output */}
-            <div className="flex justify-center gap-0.5 items-center h-6 bg-black px-4 py-1 rounded">
+            <div className="flex justify-center gap-0.5 items-center h-5 bg-black px-3 py-0.5 rounded">
               <span className="text-white text-[8px] font-bold tracking-widest leading-none">*{refId}*</span>
             </div>
           </div>
-          <p className="text-[8px] uppercase font-bold text-gray-400">PharmaFlow POS Secure Printing V2.5</p>
+          <p className="text-[7px] uppercase font-bold text-gray-500">PharmaFlow POS Secure Printing V2.5</p>
         </div>
       </div>
     );
@@ -221,7 +245,7 @@ export const InvoiceTemplate: React.FC<InvoiceTemplateProps> = ({
         <div className="grid grid-cols-2 gap-8 mb-8 bg-slate-50 p-6 rounded-2xl border border-slate-100">
           <div>
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">بيانات الطرف الثنائي</p>
-            <p className="text-base font-black text-[#1E4D4D]">{data.customerId || data.partnerName || data.name || 'عميل نقدي عام'}</p>
+            <p className="text-base font-black text-[#1E4D4D]">{data.customerId || data.customerName || data.partnerName || data.name || 'عميل نقدي عام'}</p>
             <p className="text-[10px] text-slate-400 mt-1 font-bold">الرقم المرجعي أو الهاتف: {data.phone || '-'}</p>
           </div>
           <div className="text-left">
@@ -326,9 +350,20 @@ export const InvoiceTemplate: React.FC<InvoiceTemplateProps> = ({
       {/* Bill Totals Container */}
       <div className="mt-auto border-t border-slate-100 pt-8">
         <div className="flex justify-between items-end">
-          <div className="text-slate-400 max-w-sm">
-            <h4 className="text-[10px] font-black uppercase tracking-widest text-[#1E4D4D] mb-1">البيئة الإرشادية والخدمية للشركة</h4>
-            <p className="text-[10px] leading-relaxed font-bold">{invoiceConfig.footerNote}</p>
+          <div className="flex gap-4 items-center">
+            {/* QR Code */}
+            <div className="w-20 h-20 bg-white border border-slate-200 rounded-xl p-1 shrink-0">
+              <img 
+                src={qrCodeUrl}
+                alt="QR Code"
+                className="w-full h-full object-contain"
+                referrerPolicy="no-referrer"
+              />
+            </div>
+            <div className="text-slate-400 max-w-xs">
+              <h4 className="text-[10px] font-black uppercase tracking-widest text-[#1E4D4D] mb-1">البيئة الإرشادية والخدمية للشركة</h4>
+              <p className="text-[10px] leading-relaxed font-bold">{invoiceConfig.footerNote}</p>
+            </div>
           </div>
           <div className="w-72 space-y-2 text-right">
             <div className="flex justify-between text-xs text-slate-500 font-bold">

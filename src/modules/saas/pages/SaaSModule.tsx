@@ -12,6 +12,7 @@ import { TenantSecurityService } from '../security/tenantSecurity';
 import { FHIRService } from '../integrations/fhirService';
 import { ApiGatewayService, ApiKeyConfig } from '../api/apiGateway';
 import { ReviewerSaaSTester } from '@/components/saas/SubscriptionWidgets';
+import { NotificationService } from '@/context/NotificationContext';
 
 interface SaaSModuleProps {
   onNavigate?: (view: string) => void;
@@ -186,10 +187,10 @@ export default function SaaSModule({ onNavigate: _onNavigate }: SaaSModuleProps)
     try {
       const res = await fetch('/api/saas/seed-plans', { method: 'POST' });
       const data = await res.json();
-      alert(data.message || "تم دفق الخطط الأربعة بنجاح!");
+      NotificationService.success(data.message || "تم دفق الخطط الأربعة بنجاح!");
       fetchPlatformMetrics();
     } catch (err: any) {
-      alert("فشل تحديث خطط الاشتراك بالخادم: " + err.message);
+      NotificationService.error("فشل تحديث خطط الاشتراك بالخادم: " + err.message);
     }
   };
 
@@ -361,7 +362,7 @@ export default function SaaSModule({ onNavigate: _onNavigate }: SaaSModuleProps)
   // Process FHIR parse testing
   const handleParseFHIR = () => {
     if (!fhirInput) {
-      alert("الرجاء إدخال قالب JSON المتوافق أولاً.");
+      NotificationService.warning("الرجاء إدخال قالب JSON المتوافق أولاً.");
       return;
     }
     try {
@@ -518,7 +519,7 @@ export default function SaaSModule({ onNavigate: _onNavigate }: SaaSModuleProps)
                     const res = await fetch(`/api/saas/subscription-status/${tenantId}`);
                     const d = await res.json();
                     if (d.success) setSubLimitData(d);
-                    alert("تم تنشيط رخصة الاشتراك وتعديل الأرصدة التراكمية.");
+                    NotificationService.success("تم تنشيط رخصة الاشتراك وتعديل الأرصدة التراكمية.");
                   }}
                   className="mt-2 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-[10px] px-3 py-1 rounded-lg transition"
                 >
@@ -644,7 +645,7 @@ export default function SaaSModule({ onNavigate: _onNavigate }: SaaSModuleProps)
                     <button
                       id="btn-daily-backup"
                       type="button"
-                      onClick={() => alert("✓ جاري معالجة وتحزيم الدفاتر المحاسبية لجميع الفروع... تم تحميل النسخة اليومية بنجاح.")}
+                      onClick={() => NotificationService.success("✓ جاري معالجة وتحزيم الدفاتر المحاسبية لجميع الفروع... تم تحميل النسخة اليومية بنجاح.")}
                       className="py-2.5 bg-slate-50 dark:bg-gray-750 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 border border-slate-100 dark:border-gray-700 text-slate-700 dark:text-gray-200 hover:text-indigo-600 hover:border-indigo-500/30 rounded-xl text-[10px] font-black transition cursor-pointer"
                     >
                       نسخة يومية
@@ -652,7 +653,7 @@ export default function SaaSModule({ onNavigate: _onNavigate }: SaaSModuleProps)
                     <button
                       id="btn-weekly-backup"
                       type="button"
-                      onClick={() => alert("✓ جاري إرسال كتل البيانات المشفرة إلى مستودعات AWS Cloud الاحترازية... تم تأكيد النسخة الأسبوعية.")}
+                      onClick={() => NotificationService.success("✓ جاري إرسال كتل البيانات المشفرة إلى مستودعات AWS Cloud الاحترازية... تم تأكيد النسخة الأسبوعية.")}
                       className="py-2.5 bg-slate-50 dark:bg-gray-750 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 border border-slate-100 dark:border-gray-700 text-slate-700 dark:text-gray-200 hover:text-indigo-600 hover:border-indigo-500/30 rounded-xl text-[10px] font-black transition cursor-pointer"
                     >
                       نسخة أسبوعية
@@ -660,7 +661,7 @@ export default function SaaSModule({ onNavigate: _onNavigate }: SaaSModuleProps)
                     <button
                       id="btn-restore-backup"
                       type="button"
-                      onClick={() => alert("✓ جاري الاستعلام الفاحص لسلامة البيانات... تم التحقق من سلامة البنيات والمزامنة بنسبة 100%.")}
+                      onClick={() => NotificationService.success("✓ جاري الاستعلام الفاحص لسلامة البيانات... تم التحقق من سلامة البنيات والمزامنة بنسبة 100%.")}
                       className="py-2.5 bg-slate-50 dark:bg-gray-750 hover:bg-rose-50 dark:hover:bg-rose-950/20 border border-slate-100 dark:border-gray-700 text-slate-700 dark:text-gray-200 hover:text-rose-600 hover:border-rose-500/30 rounded-xl text-[10px] font-black transition cursor-pointer"
                     >
                       استعادة نسخة
@@ -695,7 +696,7 @@ export default function SaaSModule({ onNavigate: _onNavigate }: SaaSModuleProps)
                     <button
                       id="btn-create-ticket"
                       type="button"
-                      onClick={() => alert("✓ تم إرسال طلب تذكرة صيانة برقم #TKT-2026-9041 إلى فريق إدارة الأنظمة. سنتواصل معك بالهاتف قريباً.")}
+                      onClick={() => NotificationService.success("✓ تم إرسال طلب تذكرة صيانة برقم #TKT-2026-9041 إلى فريق إدارة الأنظمة. سنتواصل معك بالهاتف قريباً.")}
                       className="w-full text-center py-2.5 bg-slate-50 dark:bg-gray-700 hover:bg-slate-100 text-slate-700 dark:text-gray-200 rounded-xl text-xs font-extrabold border dark:border-gray-600 transition cursor-pointer"
                     >
                       🛠 فتح تذكرة صيانة ذكية لربط المستشفيات

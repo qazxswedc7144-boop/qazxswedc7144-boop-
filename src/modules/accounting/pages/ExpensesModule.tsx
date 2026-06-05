@@ -2,6 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { db } from '@/core/db';
 import { CashFlow } from '@/types';
+import { NotificationService } from '@/context/NotificationContext';
 
 interface ExpensesModuleProps {
   lang: 'en' | 'ar';
@@ -48,7 +49,7 @@ const ExpensesModule: React.FC<ExpensesModuleProps> = ({ lang, onNavigate }) => 
       branchId: 'MAIN'
     };
     await db.recordCashFlow(entry);
-    alert(isAr ? 'تم تسجيل العملية المالية بنجاح' : 'Financial transaction recorded!');
+    NotificationService.success(isAr ? 'تم تسجيل العملية المالية بنجاح' : 'Financial transaction recorded!');
     setFormData({ amount: '', type: 'خرج', category: 'مصاريف تشغيلية', notes: '' });
     // Refresh history
     const data = await db.getCashFlow();

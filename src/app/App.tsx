@@ -26,7 +26,8 @@ import {
   SubscriptionOnboardingModal,
   SubscriptionGlobalUsageRibbon,
   SubscriptionWarningInterceptor,
-  SubscriptionBlockadeBackdrop
+  SubscriptionBlockadeBackdrop,
+  TrialBlockedModal
 } from '@/components/saas/SubscriptionWidgets';
 
 // Error Boundary Component
@@ -196,6 +197,8 @@ function MainLayout() {
   const [, startTransition] = useTransition();
   const { setHeaderAction, refreshGlobal, isSettingsOpen, setSettingsOpen } = useUI();
   const setEditingInvoiceId = useAppStore(state => state.setEditingInvoiceId);
+  const isTrialBlockedModalOpen = useAppStore(state => state.isTrialBlockedModalOpen);
+  const setTrialBlockedModalOpen = useAppStore(state => state.setTrialBlockedModalOpen);
   const systemStatus = useAppStore(state => state.systemStatus);
   const setSystemStatus = useAppStore(state => state.setSystemStatus);
   const setCurrency = useAppStore(state => state.setCurrency);
@@ -551,6 +554,9 @@ function MainLayout() {
       <SubscriptionOnboardingModal isOpen={onboardingOpen} onClose={handleCloseOnboarding} />
       <SubscriptionWarningInterceptor />
       <SubscriptionBlockadeBackdrop onUpgrade={handleUpgradeTrial} />
+      {isTrialBlockedModalOpen && (
+        <TrialBlockedModal onClose={() => setTrialBlockedModalOpen(false)} />
+      )}
 
       <AnimatePresence>
         {isLocked && <LockScreen onUnlock={() => setIsLocked(false)} />}

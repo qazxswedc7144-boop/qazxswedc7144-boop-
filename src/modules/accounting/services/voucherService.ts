@@ -2,9 +2,21 @@
 import { db } from '@/core/db';
 import { AccountingEngine } from './AccountingEngine';
 import { Receipt, Payment } from '@/types';
+import { useAppStore } from '@/hooks/useAppStore';
+import { SubscriptionService } from '@/services/saas/subscriptionService';
 
 export const voucherService = {
   createReceipt: async (data: { customer_id: string; amount: number; notes?: string; date?: string; paymentMethod?: 'CASH' | 'TRANSFER' }) => {
+    // Trial limit check
+    const plan = localStorage.getItem('saas_active_plan') || 'TRIAL';
+    if (plan === 'TRIAL') {
+      const usage = await SubscriptionService.getLocalUsageCount();
+      if (usage >= 200) {
+        useAppStore.getState().setTrialBlockedModalOpen(true);
+        throw new Error("تم الوصول للحد التجريبي 200 عملية. يرجى الاشتراك للمتابعة.");
+      }
+    }
+
     if (data.amount <= 0) throw new Error('المبلغ يجب أن يكون أكبر من صفر');
     if (!data.customer_id) throw new Error('يرجى اختيار العميل');
     
@@ -54,6 +66,16 @@ export const voucherService = {
   },
 
   createPayment: async (data: { supplier_id: string; amount: number; notes?: string; date?: string; paymentMethod?: 'CASH' | 'TRANSFER' }) => {
+    // Trial limit check
+    const plan = localStorage.getItem('saas_active_plan') || 'TRIAL';
+    if (plan === 'TRIAL') {
+      const usage = await SubscriptionService.getLocalUsageCount();
+      if (usage >= 200) {
+        useAppStore.getState().setTrialBlockedModalOpen(true);
+        throw new Error("تم الوصول للحد التجريبي 200 عملية. يرجى الاشتراك للمتابعة.");
+      }
+    }
+
     if (data.amount <= 0) throw new Error('المبلغ يجب أن يكون أكبر من صفر');
     if (!data.supplier_id) throw new Error('يرجى اختيار المورد');
     

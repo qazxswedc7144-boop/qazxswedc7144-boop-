@@ -6,6 +6,8 @@ import {
   BranchTransfer, BranchTransferItem, TransferStatus 
 } from "@/types";
 import { LockService } from "@/modules/locking/lock.service";
+import { useAppStore } from "@/hooks/useAppStore";
+import { SubscriptionService } from "@/services/saas/subscriptionService";
 
 export class BranchService {
   private static replicationListeners = new Set<(type: string, payload: any) => void>();
@@ -265,6 +267,16 @@ export class BranchService {
     reason: string,
     username: string
   ): Promise<string> {
+    // Trial limit check
+    const plan = localStorage.getItem('saas_active_plan') || 'TRIAL';
+    if (plan === 'TRIAL') {
+      const usage = await SubscriptionService.getLocalUsageCount();
+      if (usage >= 200) {
+        useAppStore.getState().setTrialBlockedModalOpen(true);
+        throw new Error("تم الوصول للحد التجريبي 200 عملية. يرجى الاشتراك للمتابعة.");
+      }
+    }
+
     const transferId = `TRF-${Date.now()}`;
     const transferNo = `TRF-N-${Math.floor(100000 + Math.random() * 900000)}`;
     const now = new Date().toISOString();
