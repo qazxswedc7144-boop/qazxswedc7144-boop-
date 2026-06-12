@@ -8,7 +8,7 @@ import {
   KeyRound, ScanLine, 
   Info, Shield, 
   Clock, 
-  Type, Phone, MapPin,
+  User, Type, Phone, MapPin,
   History, RefreshCw,
   Users, DatabaseBackup, Sparkles, Brain, Eye, EyeOff
 } from 'lucide-react';
@@ -136,6 +136,13 @@ const SettingsModule: React.FC<{ onNavigate?: (view: any) => void }> = ({ onNavi
   const [printLogo, setPrintLogo] = useState<boolean>(true);
   const [printQR, setPrintQR] = useState<boolean>(true);
   const [showPrivacyModal, setShowPrivacyModal] = useState<boolean>(false);
+  const [showDevInfo, setShowDevInfo] = useState<boolean>(false);
+
+  const handleDeveloperClick = () => {
+    setShowDevInfo(true);
+    // Auto-hide after 7 seconds for a smooth user experience
+    setTimeout(() => setShowDevInfo(false), 7000);
+  };
 
   const [modalConfig, setModalConfig] = useState<{
     open: boolean;
@@ -355,17 +362,27 @@ const SettingsModule: React.FC<{ onNavigate?: (view: any) => void }> = ({ onNavi
     
     setIsTestingKey(true);
     try {
-      // Import dynamically to avoid side effects if not used elsewhere
-      const { GoogleGenAI } = await import('@google/genai');
-      const genAI = new GoogleGenAI({ apiKey: geminiKey });
-      
-      // Use the pattern found in the app
-      const result = await genAI.models.generateContent({
-        model: "gemini-flash-latest",
-        contents: "Say 'Connection Successful' briefly in Arabic."
+      const token = localStorage.getItem("pharmaflow_token") || localStorage.getItem("token") || "";
+      const response = await fetch("/api/ai/test-key", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({ key: geminiKey })
       });
-      
-      addToast(`نجح الاتصال: ${result.text}`, "success");
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.message || `HTTP ${response.status}`);
+      }
+
+      const resData = await response.json();
+      if (resData.success) {
+        addToast(`نجح الاتصال: ${resData.text}`, "success");
+      } else {
+        throw new Error(resData.message || "فشل الاتصال بمفتاح الـ API");
+      }
     } catch (error: any) {
       console.error("Gemini Test Failed:", error);
       addToast(`فشل الاتصال: ${error.message || 'خطأ غير معروف'}`, "error");
@@ -954,20 +971,84 @@ const SettingsModule: React.FC<{ onNavigate?: (view: any) => void }> = ({ onNavi
                 </ul>
              </div>
 
-             <div className="space-y-2 pt-2">
-                <Button 
-                  variant="ghost" 
-                  type="button"
-                  className="w-full justify-between h-12 text-[10px] sm:text-xs hover:bg-slate-100 dark:hover:bg-gray-750 !rounded-xl text-slate-700 dark:text-gray-200" 
-                  onClick={() => setShowPrivacyModal(true)}
-                >
-                   <span>سياسة الخصوصية وشروط الاستخدام ومطابقة Google Play</span> 
-                   <Info size={14} />
-                </Button>
-                <div className="text-center">
-                   <span className="text-[9px] text-slate-400 font-black uppercase">© PharmaFlow Pro 2026. جميع الحقوق محفوظة لمالك المنصة.</span>
-                </div>
-             </div>
+              <div className="space-y-2 pt-2">
+                 <Button 
+                   variant="ghost" 
+                   type="button"
+                   className="w-full justify-between h-12 text-[10px] sm:text-xs hover:bg-slate-100 dark:hover:bg-gray-750 !rounded-xl text-slate-700 dark:text-gray-200" 
+                   onClick={() => setShowPrivacyModal(true)}
+                 >
+                    <span>سياسة الخصوصية وشروط الاستخدام ومطابقة Google Play</span> 
+                    <Info size={14} />
+                 </Button>
+
+                 {/* Developer Info Button */}
+                 <button 
+                   type="button"
+                   onClick={handleDeveloperClick}
+                   className="w-full flex items-center justify-between h-12 px-4 text-xs font-bold bg-slate-50 hover:bg-indigo-50/50 dark:bg-gray-800/30 dark:hover:bg-indigo-950/20 text-slate-600 hover:text-indigo-600 dark:text-gray-300 dark:hover:text-indigo-400 border border-slate-100 dark:border-gray-750 rounded-xl transition-all group cursor-pointer"
+                 >
+                   <div className="flex items-center gap-2">
+                     <User size={15} className="text-slate-400 group-hover:text-indigo-500 transition-colors" />
+                     <span>معلومات مطور النظام المعتمد</span>
+                   </div>
+                   <div className="text-slate-400 group-hover:text-indigo-500 transition-colors">
+                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                   </div>
+                 </button>
+
+                 {/* Interactive Dev Info Interactive Card */}
+                 {showDevInfo && (
+                   <div className="fixed bottom-6 left-4 right-4 z-[610] max-w-md mx-auto bg-slate-900 text-white rounded-2xl p-4 shadow-2xl border border-slate-800 animate-in fade-in slide-in-from-bottom-5 duration-300">
+                     <div className="flex items-start justify-between gap-3 text-right" dir="rtl">
+                       
+                       {/* Close Button */}
+                       <button 
+                         type="button"
+                         onClick={() => setShowDevInfo(false)}
+                         className="text-slate-400 hover:text-white p-1 text-sm font-bold font-mono transition-colors"
+                       >
+                         ✕
+                       </button>
+
+                       {/* Contact & Identity details */}
+                       <div className="flex-1 space-y-2 text-right" dir="rtl">
+                         <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs bg-emerald-500/10 py-1 px-2 rounded-full w-fit">
+                           <ShieldCheck size={14} />
+                           <span>المطور المعتمد للنظام</span>
+                         </div>
+                         
+                         <div className="space-y-1.5 pt-1">
+                           <div className="flex items-center gap-2 justify-start">
+                             <User size={16} className="text-indigo-400" />
+                             <span className="text-sm font-black text-slate-100">د. عبدالله مفرح</span>
+                           </div>
+                           
+                           <div className="flex items-center gap-2 justify-start" dir="ltr">
+                             <Phone size={16} className="text-indigo-400" />
+                             <a 
+                               href="tel:772093714" 
+                               className="text-xs font-mono font-bold text-slate-300 hover:text-indigo-400 hover:underline transition-all"
+                             >
+                               +967 772093714
+                             </a>
+                           </div>
+                         </div>
+                       </div>
+
+                       {/* Interactive Icon badge */}
+                       <div className="w-10 h-10 bg-indigo-600/20 text-indigo-400 rounded-xl flex items-center justify-center text-lg font-bold shrink-0">
+                         ℹ️
+                       </div>
+
+                     </div>
+                   </div>
+                 )}
+
+                 <div className="text-center">
+                    <span className="text-[9px] text-slate-400 font-black uppercase">© PharmaFlow Pro 2026. جميع الحقوق محفوظة لمالك المنصة.</span>
+                 </div>
+              </div>
           </div>
         </Section>
       </div>

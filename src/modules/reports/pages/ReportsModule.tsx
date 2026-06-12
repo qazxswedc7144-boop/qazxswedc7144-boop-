@@ -187,104 +187,68 @@ const ReportsModule: React.FC<ReportsModuleProps> = ({ onNavigate }) => {
   };
 
   return (
-    <div className="flex flex-col min-h-full h-full bg-[#F8FAFA] font-cairo overflow-x-hidden w-full relative" dir="rtl">
+    <div className="flex flex-col min-h-full h-full bg-[#F8FAFA] font-cairo overflow-x-hidden w-full relative" dir="rtl" id="reports-module-root">
       {/* Header Section */}
-      <header className="px-6 sm:p-10 pb-8 shrink-0 bg-white border-b border-slate-100 z-20 relative">
-        <div className="max-w-7xl mx-auto relative z-10">
-          {/* Row 1: Back, Spacer, Centered Title */}
-          <div className="flex items-center w-full mb-10 relative">
+      <header className="px-6 py-6 sm:p-10 pb-8 shrink-0 bg-white border-b border-slate-100 z-20 relative" id="reports-header-section">
+        <div className="max-w-7xl mx-auto relative z-10 flex flex-col">
+          {/* Row 1: Single Horizontal Row [Back Arrow] [Reports Icon] مركز التقارير الذكي */}
+          <div className="flex items-center gap-3 w-full" id="reports-header-row-1">
             <button 
               onClick={() => onNavigate?.('dashboard')}
-              className="w-14 h-14 bg-white border-2 border-slate-50 text-[#1E4D4D] rounded-[24px] flex items-center justify-center shadow-lg shadow-slate-200/40 active:scale-95 active:bg-slate-100 hover:bg-slate-50 transition-all z-10"
+              className="w-12 h-12 bg-white border-2 border-slate-50 text-[#1E4D4D] rounded-[18px] flex items-center justify-center shadow-lg shadow-slate-200/40 active:scale-95 active:bg-slate-100 hover:bg-slate-50 transition-all shrink-0"
+              id="reports-back-btn"
             >
-              <ArrowRight size={26} strokeWidth={3.5} />
+              <ArrowRight size={22} strokeWidth={3.5} />
             </button>
-            
-            <div className="w-[15%] shrink-0" />
-
-            <div className="flex-1 flex items-center justify-center gap-4">
-              <div className="w-14 h-14 bg-[#1E4D4D] text-white rounded-[24px] flex items-center justify-center shadow-2xl shadow-emerald-900/30">
-                <PieChart size={28} />
-              </div>
-              <div className="flex flex-col items-start text-right">
-                <h2 className="text-xl md:text-2xl font-black text-[#1E4D4D] tracking-tight leading-none">مركز التقارير الذكي</h2>
-                <p className="text-[10px] font-bold text-slate-300 uppercase tracking-[2px] mt-2">Intelligence Reports Center</p>
-              </div>
+            <div className="w-12 h-12 bg-[#1E4D4D] text-white rounded-[18px] flex items-center justify-center shadow-md shrink-0" id="reports-icon-wrapper">
+              <PieChart size={24} />
             </div>
-            
-            <div className="w-[15%] shrink-0" />
-            <div className="w-14" />
+            <h2 className="text-xl md:text-2xl font-black text-[#1E4D4D] tracking-tight leading-none whitespace-nowrap overflow-hidden text-ellipsis flex-1" id="reports-arabic-title">
+              مركز التقارير الذكي
+            </h2>
           </div>
 
-          <div className="flex flex-col md:flex-row items-center justify-between gap-8 mb-10">
-            <div className="flex-1" />
-            <div className="flex items-center gap-3">
-              <button 
-                onClick={handleGenerateAIInsights}
-                disabled={isAnalyzing}
-                className="flex items-center gap-3 px-8 py-4 bg-[#1E4D4D] text-white rounded-2xl font-black shadow-xl shadow-emerald-900/20 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:scale-100"
-              >
-                {isAnalyzing ? (
-                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                ) : (
-                  <Sparkles size={20} />
-                )}
-                {isAnalyzing ? 'جاري التحليل...' : 'تحليل ذكي للأداء'}
-              </button>
-            </div>
+          {/* Row 2: English Subtitle */}
+          <div className="w-full text-center" style={{ marginTop: '8px' }} id="reports-header-row-2">
+            <p className="text-xs tracking-[0.25em] font-medium text-slate-400 whitespace-nowrap uppercase" id="reports-english-subtitle">
+              Intelligence Reports Center
+            </p>
           </div>
 
-          {/* AI Analysis Result */}
-          <AnimatePresence>
-            {aiAnalysis && (
-              <motion.div 
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className="mb-10 overflow-hidden"
-              >
-                <div className="p-8 bg-white rounded-[32px] border border-emerald-100 shadow-2xl shadow-emerald-900/5 relative">
-                  <div className="flex items-center justify-between mb-6">
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 bg-emerald-100 rounded-2xl flex items-center justify-center text-emerald-600">
-                        <BrainCircuit size={28} />
-                      </div>
-                      <div>
-                        <h3 className="text-xl font-black text-[#1E4D4D]">توصيات Gemini AI</h3>
-                        <p className="text-[10px] text-slate-400 font-bold">تحليل شامل للبيانات المالية والتشغيلية</p>
-                      </div>
-                    </div>
-                    <button 
-                      onClick={() => setAiAnalysis(null)}
-                      className="w-10 h-10 flex items-center justify-center text-slate-300 hover:text-slate-600 transition-colors"
-                    >
-                      <ArrowRight className="rotate-180" size={20} />
-                    </button>
-                  </div>
-                  <div className="prose prose-emerald max-w-none text-slate-600 leading-relaxed">
-                    <div className="markdown-body">
-                      <SafeMarkdown>{aiAnalysis}</SafeMarkdown>
-                    </div>
-                  </div>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+          {/* Row 3: Button - تحليل ذكي للأداء */}
+          <div className="w-full" style={{ marginTop: '20px' }} id="reports-header-row-3">
+            <button 
+              onClick={handleGenerateAIInsights}
+              disabled={isAnalyzing}
+              className="w-full flex items-center justify-center gap-3 px-8 py-4 bg-[#1E4D4D] text-white rounded-2xl font-black shadow-xl shadow-emerald-900/20 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:scale-100"
+              id="btn-smart-analysis"
+            >
+              {isAnalyzing ? (
+                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" id="btn-smart-analysis-spinner" />
+              ) : (
+                <Sparkles size={20} />
+              )}
+              {isAnalyzing ? 'جاري التحليل...' : 'تحليل ذكي للأداء'}
+            </button>
+          </div>
 
-          <div className="flex flex-col lg:flex-row items-center gap-6">
-            {/* Search */}
-            <div className="w-full lg:max-w-md relative group">
+          {/* Row 4: Search Field */}
+          <div className="w-full" style={{ marginTop: '16px' }} id="reports-header-row-4">
+            <div className="w-full relative group" id="reports-search-input-wrapper">
               <Search className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-[#1E4D4D] transition-colors" size={20} />
               <input 
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full h-14 bg-slate-50 border border-slate-100 rounded-[20px] pr-14 pl-6 text-xs font-black focus:bg-white focus:border-[#1E4D4D] outline-none shadow-inner transition-all" 
-                placeholder="ابحث عن تقرير محدد..." 
+                placeholder="ابحث عن تقرير" 
+                id="reports-search-input"
               />
             </div>
+          </div>
 
-            {/* Categories */}
-            <div className="flex items-center gap-2 p-1.5 bg-slate-50 rounded-[22px] border border-slate-100 overflow-x-auto no-scrollbar max-w-full">
+          {/* Category Tabs Section (positioned directly below Search Field with 16px mt) */}
+          <div className="w-full flex justify-center" style={{ marginTop: '16px' }} id="reports-categories-container">
+            <div className="flex items-center gap-2 p-1.5 bg-slate-50 rounded-[22px] border border-slate-100 overflow-x-auto no-scrollbar max-w-full justify-start md:justify-center" id="reports-categories-tabs-track">
               {CATEGORIES.map((cat) => (
                 <button
                   key={cat.id}
@@ -294,6 +258,7 @@ const ReportsModule: React.FC<ReportsModuleProps> = ({ onNavigate }) => {
                     ? 'bg-white text-[#1E4D4D] shadow-sm border border-slate-100' 
                     : 'text-slate-400 hover:text-[#1E4D4D]'
                   }`}
+                  id={`cat-tab-${cat.id}`}
                 >
                   {cat.icon}
                   {cat.title}
@@ -303,6 +268,47 @@ const ReportsModule: React.FC<ReportsModuleProps> = ({ onNavigate }) => {
           </div>
         </div>
       </header>
+
+      {/* AI Analysis Result */}
+      <div className="max-w-7xl mx-auto px-6 w-full relative z-10" id="ai-analysis-wrapper">
+        <AnimatePresence>
+          {aiAnalysis && (
+            <motion.div 
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="mt-6 overflow-hidden"
+              id="ai-analysis-container"
+            >
+              <div className="p-8 bg-white rounded-[32px] border border-emerald-100 shadow-2xl shadow-emerald-900/5 relative">
+                <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-emerald-100 rounded-2xl flex items-center justify-center text-emerald-600" id="ai-analysis-icon">
+                      <BrainCircuit size={28} id="ai-analysis-brain-icon-svg" />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-black text-[#1E4D4D]" id="ai-analysis-title">توصيات Gemini AI</h3>
+                      <p className="text-[10px] text-slate-400 font-bold" id="ai-analysis-subtitle">تحليل شامل للبيانات المالية والتشغيلية</p>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => setAiAnalysis(null)}
+                    className="w-10 h-10 flex items-center justify-center text-slate-300 hover:text-slate-600 transition-colors"
+                    id="btn-close-ai-analysis"
+                  >
+                    <ArrowRight className="rotate-180" size={20} id="btn-close-ai-analysis-arrow" />
+                  </button>
+                </div>
+                <div className="prose prose-emerald max-w-none text-slate-600 leading-relaxed" id="ai-analysis-content-markdown">
+                  <div className="markdown-body">
+                    <SafeMarkdown>{aiAnalysis}</SafeMarkdown>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
 
       {/* Reports Grid */}
       <div className="flex-1 overflow-y-auto p-10 custom-scrollbar">

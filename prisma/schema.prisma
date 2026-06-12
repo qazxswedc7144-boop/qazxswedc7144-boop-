@@ -8,6 +8,7 @@ generator client {
   provider        = "prisma-client-js"
   engineType      = "library"
   previewFeatures = ["driverAdapters"]
+  binaryTargets   = ["native", "debian-openssl-1.1.x", "debian-openssl-3.0.x", "linux-musl", "linux-musl-openssl-3.0.x"]
 }
 
 enum UserRole {
@@ -706,6 +707,23 @@ model DeviceRegistration {
   @@index([branchId])
   @@map("device_registrations")
 }
+
+model AiUsageLog {
+  id            String   @id @default(uuid())
+  tenantId      String
+  userId        String
+  model         String
+  tokensIn      Int      @default(0)
+  tokensOut     Int      @default(0)
+  estimatedCost Float    @default(0.0)
+  timestamp     DateTime @default(now())
+
+  @@index([timestamp])
+  @@index([tenantId])
+  @@index([userId])
+  @@map("ai_usage_logs")
+}
+
 
 
 

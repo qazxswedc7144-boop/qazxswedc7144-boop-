@@ -49,8 +49,11 @@ export class ReplicationSubscriber {
         maxRetriesPerRequest: null, // Subscriptions shouldn't limit retries
         enableOfflineQueue: true,
         retryStrategy: (times) => {
-          // Keep trying to reconnect to Redis Pub/Sub in background every 3 seconds
-          return Math.min(times * 150, 3000);
+          if (times > 3) {
+            console.warn("[REPLICATION_SUBSCRIBER] Reached retry margin threshold for Pub/Sub. Activating secure in-memory backup distributed mock.");
+            return null; // Stop reconnecting and trigger fallback
+          }
+          return Math.min(times * 1000, 2000);
         }
       };
 

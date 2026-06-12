@@ -18,6 +18,7 @@ import { lockingRouter } from "./server/modules/locking/locking.router";
 import { consolidationRouter } from "./server/modules/consolidation/consolidation.router";
 import { replicationRouter } from "./server/modules/replication/replication.router";
 import { saasRouter } from "./server/modules/saas/saas.router";
+import { aiRouter } from "./server/routes/ai.routes";
 import { ReplicationGateway } from "./server/modules/replication/replication.gateway";
 import { ReplicationSubscriber } from "./server/modules/replication/replication.subscriber";
 import { idempotencyMiddleware } from "./server/modules/idempotency/idempotency.middleware";
@@ -29,26 +30,13 @@ import { subscriptionGuard } from "./server/middleware/subscription.middleware";
 
 
 function killStaleProcesses(port: number) {
-  try {
-    const pids = execSync(`lsof -t -i:${port} 2>/dev/null`).toString().trim().split("\n").map(p => parseInt(p, 10)).filter(p => !isNaN(p));
-    pids.forEach(pid => {
-      if (pid && pid !== process.pid && pid !== process.ppid) {
-        console.log(`[BOOT] Killing stale process ${pid} on port ${port}...`);
-        try {
-          process.kill(pid, "SIGKILL");
-        } catch (e) {
-          // ignore
-        }
-      }
-    });
-  } catch (err) {
-    // catch all errors (e.g. lsof exit code 1 when no process found)
-  }
+  // Disabled to prevent killing control plane / proxy processes on the host container environment
+  console.log(`[BOOT] Socket check for port ${port} is managed by the orchestrator configuration.`);
 }
 
 
 async function startServer() {
-  const PORT = 3000;
+  const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
   
   // Clean up any stale processes that might be holding onto the port or 24678 in development
   if (process.env.NODE_ENV !== "production") {
@@ -131,6 +119,7 @@ async function startServer() {
   app.use("/api/consolidation", consolidationRouter);
   app.use("/api/replication", replicationRouter);
   app.use("/api/saas", saasRouter);
+  app.use("/api/ai", aiRouter);
 
   // Enterprise SaaS Gateway - API Keys Auth Helper
   const validateSaasApiKey = (requiredScope: string) => {
@@ -372,6 +361,34 @@ async function startServer() {
 function runBackgroundDbSync() {
   const urlString = process.env.DATABASE_URL || "postgresql://pharmaadmin:SecretSecurePassword2026!@localhost:5432/pharmaflow_erp?schema=public";
   
+  const isCloudSqlSocket = urlString.includes("/cloudsql/") || urlString.includes("socket=") || urlString.includes("host=/");
+  
+  const executeDbPush = () => {
+    console.log("🚀 Connection confirmed/assumed. Running schema sync...");
+    exec(
+      "npx prisma db push --accept-data-loss",
+      { timeout: 45000, env: process.env },
+      (errVal, stdout, stderr) => {
+        if (errVal) {
+          const detail = (errVal.message || "").replace(/error/gi, "err_");
+          console.warn("⚠️ Prisma database push failed:", detail);
+          if (stderr) {
+            const sanitizedStderr = stderr.replace(/error/gi, "err_");
+            console.warn(sanitizedStderr);
+          }
+          return;
+        }
+        console.log("🚀 Prisma database schema successfully synchronized!\n", stdout);
+      }
+    );
+  };
+
+  if (isCloudSqlSocket) {
+    console.log("ℹ️ Cloud SQL socket connection detected. Bypassing TCP connectivity pre-check.");
+    executeDbPush();
+    return;
+  }
+
   // Parse host and port from postgresql URL
   let host = "localhost";
   let port = 5432;
@@ -399,26 +416,9 @@ function runBackgroundDbSync() {
     socket.setTimeout(3000);
     
     socket.on("connect", () => {
-      console.log(`✅ Database port at ${host}:${port} is reachable. Initiating schema sync...`);
+      console.log(`✅ Database port at ${host}:${port} is reachable.`);
       socket.destroy();
-      
-      // Execute prisma db push asynchronously with explicit 45s timeout and local node module execution
-      exec(
-        "npx prisma db push --accept-data-loss",
-        { timeout: 45000, env: process.env },
-        (errVal, stdout, stderr) => {
-          if (errVal) {
-            const detail = (errVal.message || "").replace(/error/gi, "err_");
-            console.warn("⚠️ Prisma database push failed:", detail);
-            if (stderr) {
-              const sanitizedStderr = stderr.replace(/error/gi, "err_");
-              console.warn(sanitizedStderr);
-            }
-            return;
-          }
-          console.log("🚀 Prisma database schema successfully synchronized!\n", stdout);
-        }
-      );
+      executeDbPush();
     });
     
     socket.on("error", (errVal) => {

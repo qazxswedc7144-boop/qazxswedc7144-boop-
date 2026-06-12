@@ -41,6 +41,7 @@ interface AppState {
   setTrialBlockedModalOpen: (isOpen: boolean) => void;
 
   refreshData: () => Promise<void>;
+  refresh: () => Promise<void>;
   addInvoice: (invoice: InvoiceRequest) => Promise<{ success: boolean; error?: string; refId?: string }>;
   updateStockDirectly: (productId: string, delta: number) => Promise<void>;
   addPartner: (partner: Supplier, type: 'S' | 'C') => Promise<void>;
@@ -139,6 +140,10 @@ export const useAppStore = create<AppState>()(
         })();
 
         return activeRefreshPromise;
+      },
+
+      refresh: async () => {
+        await get().refreshData();
       },
 
       addInvoice: async (invoice: InvoiceRequest) => {

@@ -1,47 +1,86 @@
-import { GoogleGenAI } from "@google/genai";
-
-const API_KEY = process.env.GEMINI_API_KEY || "";
+// src/modules/ai/services/gemini.ts
+import { useAuthStore } from "@/store/authStore";
 
 /**
- * Gemini AI Engine - Supports real cloud analysis with offline safety.
+ * Retrieves the currently active JWT token of the authenticated user session.
+ */
+function getToken(): string {
+  const storeToken = useAuthStore.getState().token;
+  if (storeToken) return storeToken;
+
+  // Safe fallback to persist storage
+  try {
+    const raw = localStorage.getItem("pharma-auth-storage");
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed?.state?.token) {
+        return parsed.state.token;
+      }
+    }
+  } catch (e) {}
+
+  return localStorage.getItem("pharmaflow_token") || 
+         localStorage.getItem("token") || 
+         "";
+}
+
+/**
+ * Makes a secure request to the backend server-side Gemini AI proxy.
+ */
+async function callAiProxy(model: string, contents: any): Promise<{ text: string; candidates: any[] }> {
+  const token = getToken();
+  if (!token) {
+    return {
+      text: "التحليلات في وضع عدم الاتصال حالياً. يرجى تسجيل الدخول أولاً لتفعيل نظام التحليلات الذكي.",
+      candidates: []
+    };
+  }
+
+  try {
+    const response = await fetch("/api/ai/generate-content", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        model,
+        contents
+      })
+    });
+
+    if (!response.ok) {
+      const errorJson = await response.json().catch(() => ({}));
+      throw new Error(errorJson.message || `HTTP error ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error: any) {
+    console.warn("[GeminiEngine Client] Proxy call info:", error.message || error);
+    return {
+      text: "النظام يعمل حالياً في وضع عدم الاتصال المستقل، أو أن هناك مشكلة مؤقتة في الاتصال بخدمة الذكاء الاصطناعي.",
+      candidates: []
+    };
+  }
+}
+
+/**
+ * Gemini AI Engine Client - Invokes secure node proxies to query Gemini.
  */
 export class GeminiEngine {
-  private static genAI: GoogleGenAI | null = null;
-
   static getClient() {
-    if (!this.genAI) {
-      if (!API_KEY) {
-        console.warn("[GeminiEngine] API Key missing. Falling back to offline responses.");
-        return null;
-      }
-      this.genAI = new GoogleGenAI({
-        apiKey: API_KEY,
-        httpOptions: {
-          headers: {
-            'User-Agent': 'aistudio-build',
-          }
+    return {
+      models: {
+        generateContent: async (options: { model: string; contents: any }) => {
+          return callAiProxy(options.model, options.contents);
         }
-      });
-    }
-    return this.genAI;
+      }
+    };
   }
 
   static async generateInsight(prompt: string): Promise<string> {
-    const client = this.getClient();
-    if (!client) {
-      return "النظام يعمل حالياً في الوضع المحلي المستقل. التحليلات السحابية تتطلب مفتاح API صالحاً.";
-    }
-
-    try {
-      const response = await client.models.generateContent({
-        model: "gemini-flash-latest",
-        contents: prompt
-      });
-      return response.text || "لم يتم استلام رد من النموذج.";
-    } catch (error) {
-      console.error("[GeminiEngine] Generation failed:", error);
-      return "فشل النظام في إنشاء تحليل ذكي حالياً. يرجى التحقق من الاتصال بالإنترنت ومفتاح الـ API.";
-    }
+    const res = await callAiProxy("gemini-3.5-flash", prompt);
+    return res.text;
   }
 }
 
@@ -49,21 +88,14 @@ export const ai = {
   getModel: (model: string = "gemini-flash-latest") => {
     return {
       generateContent: async (contents: any) => {
-        const client = GeminiEngine.getClient();
-        if (!client) return { text: "Offline mode." };
-        return await client.models.generateContent({ model, contents });
+        return callAiProxy(model, contents);
       }
     };
   },
   generateInsight: GeminiEngine.generateInsight,
   models: {
     generateContent: async (options: { model: string; contents: any }) => {
-      const client = GeminiEngine.getClient();
-      if (!client) return { text: "النظام يعمل في الوضع المحلي المستقل. التحليلات السحابية تتطلب مفتاح API." };
-      return await client.models.generateContent({
-        model: options.model,
-        contents: options.contents
-      });
+      return callAiProxy(options.model, options.contents);
     }
   }
 };

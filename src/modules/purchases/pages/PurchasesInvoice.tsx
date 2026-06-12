@@ -18,7 +18,6 @@ import { InvoiceItemEditModal } from '@/components/shared/InvoiceItemEditModal';
 import { UnifiedModal } from '@/components/shared/UnifiedModal';
 import { SaveSuccessModal } from '@/components/shared/SaveSuccessModal';
 import { DraftRecoveryDialog } from '@/components/shared/DraftRecoveryDialog';
-import PrintMenu from '@/components/shared/PrintMenu';
 
 const formatDateDisplay = (dateStr: string) => {
   if (!dateStr) return '';
@@ -146,7 +145,6 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
     applyAIParsedData,
     resetInvoiceState,
     suppliers,
-    printData,
     saveSuccessData,
     setSaveSuccessData,
     isConfirmSaveOpen,
@@ -293,66 +291,59 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
     <div className="flex flex-col min-h-full h-full bg-white font-cairo w-full relative overflow-x-hidden" dir="rtl">
       {/* HEADER SECTION - FLAT & FULL WIDTH */}
       <div className="shrink-0 z-[100] border-b border-slate-100 bg-white">
-        <div className="py-2 px-2 flex items-center justify-between gap-[4px] w-full overflow-hidden">
-          {/* Main Toolbar Row */}
-          <div className="flex items-center gap-[4px] flex-1">
+        <div className="py-2 px-3 flex items-center justify-between gap-2.5 w-full overflow-hidden bg-white">
+          {/* Main Toolbar Row: Back -> Smart Import -> Return */}
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            {/* Back Button */}
             <button 
               onClick={() => safeNavigate('dashboard')} 
-              className="w-7 h-7 bg-slate-50 border border-slate-100 rounded-lg flex items-center justify-center text-[#1E4D4D] hover:bg-slate-100 transition-all shrink-0"
+              className="w-7 h-7 bg-slate-50 border border-slate-100 rounded-lg flex items-center justify-center text-[#1E4D4D] hover:bg-slate-100 transition-all shrink-0 active:scale-95"
               title="الرجوع للرئيسية"
             >
               <ArrowRight size={16} />
             </button>
 
-            {/* Smart Import and Return buttons container */}
-            <div className="flex items-center justify-center gap-[5%] flex-1">
-              {/* Smart Import Icon-focused button */}
-              <div className="relative">
-                <input 
-                  type="file" 
-                  ref={fileInputRef} 
-                  className="hidden" 
-                  accept=".jpg,.jpeg,.png,.pdf,.doc,.docx,.xls,.xlsx"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) handleAIImport(file);
-                  }}
-                />
-                <button 
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={isProcessingAI}
-                  className="flex items-center gap-1 px-2 py-1 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-lg text-[10px] font-black hover:bg-emerald-100 transition-all active:scale-95 disabled:opacity-50 shrink-0"
-                >
-                  {isProcessingAI ? (
-                    <div className="w-3 h-3 border-2 border-emerald-700/30 border-t-emerald-700 rounded-full animate-spin" />
-                  ) : (
-                    <Sparkles size={12} />
-                  )}
-                  <span>الاستيراد الذكي</span>
-                </button>
-              </div>
-
-              {/* Return Button */}
+            {/* Smart Import Button */}
+            <div className="relative shrink-0">
+              <input 
+                type="file" 
+                ref={fileInputRef} 
+                className="hidden" 
+                accept=".jpg,.jpeg,.png,.pdf,.doc,.docx,.xls,.xlsx"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleAIImport(file);
+                }}
+              />
               <button 
-                onClick={() => setHeader({...header, isReturn: !header.isReturn})}
-                className={`flex items-center gap-1 px-2 py-1 rounded-lg border transition-all text-[10px] font-black select-none shrink-0 ${
-                  header.isReturn 
-                    ? 'bg-red-50 border-red-200 text-red-700 shadow-sm' 
-                    : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'
-                }`}
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isProcessingAI}
+                className="flex items-center gap-1 px-2 py-1 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-lg text-[10px] font-black hover:bg-emerald-100 transition-all active:scale-95 disabled:opacity-50 shrink-0"
               >
-                <RotateCcw size={12} className={header.isReturn ? 'animate-spin-slow' : ''} />
-                <span>المرتجع</span>
+                {isProcessingAI ? (
+                  <div className="w-3 h-3 border-2 border-emerald-700/30 border-t-emerald-700 rounded-full animate-spin" />
+                ) : (
+                  <Sparkles size={12} />
+                )}
+                <span>الاستيراد الذكي</span>
               </button>
-
-              {/* Print Menu (compact) */}
-              <div className="shrink-0 scale-90 origin-right">
-                <PrintMenu data={printData} type="PURCHASE" items={items} />
-              </div>
             </div>
+
+            {/* Return Button */}
+            <button 
+              onClick={() => setHeader({...header, isReturn: !header.isReturn})}
+              className={`flex items-center gap-1 px-2 py-1 rounded-lg border transition-all text-[10px] font-black select-none shrink-0 active:scale-95 ${
+                header.isReturn 
+                  ? 'bg-red-50 border-red-200 text-red-700 shadow-sm' 
+                  : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'
+              }`}
+            >
+              <RotateCcw size={12} className={header.isReturn ? 'animate-spin-slow' : ''} />
+              <span>المرتجع</span>
+            </button>
           </div>
 
-          {/* Right side: Payment Toggle (smaller) */}
+          {/* Right side: Payment Toggle (Cash/Credit) */}
           <div className="flex bg-slate-100 p-0.5 rounded-lg border border-slate-200 w-[110px] shrink-0">
             <button 
               onClick={() => setHeader({...header, payment_method: 'Cash'})}

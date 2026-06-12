@@ -10,13 +10,18 @@ if (!process.env.DATABASE_URL) {
 }
 
 const useSsl = (
-  (databaseUrl.includes("sslmode=") && !databaseUrl.includes("sslmode=disable") && !databaseUrl.includes("sslmode=false")) || 
-  (databaseUrl.includes("ssl=") && !databaseUrl.includes("ssl=false")) || 
-  databaseUrl.includes("supabase") || 
-  databaseUrl.includes("neon.tech") || 
-  databaseUrl.includes("amazonaws.com") || 
-  databaseUrl.includes("elephantsql.com") || 
-  databaseUrl.includes("gcp")
+  !databaseUrl.includes("/cloudsql/") &&
+  !databaseUrl.includes("host=/") &&
+  !databaseUrl.includes("socket=") &&
+  (
+    (databaseUrl.includes("sslmode=") && !databaseUrl.includes("sslmode=disable") && !databaseUrl.includes("sslmode=false")) || 
+    (databaseUrl.includes("ssl=") && !databaseUrl.includes("ssl=false")) || 
+    databaseUrl.includes("supabase") || 
+    databaseUrl.includes("neon.tech") || 
+    databaseUrl.includes("amazonaws.com") || 
+    databaseUrl.includes("elephantsql.com") || 
+    databaseUrl.includes("gcp")
+  )
 );
 
 const pool = new pg.Pool({

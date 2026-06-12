@@ -172,7 +172,15 @@ export class SystemOrchestrator {
         //--------------------------------
         // 5. REPORT UPDATE
         //--------------------------------
-        await reportEngine.refresh();
+        if (reportEngine && typeof (reportEngine as any).refresh === "function") {
+          try {
+            await (reportEngine as any).refresh();
+          } catch (refreshError) {
+            console.error("[SYNC_REFRESH_FAILURE]", refreshError);
+          }
+        } else {
+          console.warn("[SYNC_REFRESH_WARNING] reportEngine or reportEngine.refresh is not defined");
+        }
         
         // 9. Centralized Audit Log 2.0
         await AuditService.log({
@@ -284,7 +292,15 @@ export class SystemOrchestrator {
         }
 
         await db.addAuditLog('SYSTEM', type, invoiceId, `UNPOST: Status changed from POSTED to DRAFT_EDIT by ${user?.User_Email}`);
-        await reportEngine.refresh();
+        if (reportEngine && typeof (reportEngine as any).refresh === "function") {
+          try {
+            await (reportEngine as any).refresh();
+          } catch (refreshError) {
+            console.error("[SYNC_REFRESH_FAILURE]", refreshError);
+          }
+        } else {
+          console.warn("[SYNC_REFRESH_WARNING] reportEngine or reportEngine.refresh is not defined");
+        }
 
         return { success: true };
       } catch (error: any) {
@@ -339,7 +355,15 @@ export class SystemOrchestrator {
         }
         
         await db.addAuditLog('DELETE', type, invoiceId, `Invoice marked as VOID (Soft Delete) by ${authService.getCurrentUser().User_Email}`);
-        await reportEngine.refresh();
+        if (reportEngine && typeof (reportEngine as any).refresh === "function") {
+          try {
+            await (reportEngine as any).refresh();
+          } catch (refreshError) {
+            console.error("[SYNC_REFRESH_FAILURE]", refreshError);
+          }
+        } else {
+          console.warn("[SYNC_REFRESH_WARNING] reportEngine or reportEngine.refresh is not defined");
+        }
 
         return { success: true };
       } catch (error: any) {

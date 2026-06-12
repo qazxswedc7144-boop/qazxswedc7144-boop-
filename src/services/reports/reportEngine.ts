@@ -9,6 +9,13 @@ export class ReportEngine {
   static async refresh(): Promise<void> {
     console.log("[ReportEngine] Clearing and re-aggregating reports data...");
   }
+
+  /**
+   * Instance method wrapper for refresh to support instance-level calls robustly
+   */
+  async refresh(): Promise<void> {
+    await ReportEngine.refresh();
+  }
   
   /**
    * Retrieves and aggregates standard sales summary.
