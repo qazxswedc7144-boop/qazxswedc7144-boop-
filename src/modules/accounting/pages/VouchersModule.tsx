@@ -207,12 +207,12 @@ const VouchersModule: React.FC<VouchersModuleProps> = ({ onNavigate, initialType
           <div className="w-[15%] shrink-0" />
 
           <div className="flex-1 flex items-center justify-center gap-4">
-            <div className="w-14 h-14 bg-[#1E4D4D] text-white rounded-[24px] flex items-center justify-center shadow-2xl shadow-emerald-900/30 font-black">
+            <div className="w-14 h-14 bg-[#1E4D4D] text-white rounded-[24px] flex items-center justify-center shadow-2xl shadow-emerald-900/30 font-black shrink-0">
               <CreditCard size={28} />
             </div>
-            <div className="flex flex-col items-start text-right">
-              <h2 className="text-xl md:text-2xl font-black text-[#1E4D4D] tracking-tight leading-none">سندات القبض والصرف</h2>
-              <p className="text-[11px] font-bold text-slate-300 uppercase tracking-[2px] mt-2">Voucher Management System</p>
+            <div className="flex flex-col items-center text-center">
+              <h2 className="text-xl md:text-2xl font-black text-[#1E4D4D] tracking-tight leading-none whitespace-nowrap">سندات القبض والصرف</h2>
+              <p className="text-[11px] font-bold text-slate-300 uppercase tracking-[2px] mt-2 whitespace-nowrap">Voucher Management System</p>
             </div>
           </div>
           

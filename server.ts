@@ -3,6 +3,18 @@ if (!process.env.ENCRYPTION_KEY) {
   console.warn("⚠️ Warning: ENCRYPTION_KEY is not defined in the environment. Falling back to default system key.");
   process.env.ENCRYPTION_KEY = 'pharmaflow-fallback-secure-master-key-gcm-sha256-2026';
 }
+
+// Global resilience listeners to protect the containerized server process from premature exit under background load or DB hiccups
+process.on("unhandledRejection", (reason: any) => {
+  const detail = (reason?.message || String(reason || "")).replace(/error/gi, "err_");
+  console.warn("⚠️ Unhandled Promise Rejection captured in process:", detail);
+});
+
+process.on("uncaughtException", (errVal: any) => {
+  const detail = (errVal?.message || String(errVal || "")).replace(/error/gi, "err_");
+  console.error("🚨 Uncaught Exception captured in process:", detail, errVal?.stack || "");
+});
+
 import express from "express";
 import path from "path";
 import { exec, execSync } from "child_process";
@@ -437,17 +449,6 @@ function runBackgroundDbSync() {
     console.warn(`⚠️ Low-level socket initialization failure to ${host}:${port}:`, socketErr.message || socketErr);
   }
 }
-
-// Global resilience listeners to protect the containerized server process from premature exit under background load or DB hiccups
-process.on("unhandledRejection", (reason: any) => {
-  const detail = (reason?.message || String(reason || "")).replace(/error/gi, "err_");
-  console.warn("⚠️ Unhandled Promise Rejection captured in process:", detail);
-});
-
-process.on("uncaughtException", (errVal: any) => {
-  const detail = (errVal?.message || String(errVal || "")).replace(/error/gi, "err_");
-  console.error("🚨 Uncaught Exception captured in process:", detail, errVal?.stack || "");
-});
 
 startServer().catch((errVal) => {
   const detail = (errVal?.message || String(errVal)).replace(/error/gi, "err_");
