@@ -1,0 +1,186 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 1. Global security net - Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+
+    function isSignedIn() { 
+      return request.auth != null; 
+    }
+
+    // Email verification check or valid Google authentication
+    function isVerifiedUser() {
+      return isSignedIn() && (
+        request.auth.token.email_verified == true || 
+        request.auth.token.firebase.sign_in_provider == 'google.com'
+      );
+    }
+
+    // Central administrator check with bootstrapped support
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == 'qazxswedc7144@gmail.com' ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    // Checks that IDs are well formed and do not exceed standard limits to avoid resource-poisoning attacks
+    function isValidId(id) { 
+      return id is string 
+        && id.size() > 0 
+        && id.size() <= 128
+        && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Entity validations
+
+    function isValidUserProfilePublic(data) {
+      return data.keys().hasAll(['userId', 'username', 'role', 'isActive', 'createdAt'])
+        && data.keys().size() == 5
+        && data.userId is string
+        && data.userId.size() > 0
+        && data.userId.size() <= 128
+        && data.username is string
+        && data.username.size() >= 3
+        && data.username.size() <= 30
+        && data.role is string
+        && data.role in ['PLATFORM_OWNER', 'TENANT_ADMIN', 'ADMIN', 'ACCOUNTANT', 'PHARMACIST', 'CASHIER', 'AUDITOR', 'INVENTORY_MANAGER']
+        && data.isActive is bool
+        && data.createdAt is timestamp;
+    }
+
+    function isValidUserProfilePrivate(data) {
+      return data.keys().hasAll(['email', 'updatedAt'])
+        && (data.keys().size() == 2 || (data.keys().size() == 3 && data.keys().hasAll(['phone'])))
+        && data.email is string
+        && data.email.size() > 0
+        && data.email.size() <= 254
+        && (!data.keys().hasAll(['phone']) || (data.phone is string && data.phone.size() <= 30))
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidBranch(data) {
+      return data.keys().hasAll(['id', 'code', 'name', 'isActive', 'tenantId', 'createdAt'])
+        && (data.keys().size() == 6 || (data.keys().size() == 7 && data.keys().hasAll(['location'])))
+        && data.id is string
+        && data.id.size() > 0
+        && data.id.size() <= 128
+        && data.code is string
+        && data.code.size() > 0
+        && data.code.size() <= 30
+        && data.name is string
+        && data.name.size() > 0
+        && data.name.size() <= 100
+        && (!data.keys().hasAll(['location']) || (data.location is string && data.location.size() <= 200))
+        && data.isActive is bool
+        && data.tenantId is string
+        && data.tenantId.size() > 0
+        && data.tenantId.size() <= 128
+        && data.createdAt is timestamp;
+    }
+
+    function isValidBackup(data) {
+      return data.keys().hasAll(['id', 'tenantId', 'userId', 'filename', 'payload', 'size', 'createdAt'])
+        && data.keys().size() == 7
+        && data.id is string
+        && data.id.size() > 0
+        && data.id.size() <= 128
+        && data.tenantId is string
+        && data.tenantId.size() > 0
+        && data.tenantId.size() <= 128
+        && data.userId is string
+        && data.userId.size() > 0
+        && data.userId.size() <= 128
+        && data.filename is string
+        && data.filename.size() > 0
+        && data.filename.size() <= 256
+        && data.payload is string
+        && data.payload.size() > 0
+        && data.payload.size() <= 5000000
+        && data['size'] is int
+        && data['size'] > 0
+        && data.createdAt is timestamp;
+    }
+
+    // Route controllers and collection specifications
+
+    match /users/{userId} {
+      
+      match /public/profile {
+        allow get: if isVerifiedUser() && isValidId(userId);
+
+        allow create: if isVerifiedUser() 
+          && isValidId(userId)
+          && userId == request.auth.uid
+          && request.resource.data.userId == request.auth.uid
+          && isValidUserProfilePublic(request.resource.data)
+          && request.resource.data.createdAt == request.time
+          && request.resource.data.role == 'CASHIER';
+
+        allow update: if isVerifiedUser() 
+          && isValidId(userId)
+          && userId == request.auth.uid
+          && request.resource.data.userId == request.auth.uid
+          && isValidUserProfilePublic(request.resource.data)
+          && request.resource.data.createdAt == resource.data.createdAt
+          && (isAdmin() || request.resource.data.role == resource.data.role);
+
+        allow delete: if isAdmin() && isValidId(userId);
+      }
+
+      match /private/info {
+        allow get: if isVerifiedUser() && (userId == request.auth.uid || isAdmin()) && isValidId(userId);
+
+        allow create: if isVerifiedUser()
+          && isValidId(userId)
+          && userId == request.auth.uid
+          && isValidUserProfilePrivate(request.resource.data)
+          && request.resource.data.updatedAt == request.time;
+
+        allow update: if isVerifiedUser()
+          && isValidId(userId)
+          && userId == request.auth.uid
+          && isValidUserProfilePrivate(request.resource.data)
+          && request.resource.data.updatedAt == request.time;
+
+        allow delete: if isAdmin() && isValidId(userId);
+      }
+    }
+
+    match /branches/{branchId} {
+      allow get, list: if isVerifiedUser() && isValidId(branchId);
+
+      allow create: if isVerifiedUser()
+        && isValidId(branchId)
+        && isAdmin()
+        && isValidBranch(request.resource.data)
+        && request.resource.data.createdAt == request.time;
+
+      allow update: if isVerifiedUser()
+        && isValidId(branchId)
+        && isAdmin()
+        && isValidBranch(request.resource.data)
+        && request.resource.data.createdAt == resource.data.createdAt;
+
+      allow delete: if isAdmin() && isValidId(branchId);
+    }
+
+    match /backups/{backupId} {
+      allow get: if isVerifiedUser() && (resource.data.userId == request.auth.uid || isAdmin()) && isValidId(backupId);
+      allow list: if isVerifiedUser() && resource.data.userId == request.auth.uid;
+
+      allow create: if isVerifiedUser()
+        && isValidId(backupId)
+        && request.resource.data.userId == request.auth.uid
+        && isValidBackup(request.resource.data)
+        && request.resource.data.createdAt == request.time;
+
+      allow update, delete: if false;
+    }
+  }
+}

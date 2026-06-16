@@ -593,8 +593,8 @@ const SalesModule: React.FC<{ onNavigate?: (view: any, params?: any) => void }> 
             isOpen={isRecoveryModalOpen}
             moduleName="فاتورة مبيعات الكاشير"
             updatedAt={recoveryDraftData.updatedAt}
-            itemCount={recoveryDraftData.payload.items?.length || 0}
-            totalAmount={recoveryDraftData.payload.totals?.subtotal}
+            itemCount={(recoveryDraftData.payload?.items || recoveryDraftData.items)?.length || 0}
+            totalAmount={recoveryDraftData.payload?.totals?.subtotal || recoveryDraftData.totals?.subtotal}
             onRestore={restoreDraft}
             onDiscard={discardDraft}
           />

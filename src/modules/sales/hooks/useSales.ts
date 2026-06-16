@@ -13,6 +13,8 @@ import { predictionService } from '@/modules/ai/services/predictionService';
 import { auditLogService } from '@/services/audit/auditLog';
 import { useAppNotification } from '@/context/NotificationContext';
 import { DraftService } from '@/services/system/DraftService';
+import { reportCache } from '@/modules/reports/services/reportCacheService';
+import { ReportEngine } from '@/services/reports/reportEngine';
 
 const DRAFT_KEY = 'pharmaflow_sales_draft';
 
@@ -201,19 +203,19 @@ export const useSales = (onNavigate?: (view: any, params?: any) => void) => {
 
   const restoreDraft = useCallback(async () => {
     if (recoveryDraftData) {
-      const { payload } = recoveryDraftData;
-      if (payload) {
-        if (payload.header) {
-          setHeader(payload.header);
+      const data = recoveryDraftData.payload || recoveryDraftData;
+      if (data) {
+        if (data.header) {
+          setHeader(data.header);
         }
-        if (payload.items) {
-          setItems(payload.items);
+        if (data.items) {
+          setItems(data.items);
         }
-        if (payload.totals && payload.totals.adjData) {
-          setAdjData(payload.totals.adjData);
+        if (data.totals && data.totals.adjData) {
+          setAdjData(data.totals.adjData);
         }
-        if (payload.partner?.partnerName) {
-          setCustomerSearchTerm(payload.partner.partnerName);
+        if (data.partner?.partnerName) {
+          setCustomerSearchTerm(data.partner.partnerName);
         }
       }
       addToast("تمت استعادة المسودة الحية بنجاح 💾", "success");
@@ -605,8 +607,20 @@ export const useSales = (onNavigate?: (view: any, params?: any) => void) => {
 
       if (res?.success) { 
         setSavePhase('idle');
-        showNotification('✅ تم حفظ فاتورة المبيعات وترحيل الصندوق بنجاح', 'success');
-        addToast("تم الحفظ والترحيل بنجاح ✅", "success");
+        
+        // --- REAL-TIME ARCHIVE & REPORT SYNCHRONIZATION (PHASE 5.2.5-B) ---
+        // 1. Invalidate report cache
+        reportCache.purge();
+        // 2. Increment data version to signal components of data changes
+        db.incrementDataVersion();
+        // 3. Clear report engine state and refresh
+        await ReportEngine.refresh();
+        // 4. Force state synchronization across related providers/views
+        await refreshGlobal();
+
+        // Display success toast for 1 second only (from PHASE 5.2.5-A)
+        showNotification("Invoice Saved Successfully\nReturning to Dashboard...", 'success', 1000);
+        addToast("Invoice Saved Successfully\nReturning to Dashboard...", "success");
         
         await auditLogService.logSale(res.refId || editingInvoiceId || header.invoice_number, `Sale created: ${header.invoice_number}`, { items, total: vTotalSum });
         localStorage.removeItem(DRAFT_KEY); 
@@ -630,6 +644,15 @@ export const useSales = (onNavigate?: (view: any, params?: any) => void) => {
         setEditingInvoiceId(null); 
         // Instantly generate a clean new invoice state to prevent dirty or stale state reuse
         await resetInvoiceState();
+
+        // Delay navigation by 1 second to show the toast and feedback
+        setTimeout(() => {
+          try {
+            onNavigate?.('dashboard');
+          } catch (error) {
+            window.location.hash = '#/dashboard';
+          }
+        }, 1000);
       }
     } catch (err: any) {
       setSavePhase('failed');

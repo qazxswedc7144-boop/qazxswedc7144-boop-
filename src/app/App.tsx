@@ -473,6 +473,9 @@ function MainLayout() {
 
       // Initialize real-time replication stream
       RealtimeReplicationService.connect("BRH-MAIN-001");
+      
+      // Start unified backup scheduler
+      backupService.start();
     };
     init().catch(err => {
       console.error("CRITICAL: Application failed to initialize:", err);

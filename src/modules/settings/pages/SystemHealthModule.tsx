@@ -14,6 +14,17 @@ import { db } from '@/core/db';
 import { BackupService } from '@/services/backupService';
 import { NotificationService } from '@/context/NotificationContext';
 
+// Real Firebase / Firestore Integrations
+import { 
+  db as firestoreDb, 
+  auth as firebaseAuth, 
+  loginWithGoogleFirebase, 
+  handleFirestoreError, 
+  OperationType 
+} from '@/services/firebase';
+import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
+import { collection, query, where, getDocs, setDoc, doc, serverTimestamp } from 'firebase/firestore';
+
 interface TestResult {
   name: string;
   status: 'pending' | 'passed' | 'failed';
@@ -68,6 +79,12 @@ const SystemHealthModule: React.FC<{ onNavigate?: (v: any) => void }> = ({ onNav
   const [backupActionLoading, setBackupActionLoading] = useState(false);
   const [backupStatusMessage, setBackupStatusMessage] = useState('');
 
+  // Firebase Real Integration States
+  const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
+  const [firestoreBackups, setFirestoreBackups] = useState<any[]>([]);
+  const [firebaseLoading, setFirebaseLoading] = useState(false);
+  const [firebaseMessage, setFirebaseMessage] = useState('');
+
   // 5️⃣ License Shield States
   const [deviceFingerprint, setDeviceFingerprint] = useState('');
   const licenseExpiry = '2027-12-31';
@@ -110,6 +127,48 @@ const SystemHealthModule: React.FC<{ onNavigate?: (v: any) => void }> = ({ onNav
     }
   }, []);
 
+  // Fetch Firestore Real backups
+  const fetchFirestoreBackups = useCallback(async (currUser: FirebaseUser | null = firebaseAuth.currentUser) => {
+    if (!currUser) {
+      setFirestoreBackups([]);
+      return;
+    }
+    setFirebaseLoading(true);
+    setFirebaseMessage('');
+    const backupPath = "backups";
+    try {
+      const q = query(
+        collection(firestoreDb, backupPath),
+        where("tenantId", "==", tenantId),
+        where("userId", "==", currUser.uid)
+      );
+      const querySnapshot = await getDocs(q);
+      const list: any[] = [];
+      querySnapshot.forEach((doc) => {
+        list.push({
+          id: doc.id,
+          ...doc.data()
+        });
+      });
+      // Sort in descending order of createdAt
+      list.sort((a, b) => {
+        const timeA = a.createdAt?.seconds || 0;
+        const timeB = b.createdAt?.seconds || 0;
+        return timeB - timeA;
+      });
+      setFirestoreBackups(list);
+    } catch (e) {
+      console.warn("Firestore retrieve warning:", e);
+      try {
+        handleFirestoreError(e, OperationType.GET, backupPath);
+      } catch (err: any) {
+        setFirebaseMessage(`فشل الاستعلام من Firestore: ${err.message}`);
+      }
+    } finally {
+      setFirebaseLoading(false);
+    }
+  }, [tenantId]);
+
   // Fetch Cloud Backups (Simulated GCS)
   const fetchCloudBackups = useCallback(async () => {
     setCloudBackupsLoading(true);
@@ -125,6 +184,43 @@ const SystemHealthModule: React.FC<{ onNavigate?: (v: any) => void }> = ({ onNav
       setCloudBackupsLoading(false);
     }
   }, [tenantId]);
+
+  // Firebase auth state listener
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(firebaseAuth, (user) => {
+      setFirebaseUser(user);
+      if (user) {
+        fetchFirestoreBackups(user);
+      } else {
+        setFirestoreBackups([]);
+      }
+    });
+    return () => unsubscribe();
+  }, [fetchFirestoreBackups]);
+
+  // Trigger Google Sign-In with popup
+  const handleFirebaseLogin = async () => {
+    setFirebaseLoading(true);
+    setFirebaseMessage('جاري تسجيل الدخول عبر Google...');
+    try {
+      const u = await loginWithGoogleFirebase();
+      setFirebaseMessage(`✔ مرحبًا ${u.displayName || u.email}! تم التفعيل بنجاح.`);
+    } catch (err: any) {
+      setFirebaseMessage(`❌ فشل الدخول: ${err.message || err}`);
+    } finally {
+      setFirebaseLoading(false);
+    }
+  };
+
+  // Trigger Sign-Out
+  const handleFirebaseLogout = async () => {
+    try {
+      await firebaseAuth.signOut();
+      setFirebaseMessage('تم تسجيل الخروج من حساب Firebase.');
+    } catch (err: any) {
+      setFirebaseMessage(`❌ فشل تسجيل الخروج: ${err.message}`);
+    }
+  };
 
   // Handle unique Device UUID generation & match
   const initDeviceConfigs = useCallback(async () => {
@@ -284,7 +380,37 @@ const SystemHealthModule: React.FC<{ onNavigate?: (v: any) => void }> = ({ onNav
       const upData = await upRes.json();
       
       if (upData.status === 'success') {
-        setBackupStatusMessage('✔ تم الانتهاء! تم تشفير الملف محلياً ورفعه سحابياً كملف أمن.');
+        let suffixMsg = '';
+        
+        // Push to Firebase Firestore in real-time
+        if (firebaseAuth.currentUser) {
+          setBackupStatusMessage('جاري الرفع الفرعي الفوري لـ Google Firebase Firestore...');
+          const backupPath = `backups/${backupId}`;
+          try {
+            await setDoc(doc(firestoreDb, "backups", backupId), {
+              id: backupId,
+              tenantId,
+              userId: firebaseAuth.currentUser.uid,
+              filename,
+              payload: record.dataSnapshot,
+              size: record.dataSnapshot.length,
+              createdAt: serverTimestamp()
+            });
+            suffixMsg = '، والرفع المباشر لـ Firebase ناجح ✔';
+            fetchFirestoreBackups(firebaseAuth.currentUser);
+          } catch (fireErr) {
+            console.error("Firestore sync backup error:", fireErr);
+            try {
+              handleFirestoreError(fireErr, OperationType.CREATE, backupPath);
+            } catch (jsonErr: any) {
+              suffixMsg = `، ولكن تعذر رفع Firestore: ${jsonErr.message}`;
+            }
+          }
+        } else {
+          suffixMsg = ' (سجل الدخول في Firebase للحفظ المزدوج المباشر)';
+        }
+
+        setBackupStatusMessage(`✔ تم الانتهاء! تم تشفير الملف محلياً ورفعه سحابياً كملف أمن${suffixMsg}.`);
         fetchCloudBackups();
       } else {
         setBackupStatusMessage(`⚠ تم الحفظ محلياً ولكن فشل رفع السحابة: ${upData.message}`);
@@ -756,6 +882,126 @@ const SystemHealthModule: React.FC<{ onNavigate?: (v: any) => void }> = ({ onNav
               )}
             </div>
           </Card>
+
+          {/* FIREBASE REAL-TIME SECURE CLOUD LEDGER */}
+          <div id="firebase-cloud-ledger-card">
+            <Card className="p-6 space-y-4 border-t-4 border-[#1E4D4D]">
+              <div className="flex justify-between items-center border-b border-slate-50 pb-3">
+                <div className="flex items-center gap-2">
+                  <Lock className="text-[#1E4D4D]" size={18} />
+                  <h4 className="font-black text-sm text-[#1E4D4D]">قفل المزامنة السحابية المزدوج</h4>
+                </div>
+                <Badge variant="success">Firebase Live</Badge>
+              </div>
+
+              <div className="space-y-3">
+                {firebaseUser ? (
+                  <div className="p-3 bg-emerald-50/50 rounded-xl border border-emerald-100 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5">
+                      {firebaseUser.photoURL ? (
+                        <img src={firebaseUser.photoURL} alt="Avatar" className="w-8 h-8 rounded-full border border-emerald-200" referrerPolicy="no-referrer" />
+                      ) : (
+                        <div className="w-8 h-8 rounded-full bg-[#1E4D4D] text-white flex items-center justify-center font-black text-xs">
+                          {firebaseUser.displayName ? firebaseUser.displayName[0] : (firebaseUser.email ? firebaseUser.email[0] : 'U')}
+                        </div>
+                      )}
+                      <div className="text-right">
+                        <p className="text-[11px] font-black text-[#1E4D4D] leading-tight">
+                          {firebaseUser.displayName || 'مستأجر معتمد'}
+                        </p>
+                        <p className="text-[9px] text-slate-400 font-bold truncate max-w-[130px]">
+                          {firebaseUser.email}
+                        </p>
+                      </div>
+                    </div>
+                    <button 
+                      id="firebase-logout-btn"
+                      onClick={handleFirebaseLogout}
+                      className="text-[10px] font-bold text-red-600 bg-red-50 hover:bg-red-100 px-2.5 py-1.5 rounded-lg transition-all"
+                    >
+                      خروج
+                    </button>
+                  </div>
+                ) : (
+                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 text-center space-y-3">
+                    <p className="text-[11.5px] text-slate-500 font-bold">
+                      سجل الدخول باستخدام حساب Google المعتمد لتأمين النسخ ومطابقة القفل المزدوج لـ Firestore
+                    </p>
+                    <Button 
+                      id="firebase-login-btn"
+                      onClick={handleFirebaseLogin}
+                      variant="primary" 
+                      className="w-full text-[11px] h-9"
+                      isLoading={firebaseLoading}
+                    >
+                      🔐 ربط فوري وتأمين عبر Google
+                    </Button>
+                  </div>
+                )}
+
+                {firebaseMessage && (
+                  <div className="p-2.5 bg-slate-50/80 rounded-xl border border-[#1E4D4D]/10 text-[10px] font-black text-[#1E4D4D] leading-relaxed">
+                    {firebaseMessage}
+                  </div>
+                )}
+
+                {firebaseUser && (
+                  <div className="space-y-2 pt-1 border-t border-slate-50">
+                    <div className="flex justify-between items-center text-[10.5px] text-slate-400 font-extrabold pb-0.5">
+                      <span>النسخ المسجلة في Firestore DB</span>
+                      <span>العدد: {firestoreBackups.length}</span>
+                    </div>
+
+                    {firebaseLoading ? (
+                      <div className="text-center py-4 text-[11px] text-slate-400 font-black flex items-center justify-center gap-1.5">
+                        <RefreshCw className="animate-spin text-[#1E4D4D]" size={12} />
+                        جاري فحص Ledger السحابي...
+                      </div>
+                    ) : firestoreBackups.length === 0 ? (
+                      <div className="text-center py-6 text-[10px] text-slate-300 italic font-bold">
+                        لا يوجد نسخ في Firestore لـ ({tenantId}) حالياً
+                      </div>
+                    ) : (
+                      <div className="max-h-36 overflow-y-auto space-y-2">
+                        {firestoreBackups.map((bc, idx) => (
+                          <div key={idx} className="bg-slate-50 p-2.5 rounded-lg border border-slate-100 flex items-center justify-between gap-2.5">
+                            <div className="text-right">
+                              <p className="text-[10px] font-mono font-black text-slate-600 truncate max-w-[140px]" dir="ltr">
+                                {bc.filename}
+                              </p>
+                              <p className="text-[8.5px] text-slate-400 font-extrabold mt-0.5">
+                                {bc.size ? (bc.size / 1024).toFixed(1) : '0'} KB | {bc.createdAt && bc.createdAt.seconds ? new Date(bc.createdAt.seconds * 1000).toLocaleDateString() : 'Unknown'}
+                              </p>
+                            </div>
+                            <button 
+                              onClick={async () => {
+                                try {
+                                  if (!window.confirm(`استعادة القاعدة من Firestore [${bc.filename}]؟`)) return;
+                                  setBackupActionLoading(true);
+                                  setBackupStatusMessage('جاري تحميل وفك التشفير للنسخة من Firestore...');
+                                  const fileBlob = new Blob([bc.payload], { type: 'text/plain' });
+                                  await BackupService.restoreBackup(fileBlob, bkPassword);
+                                  setBackupStatusMessage('✔ تمت استعادة النسخة من Firestore بنجاح!');
+                                  alert('✔ تمت الاستعادة والتثبيت بنجاح!');
+                                } catch (err: any) {
+                                  setBackupStatusMessage(`❌ فشل الاستعادة: ${err.message}`);
+                                } finally {
+                                  setBackupActionLoading(false);
+                                }
+                              }}
+                              className="bg-[#1E4D4D] hover:bg-[#163939] text-white font-extrabold text-[9px] px-2.5 py-1.5 rounded-lg transition-all"
+                            >
+                              استيراد
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </Card>
+          </div>
         </div>
 
       </div>

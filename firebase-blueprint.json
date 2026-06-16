@@ -1,0 +1,148 @@
+{
+  "entities": {
+    "UserProfilePublic": {
+      "title": "Public User Profile",
+      "description": "Publicly accessible user profile details.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "The unique Firebase UID."
+        },
+        "username": {
+          "type": "string",
+          "description": "The public username."
+        },
+        "role": {
+          "type": "string",
+          "enum": ["PLATFORM_OWNER", "TENANT_ADMIN", "ADMIN", "ACCOUNTANT", "PHARMACIST", "CASHIER", "AUDITOR", "INVENTORY_MANAGER"],
+          "description": "The user role."
+        },
+        "isActive": {
+          "type": "boolean",
+          "description": "Flag indicating if user is active."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Profile creation timestamp."
+        }
+      },
+      "required": ["userId", "username", "role", "isActive", "createdAt"]
+    },
+    "UserProfilePrivate": {
+      "title": "Private User Profile",
+      "description": "Sensitive personal information isolated from public view.",
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "The user's verified email address."
+        },
+        "phone": {
+          "type": "string",
+          "description": "The user's phone number."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last update timestamp."
+        }
+      },
+      "required": ["email", "updatedAt"]
+    },
+    "Branch": {
+      "title": "Branch Information",
+      "description": "Pharmacy branch data details.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique branch identifier."
+        },
+        "code": {
+          "type": "string",
+          "description": "Branch system code."
+        },
+        "name": {
+          "type": "string",
+          "description": "Name of the branch."
+        },
+        "location": {
+          "type": "string",
+          "description": "Physical branch location."
+        },
+        "isActive": {
+          "type": "boolean",
+          "description": "Whether branch is operational."
+        },
+        "tenantId": {
+          "type": "string",
+          "description": "Owner tenant ID."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when branch was created."
+        }
+      },
+      "required": ["id", "code", "name", "isActive", "tenantId", "createdAt"]
+    },
+    "Backup": {
+      "title": "Database Sync Backup",
+      "description": "Encrypted local database backup records synced to Firestore.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique backup transaction identifier."
+        },
+        "tenantId": {
+          "type": "string",
+          "description": "The tenant identifier for SaaS multi-tenancy logical isolation."
+        },
+        "userId": {
+          "type": "string",
+          "description": "The user who pushed the backup."
+        },
+        "filename": {
+          "type": "string",
+          "description": "Backup descriptive name."
+        },
+        "payload": {
+          "type": "string",
+          "description": "AES-256-GCM encrypted database state dump."
+        },
+        "size": {
+          "type": "integer",
+          "description": "Size of the payload in bytes."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Backup generation timestamp."
+        }
+      },
+      "required": ["id", "tenantId", "userId", "filename", "payload", "size", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/public/profile": {
+      "schema": "UserProfilePublic",
+      "description": "Public profile section of user records."
+    },
+    "/users/{userId}/private/info": {
+      "schema": "UserProfilePrivate",
+      "description": "Private, highly secure profile details containing PII (highly restricted)."
+    },
+    "/branches/{branchId}": {
+      "schema": "Branch",
+      "description": "Collection storing pharmacy branches."
+    },
+    "/backups/{backupId}": {
+      "schema": "Backup",
+      "description": "Collection of encrypted corporate backups."
+    }
+  }
+}

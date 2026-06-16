@@ -3,22 +3,24 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "scripts": {
     "dev": "tsx server.ts",
-    "build": "npx prisma generate && vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
+    "build": "prisma generate || true && vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "start": "node dist/server.cjs",
-    "postinstall": "prisma generate",
+    "postinstall": "prisma generate || true",
     "lint": "tsc --noEmit && eslint src --ext ts,tsx --max-warnings 0",
-    "prisma:migrate": "npx prisma migrate dev",
-    "prisma:generate": "npx prisma generate",
-    "prisma:studio": "npx prisma studio",
-    "prisma:deploy": "npx prisma migrate deploy"
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:generate": "prisma generate",
+    "prisma:studio": "prisma studio",
+    "prisma:deploy": "prisma migrate deploy"
   },
   "dependencies": {
     "@google/genai": "^1.50.1",
-    "@prisma/adapter-pg": "^7.8.0",
-    "@prisma/client": "^7.8.0",
-    "@prisma/config": "^7.8.0",
+    "@prisma/adapter-pg": "^6.4.0",
+    "@prisma/client": "^6.4.0",
     "@tailwindcss/vite": "^4.2.4",
     "@vitejs/plugin-react": "^5.0.0",
     "axios": "^1.16.1",
@@ -44,7 +46,7 @@
     "pdfjs-dist": "^5.6.205",
     "pg": "^8.21.0",
     "pino": "^10.3.1",
-    "prisma": "^7.8.0",
+    "prisma": "^6.4.0",
     "react": "18.3.1",
     "react-chartjs-2": "5.2.0",
     "react-dom": "18.3.1",

@@ -604,8 +604,14 @@ export class PharmaFlowDB extends Dexie {
     }
   }
 
+  private dataVersionCounter = 1;
+
   getDataVersion() {
-    return this.verno;
+    return this.dataVersionCounter;
+  }
+
+  incrementDataVersion() {
+    this.dataVersionCounter += 1;
   }
 }
 

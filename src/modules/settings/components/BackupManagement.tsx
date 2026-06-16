@@ -16,6 +16,7 @@ import { ProductionCleanupService } from '@/services/system/ProductionCleanupSer
 
 import { localBackupService } from '@/services/integrity/shared/localBackupService';
 import { GoogleDriveService } from '@/services/backup/googleDriveService';
+import { backupService, BackupScheduleConfig } from '@/services/backupScheduler';
 
 const BackupManagement: React.FC = () => {
   const [backups, setBackups] = useState<SystemBackup[]>([]);
@@ -33,12 +34,28 @@ const BackupManagement: React.FC = () => {
   const [gdriveFiles, setGdriveFiles] = useState<any[]>([]);
   const [gdriveLoading, setGdriveLoading] = useState(false);
 
+  // Scheduling Integration States
+  const [scheduleConfig, setScheduleConfig] = useState<BackupScheduleConfig>({
+    enabled: false,
+    frequency: 'daily',
+    destination: 'local',
+    password: 'pharma-safe-123'
+  });
+  const [savingSchedule, setSavingSchedule] = useState(false);
+
   useEffect(() => {
     const init = async () => {
       try {
         await loadBackups();
       } catch (e) {
         console.error("BackupManagement init failed:", e);
+      }
+
+      try {
+        const conf = await backupService.getConfig();
+        setScheduleConfig(conf);
+      } catch (e) {
+        console.error("Failed to load backup schedule config:", e);
       }
 
       // Load existing GDrive credentials from memory/storage
@@ -93,6 +110,44 @@ const BackupManagement: React.FC = () => {
     setGdriveEmail(null);
     setGdriveFiles([]);
     addToast('تم فصل حساب Google Drive 🔓', 'info');
+  };
+
+  const handleSaveSchedule = async (newConfig: BackupScheduleConfig) => {
+    setSavingSchedule(true);
+    try {
+      if (newConfig.enabled && newConfig.destination === 'gdrive' && !gdriveToken) {
+        addToast('يرجى ربط حساب Google Drive أولاً قبل تفعيل النسخ الاحتياطي السحابي ⚠️', 'warning');
+        setSavingSchedule(false);
+        return;
+      }
+      
+      await backupService.saveConfig(newConfig);
+      setScheduleConfig(newConfig);
+      addToast('تم حفظ وتحديث إعدادات جدولة النسخ الاحتياطي بنجاح 💾✅', 'success');
+    } catch (err: any) {
+      console.error(err);
+      addToast(`فشل حفظ إعدادات الجدولة: ${err.message}`, 'error');
+    } finally {
+      setSavingSchedule(false);
+    }
+  };
+
+  const handleTriggerScheduledBackupNow = async () => {
+    setLoading(true);
+    try {
+      if (scheduleConfig.destination === 'gdrive' && !gdriveToken) {
+        addToast('يرجى ربط حساب Google Drive أولاً لتشغيل التجربة السحابية ⚠️', 'warning');
+        return;
+      }
+      const bId = await backupService.runUnifiedBackup(scheduleConfig);
+      addToast('تم تنفيذ نسخة احتياطية مجدولة بنجاح بقيمة ID: ' + bId + ' 🎉', 'success');
+      await loadBackups();
+    } catch (error: any) {
+      console.error(error);
+      addToast(`فشل تشغيل النسخ الاحتياطي الموحد: ${error.message}`, 'error');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleGDriveUpload = async () => {
@@ -211,6 +266,39 @@ const BackupManagement: React.FC = () => {
       await loadBackups();
     } catch (error) {
       addToast('فشل إنشاء النسخة الاحتياطية ❌', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleBackupNow = async () => {
+    const password = window.prompt('يرجى تعيين كلمة مرور لتشفير وحماية ملف النسخة الاحتياطية الفورية (.enc):\n(تنبيه: ستحتاج لكلمة المرور هذه مستقبلاً لفك التشفير والاسترجاع)');
+    if (!password) {
+      addToast('تم إلغاء عملية النسخ الاحتياطي ⚠️', 'warning');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // 1. Generate local encrypted database snapshot immediately
+      const blob = await BackupService.exportBackupToFile(password);
+      
+      // 2. Prompt user to download
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      const dateStr = new Date().toISOString().split('T')[0];
+      const timestamp = Date.now();
+      a.download = `PharmaFlow_Backup_Now_${dateStr}_${timestamp}.enc`;
+      a.click();
+      
+      // 3. Register it locally inside IndexedDB history for visibility & local restore records
+      await BackupService.createBackup(`نسخة فورية - تحميل فوري محلي`, 'MANUAL', false, password);
+      await loadBackups();
+      
+      addToast('تم إنشاء النسخة الاحتياطية المشفرة وتحميلها فوراً بنجاح 💾✅', 'success');
+    } catch (error: any) {
+      console.error(error);
+      addToast(`فشل النسخ الاحتياطي الفوري: ${error.message}`, 'error');
     } finally {
       setLoading(false);
     }
@@ -368,6 +456,15 @@ const BackupManagement: React.FC = () => {
                 <div className="h-full w-px bg-slate-600 mx-1 hidden md:block"></div>
                 <Button 
                   variant="approve" 
+                  className="h-12 px-5 !rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-500/20 shadow-2xl hover:scale-105 transition-all text-xs font-black"
+                  onClick={handleBackupNow}
+                  isLoading={loading}
+                  id="btn-backup-now-immediate"
+                >
+                  <Download className="ml-2" size={16} /> نسخ احتياطي الآن (Backup Now)
+                </Button>
+                <Button 
+                  variant="approve" 
                   className="h-12 px-5 !rounded-2xl shadow-emerald-500/20 shadow-2xl hover:scale-105 transition-all text-xs"
                   onClick={handleManualBackup}
                   isLoading={loading}
@@ -379,6 +476,109 @@ const BackupManagement: React.FC = () => {
           <div className="absolute -right-10 -bottom-10 w-40 h-40 bg-emerald-500/10 rounded-full blur-3xl"></div>
         </Card>
       </div>
+
+      {/* Automated Backup Scheduler Config */}
+      <Card className="!p-6 space-y-6 border border-slate-100 shadow-md animate-in fade-in">
+        <div className="flex flex-col md:flex-row items-center justify-between gap-4 border-b border-slate-100 pb-4" dir="rtl">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-xl bg-teal-50 text-[#1E4D4D] flex items-center justify-center">
+              <RefreshCw size={24} className={savingSchedule ? "animate-spin" : ""} />
+            </div>
+            <div className="text-right">
+              <h3 className="text-md font-black text-[#1E4D4D] flex items-center gap-2">
+                جدولة النسخ الاحتياطي التلقائي الموحد (Unified Backup Scheduler)
+              </h3>
+              <p className="text-xs text-slate-400 font-bold">
+                قم بتفعيل الجدولة التلقائية لحماية قاعدة بياناتك وتشفيرها محلياً أو رفعها مباشرة في سحابة Google Drive.
+              </p>
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-3">
+            <label className="relative inline-flex items-center cursor-pointer select-none">
+              <input 
+                type="checkbox" 
+                className="sr-only peer"
+                checked={scheduleConfig.enabled}
+                onChange={(e) => handleSaveSchedule({ ...scheduleConfig, enabled: e.target.checked })}
+              />
+              <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+              <span className="mr-3 text-xs font-black text-slate-500">
+                {scheduleConfig.enabled ? 'مفعل وجاهز ✅' : 'معطل ❌'}
+              </span>
+            </label>
+          </div>
+        </div>
+
+        {scheduleConfig.enabled && (
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 animate-in fade-in duration-300" dir="rtl">
+            <div className="space-y-1 text-right">
+              <label className="text-[11px] font-extrabold text-slate-400">تكرار ووتيرة الخطوة (Frequency)</label>
+              <select 
+                value={scheduleConfig.frequency} 
+                onChange={(e) => handleSaveSchedule({ ...scheduleConfig, frequency: e.target.value as any })}
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs font-bold text-slate-600 outline-none focus:ring-1 focus:ring-[#1E4D4D]"
+              >
+                <option value="daily">نسخ احتياطي يومي تلقائي</option>
+                <option value="weekly">نسخ احتياطي أسبوعي تلقائي</option>
+                <option value="monthly">نسخ احتياطي شهري تلقائي</option>
+              </select>
+            </div>
+
+            <div className="space-y-1 text-right">
+              <label className="text-[11px] font-extrabold text-slate-400 font-mono">الوجهة المستهدفة لحزام الأمان (Destination)</label>
+              <select 
+                value={scheduleConfig.destination} 
+                onChange={(e) => handleSaveSchedule({ ...scheduleConfig, destination: e.target.value as any })}
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs font-bold text-slate-600 outline-none focus:ring-1 focus:ring-[#1E4D4D]"
+              >
+                <option value="local">تصدير وتخزين محلي (IndexedDB)</option>
+                <option value="gdrive">رفع وتأمين سحابي (Google Drive ☁️)</option>
+              </select>
+            </div>
+
+            <div className="space-y-1 text-right md:col-span-2 flex flex-col justify-between">
+              <div>
+                <label className="text-[11px] font-extrabold text-slate-400">كلمة مرور تشفير AES-GCM للنسخة المجدولة</label>
+                <div className="flex gap-2">
+                  <Input 
+                    type="password" 
+                    value={scheduleConfig.password || ''}
+                    onChange={(e) => setScheduleConfig({ ...scheduleConfig, password: e.target.value })}
+                    placeholder="مفتاح الأمان السري للفك والتأمين" 
+                    className="flex-1 bg-slate-50 border border-slate-200 hover:border-slate-350 text-xs font-mono font-bold text-slate-600 rounded-lg p-2 outline-none"
+                  />
+                  <Button
+                    variant="neutral"
+                    size="sm"
+                    className="h-9 px-3 text-xs font-black !rounded-lg"
+                    onClick={() => handleSaveSchedule(scheduleConfig)}
+                    isLoading={savingSchedule}
+                  >
+                    حفظ المفتاح
+                  </Button>
+                </div>
+              </div>
+            </div>
+            
+            <div className="md:col-span-4 border-t border-dashed border-slate-100 pt-4 flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-50/50 p-3 rounded-xl">
+              <div className="text-[11px] font-medium text-slate-400 flex items-center gap-1.5 text-right w-full sm:w-auto">
+                <AlertCircle size={14} className="text-[#1E4D4D] shrink-0" />
+                المحرك الموحد يقوم بالنسخ التلقائي في الخلفية لحماية المستحقات المترتبة والمخزون التشغيلي.
+              </div>
+              <Button
+                variant="neutral"
+                size="sm"
+                className="text-xs bg-slate-100 hover:bg-slate-200 border border-slate-200 text-[#1E4D4D] font-black w-full sm:w-auto"
+                onClick={handleTriggerScheduledBackupNow}
+                isLoading={loading}
+              >
+                ⚙️ اختبار تشغيل النسخة المجدولة الآن
+              </Button>
+            </div>
+          </div>
+        )}
+      </Card>
 
       {/* Google Drive Integration Card */}
       <Card className="!p-6 space-y-6 border border-slate-100 shadow-md">

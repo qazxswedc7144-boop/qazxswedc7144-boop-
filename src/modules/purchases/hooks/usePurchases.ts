@@ -10,9 +10,10 @@ import { auditLogService } from '@/services/audit/auditLog';
 import { InvoiceWorkflowEngine } from '@/modules/sales/services/InvoiceWorkflowEngine';
 import { predictionService } from '@/modules/ai/services/predictionService';
 import { saveLearning } from '@/modules/ai/services/learningService';
-import { safeProcessTransaction } from '@/services/transactions/TransactionSafety';
 import { useAppNotification } from '@/context/NotificationContext';
 import { DraftService } from '@/services/system/DraftService';
+import { reportCache } from '@/modules/reports/services/reportCacheService';
+import { ReportEngine } from '@/services/reports/reportEngine';
 
 const DRAFT_KEY = 'pharmaflow_purchase_draft';
 
@@ -279,19 +280,19 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
 
   const restoreDraft = useCallback(async () => {
     if (recoveryDraftData) {
-      const { payload } = recoveryDraftData;
-      if (payload) {
-        if (payload.header) {
-          setHeader(payload.header);
+      const data = recoveryDraftData.payload || recoveryDraftData;
+      if (data) {
+        if (data.header) {
+          setHeader(data.header);
         }
-        if (payload.items) {
-          setItems(payload.items);
+        if (data.items) {
+          setItems(data.items);
         }
-        if (payload.totals && payload.totals.adjData) {
-          setAdjData(payload.totals.adjData);
+        if (data.totals && data.totals.adjData) {
+          setAdjData(data.totals.adjData);
         }
-        if (payload.partner?.partnerName) {
-          setSupplierSearchTerm(payload.partner.partnerName);
+        if (data.partner?.partnerName) {
+          setSupplierSearchTerm(data.partner.partnerName);
         }
       }
       addToast("تمت استعادة مسودة المشتريات بنجاح 💾", "success");
@@ -426,38 +427,61 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
     console.log("IMPORT FLOW RUNNING");
     console.log("STEP 1: FILE SELECTED");
     setIsProcessingAI(true);
+    let parsed: any = null;
+    let fallbackTriggered = false;
+
     try {
       console.log("STEP 2: AI START");
       const { processInvoice } = await import('@/modules/ai/services/smartImportEngine');
-      const parsed = await processInvoice(file);
-
+      parsed = await processInvoice(file);
       console.log("STEP 3: AI DONE", parsed);
-      
-      if (!parsed || !parsed.items || parsed.items.length === 0) {
-        addToast("لم يتم التعرف على بيانات الفاتورة", "warning");
+    } catch (error: any) {
+      console.warn("[AI IMPORT] Main AI Engine failed. Engaging local backup OCR engine...", error);
+      fallbackTriggered = true;
+      try {
+        const { parseInvoiceLocally } = await import('@/modules/ai/services/localBackupOcrEngine');
+        parsed = await parseInvoiceLocally(file);
+        console.log("STEP 3 (FALLBACK): LOCAL OCR DONE", parsed);
+      } catch (fallbackError: any) {
+        console.error("Local Backup OCR Engine failed too:", fallbackError);
+        addToast("فشلت قراءة الفاتورة بكلا المحركين الذكي والمحلي 📴", "error");
         setIsProcessingAI(false);
         return;
       }
+    }
 
-      setAIParsedData(parsed);
-      console.log("STEP 4: MODAL OPENED");
-      setShowAIConfirmModal(true);
-      
-      // Handle attachment preview
-      if (typeof file === 'string') {
-        setHeader(prev => ({ ...prev, attachment: file }));
+    if (!parsed || !parsed.items || parsed.items.length === 0) {
+      if (!fallbackTriggered) {
+        fallbackTriggered = true;
+        try {
+          const { parseInvoiceLocally } = await import('@/modules/ai/services/localBackupOcrEngine');
+          parsed = await parseInvoiceLocally(file);
+        } catch (e) {
+          addToast("لم يتم التعرف على بيانات الفاتورة بنجاح", "warning");
+          setIsProcessingAI(false);
+          return;
+        }
       } else {
-        const reader = new FileReader();
-        const base64 = await new Promise<string>((resolve) => {
-          reader.onload = () => resolve(reader.result as string);
-          reader.readAsDataURL(file);
-        });
-        setHeader(prev => ({ ...prev, attachment: base64 }));
+        addToast("الفاتورة التي تم تحليلها لا تحتوي على أي أصناف مقروءة", "warning");
+        setIsProcessingAI(false);
+        return;
       }
-    } catch (error: any) {
-      console.error("AI Import Error:", error);
-      addToast("فشل تحليل الفاتورة", "error");
-      setIsProcessingAI(false);
+    }
+
+    setAIParsedData(parsed);
+    console.log("STEP 4: MODAL OPENED");
+    setShowAIConfirmModal(true);
+    
+    // Handle attachment preview
+    if (typeof file === 'string') {
+      setHeader(prev => ({ ...prev, attachment: file }));
+    } else {
+      const reader = new FileReader();
+      const base64 = await new Promise<string>((resolve) => {
+        reader.onload = () => resolve(reader.result as string);
+        reader.readAsDataURL(file);
+      });
+      setHeader(prev => ({ ...prev, attachment: base64 }));
     }
   };
 
@@ -476,46 +500,50 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
     );
 
     if (!cleanedItems.length) {
-      addToast("❌ فشل تحليل الفاتورة", "error");
+      addToast("❌ فشل تحليل الفاتورة في استخراج أصناف صالحة", "error");
       setIsProcessingAI(false);
       return;
     }
 
-    // DETECT TYPE
-    let type = "purchase_cash";
-    if (aiParsedData.type === 'return') {
-      type = aiParsedData.type === 'credit' ? "purchase_return_credit" : "purchase_return_cash";
-    } else {
-      type = aiParsedData.type === 'credit' ? "purchase_credit" : "purchase_cash";
-    }
+    // MAP TO INTERMEDIATE REVIEW SCREEN (No automatic save, no automatic redirect!)
+    // Discover if we have matching supplier in DB
+    const matchedSupplier = suppliers?.find((s: any) => 
+      s.Supplier_Name?.toLowerCase().includes(aiParsedData.supplier?.toLowerCase()) ||
+      aiParsedData.supplier?.toLowerCase().includes(s.Supplier_Name?.toLowerCase())
+    );
+    const matchedSupplierId = matchedSupplier ? (matchedSupplier.id || matchedSupplier.Supplier_ID) : (suppliers?.[0]?.id || '');
 
-    const data = {
-      ...aiParsedData,
-      items: cleanedItems,
-      total: cleanedItems.reduce((sum: number, i: any) => sum + (i.quantity * i.price), 0)
-    };
+    // Transform extracted raw items into standard local InvoiceItem array
+    const mappedItems: InvoiceItem[] = cleanedItems.map((item: any, idx: number) => ({
+      id: `PUR-DET-${Date.now()}-${idx}`,
+      parent_id: aiParsedData.invoice_number || `INV-${Math.floor(Math.random() * 100000)}`,
+      product_id: item.product_id || `manual-${Date.now()}-${idx}`,
+      name: item.name,
+      qty: Number(item.quantity || 1),
+      price: Number(item.price || 0),
+      sum: Number(item.quantity || 1) * Number(item.price || 0),
+      row_order: idx + 1,
+      expiryDate: item.expiryDate || '',
+      notes: item.notes || '',
+      categoryId: item.categoryId || ''
+    } as any));
 
-    console.log("FINAL DATA:", data);
+    // Update screen reactive states (Intermediate Review Space)
+    setItems(mappedItems);
+    setHeader(prev => ({
+      ...prev,
+      invoice_number: aiParsedData.invoice_number || prev.invoice_number,
+      supplier_id: matchedSupplierId,
+      isReturn: aiParsedData.type === 'return',
+      notes: aiParsedData.notes || prev.notes,
+      status: 'DRAFT' // Strict requirement 1: Initial state is Draft awaiting review
+    }));
 
-    // SHOW CONFIRM MODAL
-    // Assuming showConfirmModal is available in UI context or needs to be imported
-    // Based on the user request, I will use the provided structure.
-    // Since I don't see showConfirmModal in the imports, I will assume it's available via useUI.
-    
-    // @ts-ignore
-    addToast("تم تعبئة البيانات، هل تريد التعديل؟", "info"); // Placeholder for modal logic
-
-    try {
-      console.log("CALLING SAFE ENGINE 🔥");
-      await safeProcessTransaction(type, data);
-      addToast("✅ تم الحفظ بنجاح", "success");
-      safeNavigate('dashboard');
-    } catch (e: any) {
-      addToast("❌ " + e.message, "error");
-    }
-
+    setHasUnsavedAI(true);
     setIsProcessingAI(false);
     setShowAIConfirmModal(false);
+
+    addToast("📝 تم تعبئة شاشة المراجعة الوسيطة بنجاح! يرجى التدقيق يدوياً والموافقة لحفظ الفاتورة المحاسبية 💾", "success");
   };
 
   const vTotalSum = useMemo(() => {
@@ -696,11 +724,22 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
 
       if (res?.success) {
         setSavePhase('idle');
-        showNotification('✅ تم حفظ فاتورة المشتريات وتحديث المستودع بنجاح', 'success');
-        addToast("تم حفظ وترحيل الفاتورة بنجاح ✅", "success");
+        
+        // --- REAL-TIME ARCHIVE & REPORT SYNCHRONIZATION (PHASE 5.2.5-B) ---
+        // 1. Invalidate report cache
+        reportCache.purge();
+        // 2. Increment data version to signal components of data changes
+        db.incrementDataVersion();
+        // 3. Clear report engine state and refresh
+        await ReportEngine.refresh();
+        // 4. Force state synchronization across related providers/views
+        await refreshGlobal();
+
+        // Display success toast for 1 second only
+        showNotification("Invoice Saved Successfully\nReturning to Dashboard...", 'success', 1000);
+        addToast("Invoice Saved Successfully\nReturning to Dashboard...", "success");
 
         localStorage.removeItem(DRAFT_KEY);
-        refreshGlobal();
         setHasUnsavedAI(false);
         
         await auditLogService.log({
@@ -729,6 +768,15 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
 
         // Instantly generate a clean new invoice state to prevent dirty or stale state reuse
         resetInvoiceState();
+
+        // Delay navigation by 1 second to show the toast and feedback
+        setTimeout(() => {
+          try {
+            onNavigate?.('dashboard');
+          } catch (error) {
+            window.location.hash = '#/dashboard';
+          }
+        }, 1000);
       }
     } catch (error: any) {
       console.error("Save error", error);

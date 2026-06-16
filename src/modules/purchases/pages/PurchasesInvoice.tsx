@@ -550,6 +550,18 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
 
       {/* ITEMS LIST SECTION - SIMPLE LIST */}
       <PullToRefresh onRefresh={async () => { await refreshGlobal(); }} className="flex-1 overflow-y-auto bg-white pb-6">
+        {hasUnsavedAI && (
+          <div className="bg-amber-50/80 border-r-4 border-amber-500 p-3 mx-4 my-2 rounded-xl flex items-start gap-2.5 shadow-sm select-none" id="ai-review-banner">
+            <span className="text-amber-600 mt-0.5"><Sparkles size={16} className="animate-pulse" /></span>
+            <div className="flex-1">
+              <h4 className="text-[10px] font-black text-amber-900">شاشة المراجعة الوسيطة (تدقيق يدوي مطلوب)</h4>
+              <p className="text-[9px] font-bold text-amber-700 leading-relaxed mt-0.5">
+                تظهر هنا الأصناف والبيانات المستخرجة وتعديلاتها. يمنع النظام الترحيل التلقائي لضمان المراجعة؛ يرجى مراجعة وتعديل أي حقول (رقم الفاتورة، المورد، الأصناف)، ثم الضغط على "حفظ الفاتورة" للموافقة اليدوية وحفظها كفاتورة مشتريات محاسبية مسودة.
+              </p>
+            </div>
+          </div>
+        )}
+
         <div className="sticky top-0 bg-white/90 backdrop-blur-sm z-10 border-b border-slate-50 flex items-center px-4 py-2">
           <span className="flex-[2] text-[11px] font-black text-slate-400 uppercase tracking-widest">الصنف</span>
           <span className="flex-1 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">الكمية</span>
@@ -875,8 +887,8 @@ const PurchasesInvoice: React.FC<{ onNavigate?: (view: any, params?: any) => voi
             isOpen={isRecoveryModalOpen}
             moduleName="فاتورة المشتريات والتوريد"
             updatedAt={recoveryDraftData.updatedAt}
-            itemCount={recoveryDraftData.payload.items?.length || 0}
-            totalAmount={recoveryDraftData.payload.totals?.subtotal}
+            itemCount={(recoveryDraftData.payload?.items || recoveryDraftData.items)?.length || 0}
+            totalAmount={recoveryDraftData.payload?.totals?.subtotal || recoveryDraftData.totals?.subtotal}
             onRestore={restoreDraft}
             onDiscard={discardDraft}
           />
