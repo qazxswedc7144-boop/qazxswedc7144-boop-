@@ -158,7 +158,288 @@ export class TestSuiteService {
     const profit = FinancialEngine.calculateNetProfit(1000, 700, 100);
     assert(profit === 200, "دقة حساب صافي الربح");
 
+    // 3. اختبارات ذرية القيود المحاسبية وتراجع العمليات الكامل (PHASE 5.2.6-A: FULL ACCOUNTING ATOMICITY AUDIT)
+    try {
+      await this.runAccountingAtomicityAudit(assert);
+    } catch (auditErr: any) {
+      console.error("[TestSuite] Error running accounting atomicity audit:", auditErr);
+      assert(false, "تدقيق ذرية القيود والمخزون: فشل التشغيل الخارجي للاختبار");
+    }
+
     return { passed, failed, reports };
+  }
+
+  static async runAccountingAtomicityAudit(assert: (condition: boolean, name: string) => void) {
+    const testProdId = "P_ATOM_TEST";
+    const testSuppId = "SUP_ATOM_TEST";
+    const testInvoiceId = "INV_ATOM_TEST";
+
+    const initTestProduct = async () => {
+      await db.products.put({
+        id: testProdId,
+        name: "Atomicity Audit Product",
+        category: "Test",
+        price: 150,
+        CostPrice: 100,
+        StockQuantity: 50,
+        min_stock: 5,
+        unit: 'Pcs',
+        expiry_date: '2028-01-01',
+        is_taxable: true,
+        stock: 50
+      } as any);
+    };
+
+    const initTestSupplier = async () => {
+      await db.suppliers.put({
+        id: testSuppId,
+        Supplier_ID: testSuppId,
+        name: "Atomicity Audit Supplier",
+        balance: 1000,
+        isActive: true,
+        phone: "123456",
+        email: "atom@test.com"
+      } as any);
+    };
+
+    const cleanUp = async () => {
+      await db.products.delete(testProdId);
+      await db.suppliers.delete(testSuppId);
+      await db.invoices.delete(testInvoiceId);
+      await db.stock_movements.where('reference_id').equals(testInvoiceId).delete();
+      await db.medicineBatches.where('productId').equals(testProdId).delete();
+      await db.journalEntries.where('id').equals(`JE_${testInvoiceId}`).delete();
+      await db.auditLogs.where('recordId').equals(testInvoiceId).delete();
+    };
+
+    const getSystemState = async () => {
+      const prod = await db.products.get(testProdId);
+      const supp = await db.suppliers.get(testSuppId);
+      const invCount = await db.invoices.where('id').equals(testInvoiceId).count();
+      const movCount = await db.stock_movements.where('reference_id').equals(testInvoiceId).count();
+      const batchCount = await db.medicineBatches.where('productId').equals(testProdId).count();
+      const journalCount = await db.journalEntries.where('id').equals(`JE_${testInvoiceId}`).count();
+      const auditCount = await db.auditLogs.where('recordId').equals(testInvoiceId).count();
+
+      return {
+        stock: prod?.StockQuantity || 0,
+        balance: supp?.balance || 0,
+        invCount,
+        movCount,
+        batchCount,
+        journalCount,
+        auditCount
+      };
+    };
+
+    const executeAtomicPurchase = async (failAfterStep: 'inventory' | 'batch_creation' | 'supplier_update' | 'journal_creation' | null) => {
+      const transactionUuid = `UUID_ATOM_${Date.now()}`;
+      try {
+        await db.runTransaction(async () => {
+          // step 1: Create Invoice
+          const purchaseRecord = {
+            id: testInvoiceId,
+            invoiceNumber: "PUR_ATOM_1",
+            date: new Date().toISOString(),
+            partnerId: testSuppId,
+            partnerName: "Atomicity Audit Supplier",
+            type: 'PURCHASE',
+            subtotal: 500,
+            tax: 0,
+            finalTotal: 500,
+            paidAmount: 0,
+            paymentStatus: 'Credit',
+            financialStatus: 'Unpaid',
+            documentStatus: 'POSTED',
+            items: [{ product_id: testProdId, qty: 10, price: 50, sum: 500 }],
+            isReturn: false,
+            transactionUuid,
+            updatedAt: new Date().toISOString()
+          };
+          await db.invoices.add(purchaseRecord as any);
+
+          // step 2: Inventory Movement
+          const prod = await db.products.get(testProdId);
+          if (!prod) throw new Error("Product not found");
+          await db.products.update(testProdId, { StockQuantity: (prod.StockQuantity || 0) + 10, stock: (prod.StockQuantity || 0) + 10 });
+          await db.stock_movements.add({
+            id: `MOV_${testInvoiceId}`,
+            item_id: testProdId,
+            product_id: testProdId,
+            type: 'purchase',
+            quantity_before: prod.StockQuantity || 0,
+            quantity_change: 10,
+            quantity_after: (prod.StockQuantity || 0) + 10,
+            unit_cost: 50,
+            total_cost: 500,
+            reference_id: testInvoiceId,
+            created_at: new Date().toISOString()
+          } as any);
+
+          if (failAfterStep === 'inventory') {
+            throw new Error("Simulated Crash: after Inventory purchase update");
+          }
+
+          // step 3: Batch Creation
+          await db.medicineBatches.add({
+            id: `BATCH_${testInvoiceId}`,
+            productId: testProdId,
+            batchNumber: "BATCH-ATOM-001",
+            expiryDate: "2028-12-31",
+            quantity: 10,
+            unitCost: 50
+          });
+
+          if (failAfterStep === 'batch_creation') {
+            throw new Error("Simulated Crash: after Batch Creation");
+          }
+
+          // step 4: Supplier Balance Update
+          const supp = await db.suppliers.get(testSuppId);
+          if (!supp) throw new Error("Supplier not found");
+          await db.suppliers.update(testSuppId, { balance: (supp.balance || 0) + 500 });
+
+          if (failAfterStep === 'supplier_update') {
+            throw new Error("Simulated Crash: after Supplier Balance Update");
+          }
+
+          // step 5: Journal Entry Creation
+          await db.journalEntries.add({
+            id: `JE_${testInvoiceId}`,
+            entry_id: `JE_${testInvoiceId}`,
+            date: new Date().toISOString(),
+            reference_id: testInvoiceId,
+            description: "Atomicity Audit Test Journal Entry",
+            TotalAmount: 500,
+            status: 'Posted',
+            sourceId: testInvoiceId,
+            sourceType: 'PURCHASE',
+            lines: [
+              { id: '1', entryId: `JE_${testInvoiceId}`, accountId: 'INVENTORY', debit: 500, credit: 0, amount: 500, type: 'DEBIT' },
+              { id: '2', entryId: `JE_${testInvoiceId}`, accountId: 'PAYABLE', debit: 0, credit: 500, amount: 500, type: 'CREDIT' }
+            ],
+            created_at: new Date().toISOString()
+          } as any);
+
+          if (failAfterStep === 'journal_creation') {
+            throw new Error("Simulated Crash: after Journal Entry Creation");
+          }
+
+          // step 6: Audit Log
+          await db.auditLogs.add({
+            id: `AUDIT_${testInvoiceId}`,
+            action: 'CREATE',
+            module: 'PURCHASE',
+            username: 'SYSTEM_AUDITOR',
+            recordId: testInvoiceId,
+            details: "Logged by Atomicity Audit process success path",
+            userId: 'SYSTEM',
+            timestamp: new Date().toISOString()
+          } as any);
+
+        });
+      } catch (err: any) {
+        console.log(`[Atomicity Test] Intentionally suppressed catch: ${err.message}`);
+      }
+    };
+
+    // --- Scenario 1: Complete Success path ---
+    await cleanUp();
+    await initTestProduct();
+    await initTestSupplier();
+
+    await executeAtomicPurchase(null);
+    const successResult = await getSystemState();
+
+    assert(
+      successResult.invCount === 1 &&
+      successResult.stock === 60 &&
+      successResult.movCount === 1 &&
+      successResult.batchCount === 1 &&
+      successResult.balance === 1500 &&
+      successResult.journalCount === 1 &&
+      successResult.auditCount === 1,
+      "الذرة المتكاملة: نجاح وتحديث جميع الطبقات معاً بمستند التوريد"
+    );
+
+    // --- Scenario 2: Fail after Inventory update ---
+    await cleanUp();
+    await initTestProduct();
+    await initTestSupplier();
+    
+    await executeAtomicPurchase('inventory');
+    const failInventoryState = await getSystemState();
+    
+    assert(
+      failInventoryState.invCount === 0 &&
+      failInventoryState.stock === 50 &&
+      failInventoryState.movCount === 0 &&
+      failInventoryState.batchCount === 0 &&
+      failInventoryState.balance === 1000 &&
+      failInventoryState.journalCount === 0 &&
+      failInventoryState.auditCount === 0,
+      "تراجع آمن وتام: لا يوجد بيانات متبقية أو تلف جرد عند الفشل بعد حركة المخزن"
+    );
+
+    // --- Scenario 3: Fail after Batch Creation ---
+    await cleanUp();
+    await initTestProduct();
+    await initTestSupplier();
+
+    await executeAtomicPurchase('batch_creation');
+    const failBatchState = await getSystemState();
+
+    assert(
+      failBatchState.invCount === 0 &&
+      failBatchState.stock === 50 &&
+      failBatchState.movCount === 0 &&
+      failBatchState.batchCount === 0 &&
+      failBatchState.balance === 1000 &&
+      failBatchState.journalCount === 0 &&
+      failBatchState.auditCount === 0,
+      "تراجع آمن وتام: حظر وبتر التشغيلات اليتيمة وتراجع الرصيد عند الفشل بعد كود التشغيلة"
+    );
+
+    // --- Scenario 4: Fail after Supplier Balance Update ---
+    await cleanUp();
+    await initTestProduct();
+    await initTestSupplier();
+
+    await executeAtomicPurchase('supplier_update');
+    const failSupplierState = await getSystemState();
+
+    assert(
+      failSupplierState.invCount === 0 &&
+      failSupplierState.stock === 50 &&
+      failSupplierState.movCount === 0 &&
+      failSupplierState.batchCount === 0 &&
+      failSupplierState.balance === 1000 &&
+      failSupplierState.journalCount === 0 &&
+      failSupplierState.auditCount === 0,
+      "تراجع آمن وتام: تراجع الذمم وتصفر أيتام المخزون عند الفشل بعد رصيد المورد"
+    );
+
+    // --- Scenario 5: Fail after Journal Entry Creation ---
+    await cleanUp();
+    await initTestProduct();
+    await initTestSupplier();
+
+    await executeAtomicPurchase('journal_creation');
+    const failJournalState = await getSystemState();
+
+    assert(
+      failJournalState.invCount === 0 &&
+      failJournalState.stock === 50 &&
+      failJournalState.movCount === 0 &&
+      failJournalState.batchCount === 0 &&
+      failJournalState.balance === 1000 &&
+      failJournalState.journalCount === 0 &&
+      failJournalState.auditCount === 0,
+      "تراجع آمن وتام: حظر قيد اليومية غير المتزن بالدفتر وتراجع السقوف المالية بعد القيود"
+    );
+
+    // Final Cleanup
+    await cleanUp();
   }
 
   static async runFullIntegrityTest() {

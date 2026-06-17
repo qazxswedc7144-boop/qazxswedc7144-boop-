@@ -186,12 +186,18 @@ export const useSales = (onNavigate?: (view: any, params?: any) => void) => {
       if (draftPromptCheckedRef.current) return;
       draftPromptCheckedRef.current = true;
       try {
-        const hasSavedDraft = await DraftService.hasDraft('sales');
-        if (hasSavedDraft) {
-          const draft = await DraftService.getDraft('sales');
-          if (draft && draft.items && draft.items.length > 0) {
-            setRecoveryDraftData(draft);
-            setIsRecoveryModalOpen(true);
+        const unfinished = await DraftService.getUnfinishedInvoiceDraft('SALE');
+        if (unfinished) {
+          setRecoveryDraftData(unfinished);
+          setIsRecoveryModalOpen(true);
+        } else {
+          const hasSavedDraft = await DraftService.hasDraft('sales');
+          if (hasSavedDraft) {
+            const draft = await DraftService.getDraft('sales');
+            if (draft && draft.items && draft.items.length > 0) {
+              setRecoveryDraftData(draft);
+              setIsRecoveryModalOpen(true);
+            }
           }
         }
       } catch (err) {
@@ -203,18 +209,26 @@ export const useSales = (onNavigate?: (view: any, params?: any) => void) => {
 
   const restoreDraft = useCallback(async () => {
     if (recoveryDraftData) {
-      const data = recoveryDraftData.payload || recoveryDraftData;
+      const data = recoveryDraftData.totals?.header ? recoveryDraftData.totals : (recoveryDraftData.payload || recoveryDraftData);
       if (data) {
         if (data.header) {
           setHeader(data.header);
         }
-        if (data.items) {
+        if (recoveryDraftData.items) {
+          setItems(recoveryDraftData.items);
+        } else if (data.items) {
           setItems(data.items);
         }
-        if (data.totals && data.totals.adjData) {
+        if (data.adjData) {
+          setAdjData(data.adjData);
+        } else if (data.totals?.adjData) {
           setAdjData(data.totals.adjData);
+        } else if (recoveryDraftData.totals?.adjData) {
+          setAdjData(recoveryDraftData.totals.adjData);
         }
-        if (data.partner?.partnerName) {
+        if (recoveryDraftData.partner?.partnerName) {
+          setCustomerSearchTerm(recoveryDraftData.partner.partnerName);
+        } else if (data.partner?.partnerName) {
           setCustomerSearchTerm(data.partner.partnerName);
         }
       }
@@ -226,7 +240,14 @@ export const useSales = (onNavigate?: (view: any, params?: any) => void) => {
 
   const discardDraft = useCallback(async () => {
     try {
+      if (recoveryDraftData?.draftId) {
+        await DraftService.clearInvoiceDraft(recoveryDraftData.draftId);
+      }
       await DraftService.clearDraft('sales');
+      const unfinished = await DraftService.getUnfinishedInvoiceDraft('SALE');
+      if (unfinished?.draftId) {
+        await DraftService.clearInvoiceDraft(unfinished.draftId);
+      }
       addToast("تم حذف المسودة القديمة وبدء قيد جديد", "info");
       await resetInvoiceState();
     } catch (e) {
@@ -235,7 +256,7 @@ export const useSales = (onNavigate?: (view: any, params?: any) => void) => {
       setIsRecoveryModalOpen(false);
       setRecoveryDraftData(null);
     }
-  }, [addToast, resetInvoiceState]);
+  }, [addToast, resetInvoiceState, recoveryDraftData]);
 
   const handleCustomerSearch = useCallback((val: string) => {
     setCustomerSearchTerm(val);
@@ -377,30 +398,71 @@ export const useSales = (onNavigate?: (view: any, params?: any) => void) => {
     return sub - (sub * (adjData.discountPercent / 100)) + adjData.otherFees + adjData.tax;
   }, [items, adjData]);
 
-  // 2. State Auto-Saver Effect: saves draft on items, header or adjustments changes
+  // 2. Smart Auto Save Draft Engine (Task 5 / Phase 5.2.5-C)
+  // Backup Interval: Auto-save draft every 5 seconds
   useEffect(() => {
-    if (editingInvoiceId) return; // Don't auto-save if editing an existing invoice
-    if (items.length === 0 && !header.customer_id) {
-      // Clean / initial state: do not create flat/empty drafts
-      return;
-    }
+    if (editingInvoiceId) return;
 
-    const saverTimer = setTimeout(async () => {
+    const interval = setInterval(async () => {
+      if (items.length === 0 && !header.customer_id && !header.notes) {
+        return;
+      }
       try {
         const partner = customers.find(c => c.id === header.customer_id);
         const partnerName = partner ? partner.Supplier_Name : '';
-        await DraftService.saveDraft('sales', 'Sales Invoice', {
+        await DraftService.saveInvoiceDraft('sales_draft_current', 'SALE', items, {
+          adjData,
+          subtotal: vTotalSum,
           header,
-          items,
-          totals: { adjData, subtotal: vTotalSum },
           partner: { partnerName }
         });
       } catch (e) {
-        console.error("Background auto-save draft failed:", e);
+        console.error("Interval auto-save failed:", e);
       }
-    }, 10000); // Debounced 10s auto-saver for state changes
+    }, 5000);
 
-    return () => clearTimeout(saverTimer);
+    return () => clearInterval(interval);
+  }, [items, header, adjData, vTotalSum, editingInvoiceId, customers]);
+
+  // Immediate save on specific changes: Add Item, Remove Item, Change Qty/Price, Change Customer, Change Notes
+  const prevItemsRef = useRef<any[]>(items);
+  const prevCustomerIdRef = useRef<string>(header.customer_id);
+  const prevNotesRef = useRef<string>(header.notes);
+  const prevAdjDataRef = useRef<any>(adjData);
+
+  useEffect(() => {
+    if (editingInvoiceId) return;
+    if (items.length === 0 && !header.customer_id && !header.notes) {
+      return;
+    }
+
+    const itemsChanged = JSON.stringify(items) !== JSON.stringify(prevItemsRef.current);
+    const customerChanged = header.customer_id !== prevCustomerIdRef.current;
+    const notesChanged = header.notes !== prevNotesRef.current;
+    const adjChanged = JSON.stringify(adjData) !== JSON.stringify(prevAdjDataRef.current);
+
+    if (itemsChanged || customerChanged || notesChanged || adjChanged) {
+      prevItemsRef.current = items;
+      prevCustomerIdRef.current = header.customer_id;
+      prevNotesRef.current = header.notes;
+      prevAdjDataRef.current = adjData;
+
+      const triggerImmediateSave = async () => {
+        try {
+          const partner = customers.find(c => c.id === header.customer_id);
+          const partnerName = partner ? partner.Supplier_Name : '';
+          await DraftService.saveInvoiceDraft('sales_draft_current', 'SALE', items, {
+            adjData,
+            subtotal: vTotalSum,
+            header,
+            partner: { partnerName }
+          });
+        } catch (e) {
+          console.error("Immediate change-triggered auto-save failed:", e);
+        }
+      };
+      triggerImmediateSave().catch(e => console.error("Immediate save error:", e));
+    }
   }, [items, header, adjData, vTotalSum, editingInvoiceId, customers]);
 
   const persistToDB = useCallback(async () => {
@@ -628,6 +690,7 @@ export const useSales = (onNavigate?: (view: any, params?: any) => void) => {
         // Capture data for success modal 2.0 (Task 4) and dispose of draft (Task 5)
         const partner = customers.find(c => c.id === header.customer_id);
         const partnerName = partner ? partner.Supplier_Name : 'عميل مبيعات كاشير عام';
+        await DraftService.clearInvoiceDraft('sales_draft_current');
         await DraftService.clearDraft('sales');
 
         setSaveSuccessData({

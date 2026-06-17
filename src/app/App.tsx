@@ -161,6 +161,7 @@ const ExpiryItemsReport = lazyWithRetry(() => import('@/modules/reports/pages/Ex
 const FinancialEngineReport = lazyWithRetry(() => import('@/modules/reports/pages/FinancialEngineReport'));
 const PrivacyPolicy = lazyWithRetry(() => import('@/modules/legal/pages/PrivacyPolicy'));
 const TermsOfService = lazyWithRetry(() => import('@/modules/legal/pages/TermsOfService'));
+const SecurityAuditDashboard = lazyWithRetry(() => import('@/modules/settings/components/SecurityAuditDashboard'));
 
 import { useAuth } from '@/modules/auth/hooks/useAuth';
 import { can } from '@/utils/permissions';
@@ -798,6 +799,7 @@ function MainLayout() {
                   case 'branch-transfers': return <RoleGuard permission="BRANCH_TRANSFER"><BranchTransfers /></RoleGuard>;
                   case 'branch-reports': return <RoleGuard permission="BRANCH_REPORT"><BranchReports /></RoleGuard>;
                   case 'consolidation': return <RoleGuard permission="FINANCIAL_ACCESS"><ConsolidationDashboard onNavigate={handleNav} /></RoleGuard>;
+                  case 'security-audit': return <SecurityAuditDashboard onNavigate={handleNav} />;
                   
                   case 'reports/remaining-stock': return <RoleGuard permission="VIEW_REPORTS"><RemainingStockReport onNavigate={handleNav} /></RoleGuard>;
                   case 'reports/item-profits': return <RoleGuard permission="VIEW_REPORTS"><ItemProfitsReport onNavigate={handleNav} /></RoleGuard>;

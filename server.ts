@@ -378,7 +378,7 @@ function runBackgroundDbSync() {
   const executeDbPush = () => {
     console.log("🚀 Connection confirmed/assumed. Running schema sync...");
     exec(
-      "npx prisma db push --accept-data-loss",
+      "npx --no-install prisma db push --accept-data-loss",
       { timeout: 45000, env: process.env },
       (errVal, stdout, stderr) => {
         if (errVal) {

@@ -1,5 +1,6 @@
 import { db } from '@/core/db';
 import { WorkerClient } from '@/modules/workers/worker.client';
+import { reportCache } from '@/modules/reports/services/reportCacheService';
 
 export class ReportEngine {
   
@@ -8,6 +9,7 @@ export class ReportEngine {
    */
   static async refresh(): Promise<void> {
     console.log("[ReportEngine] Clearing and re-aggregating reports data...");
+    reportCache.purge();
   }
 
   /**
@@ -38,44 +40,62 @@ export class ReportEngine {
    * Aggregates debits, credits, and calculates ending balances per account within date filters.
    */
   static async getTrialBalance(start?: string, end?: string) {
+    const cacheKey = `trial-balance-${start || 'all'}-${end || 'all'}`;
+    const cached = reportCache.get<any>(cacheKey);
+    if (cached) {
+      console.log(`[ReportEngine] Returning cached Trial Balance for key ${cacheKey}`);
+      return cached;
+    }
+
     const accounts = await db.accounts.toArray();
     const entries = await db.journalEntries.toArray();
 
-    return WorkerClient.runTrialBalance(accounts, entries, start, end);
+    const result = await WorkerClient.runTrialBalance(accounts, entries, start, end);
+    reportCache.set(cacheKey, result);
+    return result;
   }
 
   /**
    * Generates Profit & Loss Statement (قائمة الأرباح والخسائر).
    */
   static async getProfitLoss(start?: string, end?: string) {
+    const cacheKey = `profit-loss-${start || 'all'}-${end || 'all'}`;
+    const cached = reportCache.get<any>(cacheKey);
+    if (cached) {
+      console.log(`[ReportEngine] Returning cached Profit & Loss for key ${cacheKey}`);
+      return cached;
+    }
+
     const trialBalance = await this.getTrialBalance(start, end);
     
     // Revenue Accounts (Standard ACC-401 for SALES_REVENUE)
-    const revenues = trialBalance.filter(item => item.type === 'REVENUE');
-    const totalRevenue = revenues.reduce((acc, r) => acc + (r.endingCredit - r.endingDebit), 0);
+    const revenues = trialBalance.filter((item: any) => item.type === 'REVENUE');
+    const totalRevenue = revenues.reduce((acc: number, r: any) => acc + (r.endingCredit - r.endingDebit), 0);
     
     // COGS Accounts (Standard ACC-501 for COGS)
-    const cogsItems = trialBalance.filter(item => item.code === 'ACC-501' || item.id === 'ACC-501' || item.name.includes('تكلفة المبيعات') || item.type === 'EXPENSE' && (item.code === 'ACC-501'));
-    const totalCogs = cogsItems.reduce((acc, c) => acc + (c.endingDebit - c.endingCredit), 0);
+    const cogsItems = trialBalance.filter((item: any) => item.code === 'ACC-501' || item.id === 'ACC-501' || item.name.includes('تكلفة المبيعات') || item.type === 'EXPENSE' && (item.code === 'ACC-501'));
+    const totalCogs = cogsItems.reduce((acc: number, c: any) => acc + (c.endingDebit - c.endingCredit), 0);
 
     // General Expense Accounts (EXPENSE excluding COGS)
-    const operatingExpenses = trialBalance.filter(item => item.type === 'EXPENSE' && item.code !== 'ACC-501' && item.id !== 'ACC-501' && !item.name.includes('تكلفة المبيعات'));
-    const totalExpenses = operatingExpenses.reduce((acc, e) => acc + (e.endingDebit - e.endingCredit), 0);
+    const operatingExpenses = trialBalance.filter((item: any) => item.type === 'EXPENSE' && item.code !== 'ACC-501' && item.id !== 'ACC-501' && !item.name.includes('تكلفة المبيعات'));
+    const totalExpenses = operatingExpenses.reduce((acc: number, e: any) => acc + (e.endingDebit - e.endingCredit), 0);
 
     const grossProfit = totalRevenue - totalCogs;
     const netProfit = grossProfit - totalExpenses;
     const margin = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
 
-    return {
+    const result = {
       revenue: totalRevenue,
       cogs: totalCogs,
       grossProfit,
       expenses: totalExpenses,
       netProfit,
       margin,
-      revenueDetails: revenues.map(r => ({ id: r.id, name: r.name, code: r.code, amount: r.endingCredit - r.endingDebit })),
-      expenseDetails: operatingExpenses.map(e => ({ id: e.id, name: e.name, code: e.code, amount: e.endingDebit - e.endingCredit }))
+      revenueDetails: revenues.map((r: any) => ({ id: r.id, name: r.name, code: r.code, amount: r.endingCredit - r.endingDebit })),
+      expenseDetails: operatingExpenses.map((e: any) => ({ id: e.id, name: e.name, code: e.code, amount: e.endingDebit - e.endingCredit }))
     };
+    reportCache.set(cacheKey, result);
+    return result;
   }
 
   /**
@@ -83,28 +103,35 @@ export class ReportEngine {
    * Generates cumulative snapshot up to the specified date.
    */
   static async getBalanceSheet(asOfDate?: string) {
+    const cacheKey = `balance-sheet-${asOfDate || 'all'}`;
+    const cached = reportCache.get<any>(cacheKey);
+    if (cached) {
+      console.log(`[ReportEngine] Returning cached Balance Sheet for key ${cacheKey}`);
+      return cached;
+    }
+
     // Balance Sheet accounts compile cumulatively from inception up to the selected date.
     const trialBalance = await this.getTrialBalance(undefined, asOfDate);
     
-    const assetsList = trialBalance.filter(item => item.type === 'ASSET');
-    const liabilitiesList = trialBalance.filter(item => item.type === 'LIABILITY');
-    const equityList = trialBalance.filter(item => item.type === 'EQUITY');
+    const assetsList = trialBalance.filter((item: any) => item.type === 'ASSET');
+    const liabilitiesList = trialBalance.filter((item: any) => item.type === 'LIABILITY');
+    const equityList = trialBalance.filter((item: any) => item.type === 'EQUITY');
 
     // Retained Earnings (Net Profit accumulated from inception up to the asOfDate)
     const plStatement = await this.getProfitLoss(undefined, asOfDate);
     const retainedEarnings = plStatement.netProfit;
 
-    const totalAssets = assetsList.reduce((acc, r) => acc + (r.endingDebit - r.endingCredit), 0);
-    const totalLiabilities = liabilitiesList.reduce((acc, r) => acc + (r.endingCredit - r.endingDebit), 0);
-    const totalEquityRaw = equityList.reduce((acc, r) => acc + (r.endingCredit - r.endingDebit), 0);
+    const totalAssets = assetsList.reduce((acc: number, r: any) => acc + (r.endingDebit - r.endingCredit), 0);
+    const totalLiabilities = liabilitiesList.reduce((acc: number, r: any) => acc + (r.endingCredit - r.endingDebit), 0);
+    const totalEquityRaw = equityList.reduce((acc: number, r: any) => acc + (r.endingCredit - r.endingDebit), 0);
     const totalEquity = totalEquityRaw + retainedEarnings;
 
-    return {
+    const result = {
       asOfDate: asOfDate || new Date().toISOString().split('T')[0],
-      assets: assetsList.map(a => ({ id: a.id, name: a.name, code: a.code, amount: a.endingDebit - a.endingCredit })),
-      liabilities: liabilitiesList.map(l => ({ id: l.id, name: l.name, code: l.code, amount: l.endingCredit - l.endingDebit })),
+      assets: assetsList.map((a: any) => ({ id: a.id, name: a.name, code: a.code, amount: a.endingDebit - a.endingCredit })),
+      liabilities: liabilitiesList.map((l: any) => ({ id: l.id, name: l.name, code: l.code, amount: l.endingCredit - l.endingDebit })),
       equity: [
-        ...equityList.map(e => ({ id: e.id, name: e.name, code: e.code, amount: e.endingCredit - e.endingDebit })),
+        ...equityList.map((e: any) => ({ id: e.id, name: e.name, code: e.code, amount: e.endingCredit - e.endingDebit })),
         { id: 'RETAINED_EARNINGS', name: 'الأرباح المحتجزة للفترة', code: 'ACC-399', amount: retainedEarnings }
       ],
       totalAssets,
@@ -112,12 +139,21 @@ export class ReportEngine {
       totalEquity,
       isBalanced: Math.abs(totalAssets - (totalLiabilities + totalEquity)) < 0.01
     };
+    reportCache.set(cacheKey, result);
+    return result;
   }
 
   /**
    * Calculates comprehensive inventory valuation matching FIFO & Weighted Average methods.
    */
   static async getInventoryValue() {
+    const cacheKey = 'inventory-valuation-summary';
+    const cached = reportCache.get<any>(cacheKey);
+    if (cached) {
+      console.log(`[ReportEngine] Returning cached Inventory Valuation for key ${cacheKey}`);
+      return cached;
+    }
+
     const products = await db.getProducts();
     let totalQuantity = 0;
     let totalCostValue = 0;
@@ -149,13 +185,15 @@ export class ReportEngine {
       };
     });
 
-    return {
+    const result = {
       totalQuantity,
       totalCostValue, // This is the inventory value on the Assets sheet
       totalSalesValue,
       totalProfitPotential: totalSalesValue - totalCostValue,
       items
     };
+    reportCache.set(cacheKey, result);
+    return result;
   }
 
   /**
@@ -163,6 +201,13 @@ export class ReportEngine {
    * Direct method scanning General Ledger CASH and BANK lines.
    */
   static async getCashFlow(start?: string, end?: string) {
+    const cacheKey = `cash-flow-${start || 'all'}-${end || 'all'}`;
+    const cached = reportCache.get<any>(cacheKey);
+    if (cached) {
+      console.log(`[ReportEngine] Returning cached Cash Flow for key ${cacheKey}`);
+      return cached;
+    }
+
     const entries = await db.journalEntries.toArray();
 
     const cashBankAccounts = ['ACC-101', 'ACC-104']; // CASH, BANK
@@ -245,7 +290,7 @@ export class ReportEngine {
     const netChange = collectionsFromCustomers + otherInflows - (paymentsToSuppliers + operatingExpensesPaid + otherOutflows);
     const endingBalance = startingBalance + netChange;
 
-    return {
+    const result = {
       startingBalance,
       collectionsFromCustomers,
       paymentsToSuppliers,
@@ -256,12 +301,21 @@ export class ReportEngine {
       endingBalance,
       flows
     };
+    reportCache.set(cacheKey, result);
+    return result;
   }
 
   /**
    * Customer Receivable Balances (أرصدة وذمم العملاء).
    */
   static async getCustomerBalances() {
+    const cacheKey = 'customer-balances-summary';
+    const cached = reportCache.get<any>(cacheKey);
+    if (cached) {
+      console.log(`[ReportEngine] Returning cached Customer Balances for key ${cacheKey}`);
+      return cached;
+    }
+
     const customers = await db.getCustomers();
     const invoices = await db.invoices.where('type').equals('SALE').toArray();
     
@@ -295,6 +349,7 @@ export class ReportEngine {
       };
     });
 
+    reportCache.set(cacheKey, customerDetails);
     return customerDetails;
   }
 
@@ -302,6 +357,13 @@ export class ReportEngine {
    * Supplier Accounts Payable Balances (أرصدة وذمم الموردين).
    */
   static async getSupplierBalances() {
+    const cacheKey = 'supplier-balances-summary';
+    const cached = reportCache.get<any>(cacheKey);
+    if (cached) {
+      console.log(`[ReportEngine] Returning cached Supplier Balances for key ${cacheKey}`);
+      return cached;
+    }
+
     const suppliers = await db.getSuppliers();
     const purchases = await db.invoices.where('type').equals('PURCHASE').toArray();
     
@@ -309,7 +371,7 @@ export class ReportEngine {
     const payments = await db.db.payments.toArray();
     const vouchers = await db.vouchers.filter(v => (v as any).type === 'PAYMENT').toArray();
 
-    return suppliers.map(sup => {
+    const result = suppliers.map(sup => {
       const supId = sup.id || sup.Supplier_ID || sup.Partner_ID;
       const supName = sup.name || sup.Supplier_Name || 'مورد مجهول';
 
@@ -331,19 +393,29 @@ export class ReportEngine {
         balance: outstandingBalance
       };
     });
+
+    reportCache.set(cacheKey, result);
+    return result;
   }
 
   /**
    * Unified Debt Aging Report (تقرير تعمير الديون - عملاء وموردين).
    */
   static async getAgingReport(type: 'CUSTOMER' | 'SUPPLIER' = 'CUSTOMER') {
+    const cacheKey = `aging-report-${type}`;
+    const cached = reportCache.get<any>(cacheKey);
+    if (cached) {
+      console.log(`[ReportEngine] Returning cached Aging Report for key ${cacheKey}`);
+      return cached;
+    }
+
     const today = new Date();
     
     if (type === 'CUSTOMER') {
       const invoices = await db.invoices.where('type').equals('SALE').toArray();
       const customers = await db.getCustomers();
 
-      return invoices
+      const result = invoices
         .filter(inv => {
           const mainTotal = Number(inv.finalTotal || 0);
           const paid = Number(inv.paidAmount || 0);
@@ -370,11 +442,14 @@ export class ReportEngine {
             bucket4: diffDays > 90 ? unpaid : 0     // 90+ days
           };
         });
+
+      reportCache.set(cacheKey, result);
+      return result;
     } else {
       const purchases = await db.invoices.where('type').equals('PURCHASE').toArray();
       const suppliers = await db.getSuppliers();
 
-      return purchases
+      const result = purchases
         .filter(p => {
           const mainTotal = Number(p.totalAmount || p.finalTotal || 0);
           const paid = Number(p.paidAmount || 0);
@@ -401,6 +476,9 @@ export class ReportEngine {
             bucket4: diffDays > 90 ? unpaid : 0
           };
         });
+
+      reportCache.set(cacheKey, result);
+      return result;
     }
   }
 
@@ -408,6 +486,13 @@ export class ReportEngine {
    * VAT Net Tax reports (التقارير الضريبية وضريبة القيمة المضافة).
    */
   static async getTaxReport(start?: string, end?: string) {
+    const cacheKey = `tax-report-${start || 'all'}-${end || 'all'}`;
+    const cached = reportCache.get<any>(cacheKey);
+    if (cached) {
+      console.log(`[ReportEngine] Returning cached Tax Report for key ${cacheKey}`);
+      return cached;
+    }
+
     const sales = await db.invoices.where('type').equals('SALE').toArray();
     const purchases = await db.invoices.where('type').equals('PURCHASE').toArray();
 
@@ -431,7 +516,7 @@ export class ReportEngine {
 
     const netTaxPayable = outputVat - inputVat;
 
-    return {
+    const result = {
       totalSalesTaxable,
       outputVat, // TAX collected on sales
       totalPurchasesTaxable,
@@ -440,6 +525,9 @@ export class ReportEngine {
       salesTaxDetails: rangeSales.map(s => ({ id: s.id, docId: (s as any).SaleID || s.id, date: s.date, taxable: s.subtotal || 0, vat: (s as any).tax || 0 })),
       purchaseTaxDetails: rangePurchases.map(p => ({ id: p.id, docId: (p as any).invoiceId || p.id, date: p.date, taxable: p.subtotal || 0, vat: (p as any).tax || 0 }))
     };
+
+    reportCache.set(cacheKey, result);
+    return result;
   }
 
   // Stubs replacement

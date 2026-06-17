@@ -263,12 +263,18 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
       if (draftPromptCheckedRef.current) return;
       draftPromptCheckedRef.current = true;
       try {
-        const hasSavedDraft = await DraftService.hasDraft('purchases');
-        if (hasSavedDraft) {
-          const draft = await DraftService.getDraft('purchases');
-          if (draft && draft.items && draft.items.length > 0) {
-            setRecoveryDraftData(draft);
-            setIsRecoveryModalOpen(true);
+        const unfinished = await DraftService.getUnfinishedInvoiceDraft('PURCHASE');
+        if (unfinished) {
+          setRecoveryDraftData(unfinished);
+          setIsRecoveryModalOpen(true);
+        } else {
+          const hasSavedDraft = await DraftService.hasDraft('purchases');
+          if (hasSavedDraft) {
+            const draft = await DraftService.getDraft('purchases');
+            if (draft && draft.items && draft.items.length > 0) {
+              setRecoveryDraftData(draft);
+              setIsRecoveryModalOpen(true);
+            }
           }
         }
       } catch (err) {
@@ -280,18 +286,26 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
 
   const restoreDraft = useCallback(async () => {
     if (recoveryDraftData) {
-      const data = recoveryDraftData.payload || recoveryDraftData;
+      const data = recoveryDraftData.totals?.header ? recoveryDraftData.totals : (recoveryDraftData.payload || recoveryDraftData);
       if (data) {
         if (data.header) {
           setHeader(data.header);
         }
-        if (data.items) {
+        if (recoveryDraftData.items) {
+          setItems(recoveryDraftData.items);
+        } else if (data.items) {
           setItems(data.items);
         }
-        if (data.totals && data.totals.adjData) {
+        if (data.adjData) {
+          setAdjData(data.adjData);
+        } else if (data.totals?.adjData) {
           setAdjData(data.totals.adjData);
+        } else if (recoveryDraftData.totals?.adjData) {
+          setAdjData(recoveryDraftData.totals.adjData);
         }
-        if (data.partner?.partnerName) {
+        if (recoveryDraftData.partner?.partnerName) {
+          setSupplierSearchTerm(recoveryDraftData.partner.partnerName);
+        } else if (data.partner?.partnerName) {
           setSupplierSearchTerm(data.partner.partnerName);
         }
       }
@@ -303,7 +317,14 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
 
   const discardDraft = useCallback(async () => {
     try {
+      if (recoveryDraftData?.draftId) {
+        await DraftService.clearInvoiceDraft(recoveryDraftData.draftId);
+      }
       await DraftService.clearDraft('purchases');
+      const unfinished = await DraftService.getUnfinishedInvoiceDraft('PURCHASE');
+      if (unfinished?.draftId) {
+        await DraftService.clearInvoiceDraft(unfinished.draftId);
+      }
       addToast("تم حذف مسودة المشتريات المتروكة وبدء قيد جديد", "info");
       resetInvoiceState();
     } catch (e) {
@@ -312,7 +333,7 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
       setIsRecoveryModalOpen(false);
       setRecoveryDraftData(null);
     }
-  }, [addToast, resetInvoiceState]);
+  }, [addToast, resetInvoiceState, recoveryDraftData]);
 
   const handleSupplierSearch = useCallback((val: string) => {
     setSupplierSearchTerm(val);
@@ -552,30 +573,71 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
     return subtotal - discount + adjData.otherFees + adjData.tax;
   }, [items, adjData]);
 
-  // 2. State Auto-Saver Effect: saves draft on items, header or adjustments changes
+  // 2. Smart Auto Save Draft Engine (Task 5 / Phase 5.2.5-C)
+  // Backup Interval: Auto-save draft every 5 seconds
   useEffect(() => {
-    if (editingInvoiceId) return; // Don't auto-save if editing an existing invoice
-    if (items.length === 0 && !header.supplier_id) {
-      // Clean state: ignore
-      return;
-    }
+    if (editingInvoiceId) return;
 
-    const saverTimer = setTimeout(async () => {
+    const interval = setInterval(async () => {
+      if (items.length === 0 && !header.supplier_id && !header.notes) {
+        return;
+      }
       try {
         const partner = suppliers.find(s => s.id === header.supplier_id);
         const partnerName = partner ? partner.Supplier_Name : '';
-        await DraftService.saveDraft('purchases', 'Purchase Invoice', {
+        await DraftService.saveInvoiceDraft('purchases_draft_current', 'PURCHASE', items, {
+          adjData,
+          subtotal: vTotalSum,
           header,
-          items,
-          totals: { adjData, subtotal: vTotalSum },
           partner: { partnerName }
         });
       } catch (e) {
-        console.error("Background auto-save draft failed:", e);
+        console.error("Interval auto-save failed:", e);
       }
-    }, 10000); // Debounced 10s auto-saver for state changes
+    }, 5000);
 
-    return () => clearTimeout(saverTimer);
+    return () => clearInterval(interval);
+  }, [items, header, adjData, vTotalSum, editingInvoiceId, suppliers]);
+
+  // Immediate save on specific changes: Add Item, Remove Item, Change Qty/Price, Change Supplier, Change Notes
+  const prevItemsRef = useRef<any[]>(items);
+  const prevSupplierIdRef = useRef<string>(header.supplier_id);
+  const prevNotesRef = useRef<string>(header.notes);
+  const prevAdjDataRef = useRef<any>(adjData);
+
+  useEffect(() => {
+    if (editingInvoiceId) return;
+    if (items.length === 0 && !header.supplier_id && !header.notes) {
+      return;
+    }
+
+    const itemsChanged = JSON.stringify(items) !== JSON.stringify(prevItemsRef.current);
+    const supplierChanged = header.supplier_id !== prevSupplierIdRef.current;
+    const notesChanged = header.notes !== prevNotesRef.current;
+    const adjChanged = JSON.stringify(adjData) !== JSON.stringify(prevAdjDataRef.current);
+
+    if (itemsChanged || supplierChanged || notesChanged || adjChanged) {
+      prevItemsRef.current = items;
+      prevSupplierIdRef.current = header.supplier_id;
+      prevNotesRef.current = header.notes;
+      prevAdjDataRef.current = adjData;
+
+      const triggerImmediateSave = async () => {
+        try {
+          const partner = suppliers.find(s => s.id === header.supplier_id);
+          const partnerName = partner ? partner.Supplier_Name : '';
+          await DraftService.saveInvoiceDraft('purchases_draft_current', 'PURCHASE', items, {
+            adjData,
+            subtotal: vTotalSum,
+            header,
+            partner: { partnerName }
+          });
+        } catch (e) {
+          console.error("Immediate change-triggered auto-save failed:", e);
+        }
+      };
+      triggerImmediateSave().catch(e => console.error("Immediate save error:", e));
+    }
   }, [items, header, adjData, vTotalSum, editingInvoiceId, suppliers]);
 
   const selectProduct = useCallback((p: Product) => {
@@ -753,6 +815,7 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
         // Capture data for success modal 2.0 (Task 4) and dispose of draft (Task 5)
         const supplier = suppliers.find(s => s.id === header.supplier_id);
         const supplierName = supplier ? supplier.Supplier_Name : 'مورد غير محدد';
+        await DraftService.clearInvoiceDraft('purchases_draft_current');
         await DraftService.clearDraft('purchases');
 
         setSaveSuccessData({

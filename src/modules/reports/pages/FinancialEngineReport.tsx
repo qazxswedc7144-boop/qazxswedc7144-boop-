@@ -26,7 +26,7 @@ type TabType =
   | 'tax-reports';
 
 export default function FinancialEngineReport({ onNavigate }: FinancialEngineReportProps) {
-  const { currency, addToast } = useUI();
+  const { currency, addToast, version } = useUI();
   const formatNum = (val: any) => {
     if (val === undefined || val === null || isNaN(Number(val))) return "0";
     return Number(val).toLocaleString();
@@ -90,7 +90,7 @@ export default function FinancialEngineReport({ onNavigate }: FinancialEngineRep
 
   useEffect(() => {
     fetchReportData();
-  }, [activeTab, startDate, endDate]);
+  }, [activeTab, startDate, endDate, version]);
 
   // Handle excel (CSV UTF-8 BOM) export
   const handleExportExcel = () => {

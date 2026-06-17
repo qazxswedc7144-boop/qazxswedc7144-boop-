@@ -136,7 +136,7 @@ export const accountingService = {
   getTopProfitableItems: async (limit: number = 100) => {
     const profits = await ReportEngine.getItemProfit();
     return profits
-      .sort((a, b) => b.profitPotential - a.profitPotential)
+      .sort((a: any, b: any) => b.profitPotential - a.profitPotential)
       .slice(0, limit);
   },
 

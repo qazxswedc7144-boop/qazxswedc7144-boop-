@@ -15,6 +15,9 @@ import {
 } from '@/types';
 import { CurrencyService } from '@/services/localization/CurrencyService';
 import { NotificationService } from '@/context/NotificationContext';
+import { MutationQueue } from '../../packages/sync-engine/src/queue/mutationQueue';
+import { SyncWorker } from '../../packages/sync-engine/src/workers/sync.worker';
+import { DraftService } from '@/services/system/DraftService';
 // Removed unused db import
 
 interface AppState {
@@ -154,6 +157,45 @@ export const useAppStore = create<AppState>()(
             const isDraft = (invoice.options as any)?.invoiceStatus?.includes('DRAFT');
             if (!isDraft) {
               get().addToast(`تم ترحيل ${invoice.type === 'SALE' ? 'المبيعة' : 'المشتريات'} بنجاح ✅`, 'success');
+
+              // Enqueue the posted invoice transaction for offline-first replication
+              try {
+                const partnerId = invoice.type === 'SALE' ? invoice.payload.customerId : invoice.payload.supplierId;
+                const partnerType = invoice.type === 'SALE' ? 'CUSTOMER' : 'SUPPLIER';
+
+                await MutationQueue.getInstance().enqueue({
+                  type: 'CREATE_INVOICE',
+                  payload: {
+                    id: result.refId || invoice.payload.id || `TX_${invoice.type}_${Date.now()}`,
+                    invoiceNumber: invoice.payload.invoiceId || invoice.payload.id || `INV_${invoice.type}_${Date.now()}`,
+                    date: invoice.payload.date || new Date().toISOString(),
+                    partnerId: partnerId || '',
+                    partnerType: partnerType,
+                    type: invoice.type,
+                    paymentStatus: (invoice.options as any)?.paymentStatus || ((invoice.options as any)?.isCash ? 'Paid' : 'Unpaid'),
+                    documentStatus: 'POSTED',
+                    items: invoice.payload.items,
+                    total: invoice.payload.total,
+                    notes: invoice.payload.notes || ''
+                  },
+                  priority: 'HIGH',
+                  idempotencyKey: (invoice.payload as any).transactionUuid || `IDEM_${invoice.type}_${result.refId || Date.now()}`
+                });
+
+                // Clear temporary auto-save drafts upon successful queueing/posting
+                const draftId = invoice.type === 'SALE' ? 'sales_draft_current' : 'purchases_draft_current';
+                await DraftService.clearInvoiceDraft(draftId).catch(err => console.log("Draft clean error:", err));
+
+                // Trigger immediate sync if Online
+                if (navigator.onLine) {
+                  SyncWorker.getInstance().triggerSync();
+                } else {
+                  // Notify user about pending sync
+                  get().addToast("تم تشغيل الوضع غير المتصل. حُفظ المستند محلياً وسيُرحل تلقائياً فور عودة الإنترنت.", "warning");
+                }
+              } catch (enqueueErr: any) {
+                console.error("[Store] Failed to enqueue invoice mutation:", enqueueErr);
+              }
             }
             eventBus.emit(EVENTS.SYNC_REQUIRED, { type: invoice.type, payload: invoice.payload });
           }

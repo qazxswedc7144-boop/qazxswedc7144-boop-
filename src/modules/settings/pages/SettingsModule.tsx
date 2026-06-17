@@ -665,6 +665,21 @@ const SettingsModule: React.FC<{ onNavigate?: (view: any) => void }> = ({ onNavi
                    عرض السجل
                 </Button>
              </div>
+
+             <div className="flex items-center justify-between p-4 bg-indigo-950 border border-indigo-900 rounded-3xl text-white mt-4">
+                <div className="flex items-center gap-3">
+                   <div className="w-10 h-10 bg-indigo-500/20 text-indigo-400 rounded-xl flex items-center justify-center">
+                      <Shield size={20} />
+                   </div>
+                   <div>
+                      <p className="text-xs font-black text-indigo-200">مدقق ومصفوفة الأمان ومحك الاختراق (Phase 5.2.7)</p>
+                      <p className="text-[9px] text-slate-300 font-bold">مصفوفة الصلاحيات والـ RBAC وحماية الحدود للـ 8 أدوار</p>
+                   </div>
+                </div>
+                <Button variant="neutral" className="text-indigo-300 hover:text-white hover:bg-indigo-300/10 h-10 !border-white/10 !bg-indigo-900/10" onClick={() => onNavigate && onNavigate('security-audit')}>
+                   تشغيل المدقق
+                </Button>
+             </div>
           </div>
         </Section>
 

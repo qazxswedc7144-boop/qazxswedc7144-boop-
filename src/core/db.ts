@@ -104,6 +104,9 @@ export class PharmaFlowDB extends Dexie {
   system_errors!: Table<any>;
   drafts!: Table<any>;
 
+  // Phase 5.2.5-C - Smart Auto Save Draft Engine
+  draft_invoices!: Table<any>;
+
   // Legacy support for code that uses db.db
   get db(): PharmaFlowDB { return this; }
 
@@ -211,6 +214,11 @@ export class PharmaFlowDB extends Dexie {
       system_errors: '&id, errorId, timestamp, severity, moduleName, screenName',
       drafts: '&id, moduleName, updatedAt',
       invoices: '&id, invoice_number, date, Date, partner_id, partnerId, type, payment_status, financial_status, document_status, is_synced, createdAt, transactionUuid'
+    });
+
+    // Version 19: Phase 5.2.5-C - Smart Auto Save Draft Engine
+    this.version(19).stores({
+      draft_invoices: '&draftId, invoiceType, updatedAt'
     });
 
     // Handle structural integrity and recovery
@@ -406,6 +414,9 @@ export class PharmaFlowDB extends Dexie {
       isReturn: isReturn,
       notes: `Ref: ${refId}`,
       transactionUuid: transactionUuid,
+      is_synced: (typeof navigator !== 'undefined' && navigator.onLine) ? 1 : 0,
+      isSynced: (typeof navigator !== 'undefined' && navigator.onLine),
+      syncStatus: (typeof navigator !== 'undefined' && navigator.onLine) ? 'SYNCED' : 'PENDING',
       updatedAt: new Date().toISOString()
     };
     await this.invoices.put(sale);
@@ -436,6 +447,9 @@ export class PharmaFlowDB extends Dexie {
       isReturn: isReturn,
       notes: `Ref: ${refId}`,
       transactionUuid: transactionUuid,
+      is_synced: (typeof navigator !== 'undefined' && navigator.onLine) ? 1 : 0,
+      isSynced: (typeof navigator !== 'undefined' && navigator.onLine),
+      syncStatus: (typeof navigator !== 'undefined' && navigator.onLine) ? 'SYNCED' : 'PENDING',
       updatedAt: new Date().toISOString()
     };
     await this.invoices.put(purchase);
@@ -830,7 +844,9 @@ export const dbProxy = new Proxy(dbInstance, {
           'medicinebatch': 'medicineBatches',
           'medicinebatches': 'medicineBatches',
           'voucherinvoicelink': 'vouchers',
-          'voucher_invoice_links': 'vouchers'
+          'voucher_invoice_links': 'vouchers',
+          'draftinvoices': 'draft_invoices',
+          'draft_invoices': 'draft_in_voices'
         };
         const propStr = prop.toLowerCase().replace(/_/g, '');
         const mappedName = mappings[propStr] || prop;

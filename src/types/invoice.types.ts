@@ -40,6 +40,7 @@ export interface UnifiedInvoice extends SyncableEntity {
   notes?: string;
   branchId?: string;
   transactionUuid?: string;
+  is_synced?: number;
 
   // Compatibility fields
   SaleID?: string;

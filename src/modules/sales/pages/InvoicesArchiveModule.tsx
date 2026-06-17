@@ -12,7 +12,7 @@ import { db } from '@/core/db';
 import { transactionOrchestrator } from '@/services/transactions/transactionOrchestrator';
 import { 
   Search, Edit3, ArrowRight, Tag, History, Filter, Fingerprint,
-  Plus, Banknote, Clock, Lock, Ban
+  Plus, Banknote, Clock, Lock, Ban, Cloud, RefreshCw
 } from 'lucide-react';
 
 interface InvoicesArchiveModuleProps {
@@ -44,6 +44,24 @@ const InvoicesArchiveModule: React.FC<InvoicesArchiveModuleProps> = ({ onNavigat
 
   const [page, setPage] = useState(1);
   const pageSize = 10;
+
+  const getSyncBadge = (inv: any) => {
+    const isSynced = inv.is_synced === 1 || inv.isSynced === true || inv.syncStatus === 'SYNCED';
+    if (isSynced) {
+      return (
+        <span className="flex items-center gap-1 text-[9px] font-[#2E7D32] bg-emerald-50 px-2 py-1 rounded-full border border-emerald-100">
+          <Cloud size={10} className="text-[#388E3C]" />
+          <span className="font-bold">مُتزامن</span>
+        </span>
+      );
+    }
+    return (
+      <span className="flex items-center gap-1 text-[9px] font-[#D84315] bg-amber-50 px-2 py-1 rounded-full border border-amber-100 animate-pulse">
+        <RefreshCw size={10} className="animate-spin text-[#E64A19]" />
+        <span className="font-bold">معلق المزامنة</span>
+      </span>
+    );
+  };
 
   useEffect(() => {
     if (initialFilter) setFilterType(initialFilter);
@@ -382,7 +400,10 @@ const InvoicesArchiveModule: React.FC<InvoicesArchiveModuleProps> = ({ onNavigat
                     <p className="text-[9px] font-bold text-slate-400">{new Date(invDate).toLocaleDateString('ar-SA')}</p>
                   </div>
                 </div>
-                {getPaymentStatusBadge(inv, total)}
+                <div className="flex flex-col items-end gap-1">
+                  {getPaymentStatusBadge(inv, total)}
+                  {getSyncBadge(inv)}
+                </div>
               </div>
 
               <div className="space-y-3">
@@ -449,7 +470,10 @@ const InvoicesArchiveModule: React.FC<InvoicesArchiveModuleProps> = ({ onNavigat
                     <td className="px-8 py-5 font-bold text-slate-400">{new Date(invDate).toLocaleDateString('ar-SA')}</td>
                     <td className="px-8 py-5 font-black text-slate-600">{partner}</td>
                     <td className="px-8 py-5 text-center">
-                       {getPaymentStatusBadge(inv, total)}
+                       <div className="flex flex-col items-center gap-1">
+                          {getPaymentStatusBadge(inv, total)}
+                          {getSyncBadge(inv)}
+                       </div>
                     </td>
                     <td className="px-8 py-5 text-center">
                        <div className="flex flex-col items-center">
