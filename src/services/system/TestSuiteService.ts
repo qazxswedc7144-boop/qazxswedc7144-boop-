@@ -5,6 +5,10 @@ import { IntegritySweepService } from '@/services/integrity/IntegritySweepServic
 import { BackupService } from '@/services/backupService';
 import { FinancialEngine } from '@/services/transactions/financialEngine';
 import { logger } from '@/services/loggerService';
+import { SyncQueueRepository } from '@/modules/sync/sync.queue';
+import { SystemOrchestrator } from '@/services/system/SystemOrchestrator';
+import { ProjectionEventBus } from '@/services/system/ProjectionEventBus';
+import { WorkerClient } from '@/modules/workers/worker.client';
 
 export class TestSuiteService {
   
@@ -164,6 +168,38 @@ export class TestSuiteService {
     } catch (auditErr: any) {
       console.error("[TestSuite] Error running accounting atomicity audit:", auditErr);
       assert(false, "تدقيق ذرية القيود والمخزون: فشل التشغيل الخارجي للاختبار");
+    }
+
+    // 4. Concurrency Stress Tests for Local Sync Queue (PHASE 5.2.7-B: SAVE QUEUE HARDENING)
+    try {
+      await this.runSyncQueueConcurrencyStressTests(assert);
+    } catch (syncErr: any) {
+      console.error("[TestSuite] Error running sync queue concurrency stress tests:", syncErr);
+      assert(false, "تدقيق حماية طابور المزامنة من التكرار المتزامن: فشل تشغيل الاختبار");
+    }
+
+    // 5. Invoice Posting Idempotency & Crash Tests (PHASE 5.2.7-C)
+    try {
+      await this.runInvoicePostingIdempotencyTests(assert);
+    } catch (idemErr: any) {
+      console.error("[TestSuite] Error running invoice posting idempotency tests:", idemErr);
+      assert(false, "تدقيق حماية فواتير المبيعات من التكرار والانهيارات: فشل تشغيل الاختبار");
+    }
+
+    // 6. Event Driven Report Projections (PHASE 5.2.7-D)
+    try {
+      await this.runReportProjectionTests(assert);
+    } catch (projErr: any) {
+      console.error("[TestSuite] Error running report projection tests:", projErr);
+      assert(false, "تدقيق توافق التقارير المبني على الأحداث: فشل تشغيل الاختبار");
+    }
+
+    // 7. FEFO Expiry Enforcement tests (PHASE 5.2.7-E)
+    try {
+      await this.runFEFOExpiryEnforcementTests(assert);
+    } catch (fefoErr: any) {
+      console.error("[TestSuite] Error running FEFO expiry enforcement tests:", fefoErr);
+      assert(false, "تدقيق فرض انتهاء المخزون بأسلوب الصادر أولاً لمنتهى الصلاحية أولاً (FEFO): فشل تشغيل الاختبار");
     }
 
     return { passed, failed, reports };
@@ -442,6 +478,106 @@ export class TestSuiteService {
     await cleanUp();
   }
 
+  static async runSyncQueueConcurrencyStressTests(assert: (condition: boolean, name: string) => void) {
+    const queueRepo = new SyncQueueRepository(db);
+
+    // Test Case 1: 10 parallel calls
+    {
+      const idempotencyKey = `stress-10-${Date.now()}-${Math.random()}`;
+      const payload = {
+        mutationId: `MUT-10-${Math.random()}`,
+        entityType: 'INVOICE' as const,
+        operationType: 'CREATE' as const,
+        payload: { text: '10-stress' },
+        idempotencyKey,
+        deviceId: 'dev-1',
+        sessionId: 'sess-1',
+        logicalTimestamp: 1,
+        actorId: 'user-1',
+        correlationId: 'corr-1'
+      };
+
+      const promises = Array.from({ length: 10 }).map(() => queueRepo.enqueue(payload));
+      const results = await Promise.allSettled(promises);
+
+      const fulfilledValues = results
+        .filter((r): r is PromiseFulfilledResult<number> => r.status === 'fulfilled')
+        .map(r => r.value);
+
+      const count = await db.syncQueue.where('idempotencyKey').equals(idempotencyKey).count();
+      const uniqueIds = Array.from(new Set(fulfilledValues));
+
+      assert(
+        count === 1 && uniqueIds.length === 1 && fulfilledValues.length === 10 && uniqueIds[0] !== undefined,
+        `طابور المزامنة - 10 طلبات متزامنة: تم إدراج سجل واحد فقط وبإجابة مستقرة موحدة (الإجابات الناجحة: ${fulfilledValues.length}, السجلات بالداتابيز: ${count})`
+      );
+    }
+
+    // Test Case 2: 50 parallel calls
+    {
+      const idempotencyKey = `stress-50-${Date.now()}-${Math.random()}`;
+      const payload = {
+        mutationId: `MUT-50-${Math.random()}`,
+        entityType: 'INVOICE' as const,
+        operationType: 'UPDATE' as const,
+        payload: { text: '50-stress' },
+        idempotencyKey,
+        deviceId: 'dev-1',
+        sessionId: 'sess-1',
+        logicalTimestamp: 1,
+        actorId: 'user-1',
+        correlationId: 'corr-1'
+      };
+
+      const promises = Array.from({ length: 50 }).map(() => queueRepo.enqueue(payload));
+      const results = await Promise.allSettled(promises);
+
+      const fulfilledValues = results
+        .filter((r): r is PromiseFulfilledResult<number> => r.status === 'fulfilled')
+        .map(r => r.value);
+
+      const count = await db.syncQueue.where('idempotencyKey').equals(idempotencyKey).count();
+      const uniqueIds = Array.from(new Set(fulfilledValues));
+
+      assert(
+        count === 1 && uniqueIds.length === 1 && fulfilledValues.length === 50 && uniqueIds[0] !== undefined,
+        `طابور المزامنة - 50 طلب متزامن: تم إدراج سجل واحد فقط وبإجابة مستقرة موحدة (الإجابات الناجحة: ${fulfilledValues.length}, السجلات بالداتابيز: ${count})`
+      );
+    }
+
+    // Test Case 3: 100 parallel calls
+    {
+      const idempotencyKey = `stress-100-${Date.now()}-${Math.random()}`;
+      const payload = {
+        mutationId: `MUT-100-${Math.random()}`,
+        entityType: 'INVOICE' as const,
+        operationType: 'DELETE' as const,
+        payload: { text: '100-stress' },
+        idempotencyKey,
+        deviceId: 'dev-1',
+        sessionId: 'sess-1',
+        logicalTimestamp: 1,
+        actorId: 'user-1',
+        correlationId: 'corr-1'
+      };
+
+      const promises = Array.from({ length: 100 }).map(() => queueRepo.enqueue(payload));
+      const results = await Promise.allSettled(promises);
+
+      const fulfilledValues = results
+        .filter((r): r is PromiseFulfilledResult<number> => r.status === 'fulfilled')
+        .map(r => r.value);
+
+      const count = await db.syncQueue.where('idempotencyKey').equals(idempotencyKey).count();
+      const uniqueIds = Array.from(new Set(fulfilledValues));
+
+      assert(
+        count === 1 && uniqueIds.length === 1 && fulfilledValues.length === 100 && uniqueIds[0] !== undefined,
+        `طابور المزامنة - 100 طلب متزامن: تم إدراج سجل واحد فقط وبإجابة مستقرة موحدة (الإجابات الناجحة: ${fulfilledValues.length}, السجلات بالداتابيز: ${count})`
+      );
+    }
+  }
+
   static async runFullIntegrityTest() {
     console.log("🚀 Starting Full System Integrity Test...");
     
@@ -594,6 +730,362 @@ export class TestSuiteService {
       console.log("✅ AI AUDIT STRESS TEST COMPLETED. CHECK ALERTS CENTER.");
     } catch (error) {
       console.error("❌ AI AUDIT STRESS TEST CRASHED:", error);
+    }
+  }
+
+  static async runInvoicePostingIdempotencyTests(assert: (condition: boolean, name: string) => void) {
+    console.log("🚀 Running Invoice Posting Idempotency & Crash Simulation Tests...");
+
+    // Test Case 1: Crash before posting
+    {
+      const key1 = `crash-pre-post-${Date.now()}`;
+      await db.idempotencyKeys.add({
+        id: key1,
+        status: 'PROCESSING',
+        createdAt: new Date().toISOString()
+      });
+
+      // Call startup recovery
+      await SystemOrchestrator.recoverIdempotencyKeys();
+
+      // Since there is no invoice with key1 in the DB, it should be deleted
+      const rec = await db.idempotencyKeys.get(key1);
+      assert(
+        !rec,
+        `حماية الانهيار قبل الترحيل: بعد إعادة تشغيل النظام، يتم مسح السجلات العالقة بحالة المعالجة التي لم تحفظ بالكامل (الرمز: ${key1})`
+      );
+    }
+
+    // Test Case 2: Crash after stock update
+    {
+      const key2 = `crash-after-stock-${Date.now()}`;
+      await db.idempotencyKeys.add({
+        id: key2,
+        status: 'PROCESSING',
+        createdAt: new Date().toISOString()
+      });
+
+      // Run recovery
+      await SystemOrchestrator.recoverIdempotencyKeys();
+
+      const rec = await db.idempotencyKeys.get(key2);
+      assert(
+        !rec,
+        `حماية الانهيار بعد تحديث المخزون: تصفير السجل في حالة الانهيار الأوسط لتمكين الاسترداد الآمن وإعادة المحاولة (الرمز: ${key2})`
+      );
+    }
+
+    // Test Case 3: Crash after accounting update (or before UUID registration)
+    {
+      const key3 = `crash-after-accounting-${Date.now()}`;
+      const invoiceId = `TEST-INV-${Date.now()}`;
+
+      // Seed a dummy sales invoice as POSTED
+      await db.db.sales.add({
+        id: invoiceId,
+        SaleID: invoiceId,
+        customerId: 'CUST-TEST',
+        items: [],
+        finalTotal: 100,
+        InvoiceStatus: 'POSTED',
+        transactionUuid: key3,
+        date: new Date().toISOString()
+      } as any);
+
+      // Now add target stuck processing key
+      await db.idempotencyKeys.add({
+        id: key3,
+        status: 'PROCESSING',
+        createdAt: new Date().toISOString()
+      });
+
+      // Run recovery
+      await SystemOrchestrator.recoverIdempotencyKeys();
+
+      // Since invoice with key3 is successfully POSTED in local DB, recovery should promote key status to COMPLETED
+      const rec = await db.idempotencyKeys.get(key3);
+      assert(
+        rec && rec.status === 'COMPLETED',
+        `حماية الانهيار بعد إتمام الترحيل والقيود المحاسبية وقبل تسجيل الرمز: النظام يرتقي بالسجل إلى مكتمل "COMPLETED" تلقائياً عند Startup`
+      );
+
+      // Clean up
+      await db.db.sales.delete(invoiceId);
+    }
+
+    // Test Case 4: App restart replay attempt
+    {
+      const key4 = `replay-test-${Date.now()}`;
+      const firstInvoiceId = `REPLAY-INV-${Date.now()}`;
+
+      // Insert COMPLETED record and mock the POSTED invoice
+      await db.db.sales.add({
+        id: firstInvoiceId,
+        SaleID: firstInvoiceId,
+        customerId: 'CUST-REPLAY',
+        items: [],
+        finalTotal: 50,
+        InvoiceStatus: 'POSTED',
+        transactionUuid: key4,
+        date: new Date().toISOString()
+      } as any);
+
+      await db.idempotencyKeys.add({
+        id: key4,
+        status: 'COMPLETED',
+        createdAt: new Date().toISOString(),
+        completedAt: new Date().toISOString()
+      });
+
+      // Call processInvoice with replay, it should abort immediately and return the existing invoice refId
+      const res = await SystemOrchestrator.processInvoice({
+        type: 'SALE',
+        payload: {
+          items: [],
+          total: 50,
+          transactionUuid: key4
+        } as any
+      });
+
+      assert(
+        res.success && res.refId === firstInvoiceId,
+        `منع تكرار الفاتورة في حالة إعادة المحاولة: عند استدعاء إرسال مكرر برمز منتهٍ، ينهي النظام العملية فوراً وبسلام مع إرجاع معرف الفاتورة الحالية`
+      );
+
+      // Clean up
+      await db.db.sales.delete(firstInvoiceId);
+      await db.idempotencyKeys.delete(key4);
+    }
+  }
+
+  static async runReportProjectionTests(assert: (condition: boolean, name: string) => void) {
+    console.log("🚀 Running Event Driven Report Projection Tests...");
+
+    // Seed/Clear projection events to have a predictable environment
+    await db.projectionEvents.clear();
+    await db.projectionCheckpoints.clear();
+
+    // 1. Publish test events to the projection bus
+    await ProjectionEventBus.publish('INVOICE_POSTED', 'INV-P-001', { total: 150 });
+    await ProjectionEventBus.publish('INVOICE_POSTED', 'INV-P-002', { total: 300 });
+
+    // Allow async process loop to run
+    await new Promise(resolve => setTimeout(resolve, 300));
+
+    // Compile health stats
+    let health = await ProjectionEventBus.getHealth();
+    
+    assert(
+      health.newestSequence === 2,
+      `تسجيل الأحداث في المخزن: تم حفظ حدثين بنجاح بنهاية التسلسل المرجعي (المتوقع: 2، الحالي: ${health.newestSequence})`
+    );
+
+    assert(
+      health.checkpointSequence === 2,
+      `تحديث نقاط المرجعية (Checkpoints): تم معالجة وتمرير نقطة التدقيق والمطابقة حتى التسلسل رقم 2 (الحالي: ${health.checkpointSequence})`
+    );
+
+    assert(
+      health.projectionLag === 0 && health.projectionQueueDepth === 0,
+      `سلامة تدفق الأحداث (Projection Lag & Queue Depth): لا يوجد تراكم أو تأخير في معالجة الأحداث (العمق: ${health.projectionQueueDepth})`
+    );
+
+    // 2. Add a failing projection event to simulate failure health check
+    await db.projectionEvents.add({
+      eventId: "TEST-FAIL-001",
+      eventType: "INVOICE_POSTED",
+      aggregateId: "INV-F-999",
+      payload: {},
+      createdAt: new Date().toISOString(),
+      status: 'FAILED',
+      errorMessage: 'Simulated connection failure during rebuild'
+    });
+
+    health = await ProjectionEventBus.getHealth();
+
+    assert(
+      health.projectionFailure === true && health.failedEventsCount === 1,
+      `مؤشرات صحة المعالجة (Projection Failure Health Check): النظام يكشف فوراً الأحداث المتعثرة ويوثق الخطأ (التفاصيل: ${health.lastError})`
+    );
+
+    // Clean simulated failure event
+    await db.projectionEvents.where('eventId').equals("TEST-FAIL-001").delete();
+
+    // 3. Rollback & Replay test
+    await ProjectionEventBus.rollbackAndReplay();
+    
+    // Allow async replay loop to run
+    await new Promise(resolve => setTimeout(resolve, 300));
+    
+    health = await ProjectionEventBus.getHealth();
+
+    assert(
+      health.checkpointSequence === 2 && health.projectionLag === 0,
+      `إعادة البناء والتاريخية (Replay & Rebuild Event Stream): تم تصفير نقاط المرجعية من الصفر وإعادة معالجة دفق الأحداث بالكامل بسلام`
+    );
+  }
+
+  static async runFEFOExpiryEnforcementTests(assert: (condition: boolean, name: string) => void) {
+    console.log("🚀 Running FEFO Expiry Enforcement Tests...");
+
+    // Test Case 1: Single expired batch
+    try {
+      const invoice = {
+        id: "INV-FEFO-1",
+        type: "SALE",
+        items: [{ product_id: "P-FEFO-TEST", qty: 5, price: 10 }]
+      };
+      const batches = [
+        {
+          id: "B1",
+          productId: "P-FEFO-TEST",
+          batchNumber: "B001",
+          quantity: 10,
+          expiryDate: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(), // Expired 1 day ago
+          createdAt: new Date().toISOString(),
+          unitCost: 5
+        }
+      ];
+
+      await WorkerClient.runFEFO(invoice, batches);
+      assert(false, "FEFO: Single expired batch - Should have thrown NO_VALID_BATCH_AVAILABLE but completed.");
+    } catch (err: any) {
+      assert(
+        err.message.includes("NO_VALID_BATCH_AVAILABLE"),
+        `FEFO: Single expired batch - Correctly threw 'NO_VALID_BATCH_AVAILABLE' (Error: ${err.message})`
+      );
+    }
+
+    // Test Case 2: Mixed expired and valid batches
+    try {
+      const invoice = {
+        id: "INV-FEFO-2",
+        type: "SALE",
+        items: [{ product_id: "P-FEFO-TEST", qty: 5, price: 10 }]
+      };
+      const batches = [
+        {
+          id: "B-EXPIRED",
+          productId: "P-FEFO-TEST",
+          batchNumber: "B-EXP",
+          quantity: 10,
+          expiryDate: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(), // Expired 1 day ago
+          createdAt: new Date().toISOString(),
+          unitCost: 5
+        },
+        {
+          id: "B-VALID",
+          productId: "P-FEFO-TEST",
+          batchNumber: "B-VAL",
+          quantity: 10,
+          expiryDate: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString(), // Valid
+          createdAt: new Date().toISOString(),
+          unitCost: 5
+        }
+      ];
+
+      const res = await WorkerClient.runFEFO(invoice, batches);
+      const expiredBatch = res.updatedBatches.find(b => b.id === "B-EXPIRED");
+      const validBatch = res.updatedBatches.find(b => b.id === "B-VALID");
+
+      assert(
+        expiredBatch === undefined && validBatch !== undefined && validBatch.quantity === 5,
+        "FEFO: Mixed expired and valid - Expired batch is ignored, and stock is successfully allocated from the valid batch"
+      );
+    } catch (err: any) {
+      assert(false, `FEFO: Mixed expired and valid failed with error: ${err.message}`);
+    }
+
+    // Test Case 3: All batches expired
+    try {
+      const invoice = {
+        id: "INV-FEFO-3",
+        type: "SALE",
+        items: [{ product_id: "P-FEFO-TEST", qty: 5, price: 10 }]
+      };
+      const batches = [
+        {
+          id: "B-EXP1",
+          productId: "P-FEFO-TEST",
+          batchNumber: "B-EXP1",
+          quantity: 4,
+          expiryDate: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+          createdAt: new Date().toISOString(),
+          unitCost: 5
+        },
+        {
+          id: "B-EXP2",
+          productId: "P-FEFO-TEST",
+          batchNumber: "B-EXP2",
+          quantity: 3,
+          expiryDate: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+          createdAt: new Date().toISOString(),
+          unitCost: 5
+        }
+      ];
+
+      await WorkerClient.runFEFO(invoice, batches);
+      assert(false, "FEFO: All batches expired - Should have thrown NO_VALID_BATCH_AVAILABLE but completed.");
+    } catch (err: any) {
+      assert(
+        err.message.includes("NO_VALID_BATCH_AVAILABLE"),
+        `FEFO: All batches expired - Correctly threw 'NO_VALID_BATCH_AVAILABLE' when multiple expired batches exist`
+      );
+    }
+
+    // Test Case 4: Near-expiry FEFO ordering
+    try {
+      const invoice = {
+        id: "INV-FEFO-4",
+        type: "SALE",
+        items: [{ product_id: "P-FEFO-TEST", qty: 8, price: 10 }]
+      };
+      const batches = [
+        {
+          id: "B-EXP-LATER",
+          productId: "P-FEFO-TEST",
+          batchNumber: "B-LATER",
+          quantity: 10,
+          expiryDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // Expires in 30 days
+          createdAt: new Date().toISOString(),
+          unitCost: 5
+        },
+        {
+          id: "B-EXP-NEAR0",
+          productId: "P-FEFO-TEST",
+          batchNumber: "B-NEAR0",
+          quantity: 5,
+          expiryDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString(), // Expires in 5 days
+          createdAt: new Date().toISOString(),
+          unitCost: 5
+        },
+        {
+          id: "B-EXP-NEAR1",
+          productId: "P-FEFO-TEST",
+          batchNumber: "B-NEAR1",
+          quantity: 5,
+          expiryDate: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString(), // Expires in 10 days
+          createdAt: new Date().toISOString(),
+          unitCost: 5
+        }
+      ];
+
+      const res = await WorkerClient.runFEFO(invoice, batches);
+      const near0 = res.updatedBatches.find(b => b.id === "B-EXP-NEAR0");
+      const near1 = res.updatedBatches.find(b => b.id === "B-EXP-NEAR1");
+      const later = res.updatedBatches.find(b => b.id === "B-EXP-LATER");
+
+      const orderedAndCorrect = 
+        near0 && near0.quantity === 0 &&
+        near1 && near1.quantity === 2 &&
+        (later === undefined || later.quantity === 10);
+
+      assert(
+        !!orderedAndCorrect,
+        "FEFO: Near-expiry FEFO ordering - Correctly depleted nearest expiry batch fully first, then allocated remaining from next nearest expiry"
+      );
+    } catch (err: any) {
+      assert(false, `FEFO: Near-expiry FEFO ordering failed with error: ${err.message}`);
     }
   }
 }

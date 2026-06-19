@@ -12,7 +12,7 @@ export interface PharmaFlowDexieExtension {
 }
 
 export const syncSchemaExtensions = {
-  syncQueue: '++id, mutationId, [syncStatus+createdAt], [entityType+createdAt], idempotencyKey',
+  syncQueue: '++id,&idempotencyKey,mutationId,[syncStatus+createdAt],[entityType+createdAt]',
   syncEvents: '++id, eventId, sequence, createdAt',
   failedMutations: '++id, mutationId, createdAt',
 };
@@ -34,14 +34,20 @@ export class SyncQueueRepository {
       updatedAt: now,
     };
     
-    return await this.db.transaction('rw', this.db.syncQueue, async () => {
-      // التحقق الصارم من مفتاح عدم التكرار محلياً (Local Idempotency Guard)
-      const exists = await this.db.syncQueue.where('idempotencyKey').equals(item.idempotencyKey).first();
-      if (exists) {
-        throw new Error(`Idempotency validation failed. Mutation already enqueued: ${item.idempotencyKey}`);
+    try {
+      return await this.db.transaction('rw', this.db.syncQueue, async () => {
+        return await this.db.syncQueue.add(queueItem);
+      });
+    } catch (error: any) {
+      if (error && (error.name === 'ConstraintError' || error instanceof Dexie.ConstraintError)) {
+        // Return deterministic result on uniqueness conflict by returning the existing item's ID
+        const existing = await this.db.syncQueue.where('idempotencyKey').equals(item.idempotencyKey).first();
+        if (existing && existing.id !== undefined) {
+          return existing.id;
+        }
       }
-      return await this.db.syncQueue.add(queueItem);
-    });
+      throw error;
+    }
   }
 
   async getNextPendingBatch(limit: number): Promise<LocalSyncQueueItem[]> {

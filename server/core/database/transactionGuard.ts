@@ -43,7 +43,7 @@ export async function runInTransaction<T>(
       });
 
       try {
-        const result = await fn(txProxy);
+        const result = await fn(txProxy as unknown as Prisma.TransactionClient);
         return result;
       } finally {
         isCommittedOrAborted = true;

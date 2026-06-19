@@ -8,9 +8,9 @@
   },
   "scripts": {
     "dev": "tsx server.ts",
-    "build": "DATABASE_URL=\"postgresql://postgres:postgres@localhost:5432/postgres?schema=public\" npx prisma generate && vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
+    "build": "DATABASE_URL='postgresql://postgres:postgres@localhost:5432/postgres?schema=public' npx prisma generate && vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "start": "node dist/server.cjs",
-    "postinstall": "DATABASE_URL=\"postgresql://postgres:postgres@localhost:5432/postgres?schema=public\" npx prisma generate || true",
+    "postinstall": "DATABASE_URL='postgresql://postgres:postgres@localhost:5432/postgres?schema=public' npx prisma generate || true",
     "lint": "tsc --noEmit && eslint src --ext ts,tsx --max-warnings 0",
     "prisma:migrate": "prisma migrate dev",
     "prisma:generate": "prisma generate",

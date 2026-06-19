@@ -250,12 +250,18 @@ function processFEFO(invoice: any, allBatches: any[]) {
       const activeBatches = batches.filter(b => b.quantity > 0);
 
       // Validate expiry dates first
-      const today = new Date().getTime();
+      const today = Date.now();
+      if (activeBatches.length > 0) {
+        const allExpired = activeBatches.every(b => new Date(b.expiryDate).getTime() < today);
+        if (allExpired) {
+          throw new Error('NO_VALID_BATCH_AVAILABLE');
+        }
+      }
+
       for (const batch of activeBatches) {
         if (remainingToConsume <= 0) break;
         if (new Date(batch.expiryDate).getTime() < today) {
-          // Warning logic or skip expired batch
-          console.warn(`[FEFO Worker] Batch ${batch.batchNumber} has expired! Skipping or flagging for disposal.`);
+          continue;
         }
 
         let consumed = 0;
@@ -285,25 +291,10 @@ function processFEFO(invoice: any, allBatches: any[]) {
       }
 
       if (remainingToConsume > 0) {
-        // Auto seed batch to prevent "Insufficient stock" FEFO errors in worker thread
-        const syntheticBatch = {
-          id: `BATCH-${Date.now()}-synthetic`,
-          productId: prodId,
-          quantity: 0,
-          unitCost: item.price || 10,
-          expiryDate: '2028-12-31'
-        };
-        updatedBatches.push(syntheticBatch);
-        itemTotalCost += remainingToConsume * (item.price || 10);
-        consumptionLogs.push({
-          id: `FEFO-LOG-${Date.now()}-synthetic`,
-          invoiceId,
-          productId: prodId,
-          batchId: syntheticBatch.id,
-          quantity: remainingToConsume,
-          createdAt: new Date().toISOString()
-        });
-        remainingToConsume = 0;
+        const productId = prodId;
+        throw new Error(
+          `INSUFFICIENT_STOCK: Product ${productId} requires ${remainingToConsume} additional units`
+        );
       }
 
       itemCosts[prodId] = itemTotalCost;

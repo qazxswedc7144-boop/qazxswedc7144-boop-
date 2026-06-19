@@ -6,7 +6,6 @@ import { FaultService } from '@/services/integrity/FaultService';
 import { FIFOEngine as fifoEngine } from '@/modules/inventory/services/fifoEngine';
 import { StockMovementEngine as stockEngine } from '@/modules/inventory/services/stockMovementEngine';
 import { AccountingEngine as accountingEngine } from '@/modules/accounting/services/AccountingEngine';
-import { ReportEngine as reportEngine } from '@/services/reports/reportEngine';
 import { InvoiceItem, InvoiceStatus } from '@/types';
 import { InvoiceRepository } from '@/database/repositories/invoice.repository';
 import { AccountingRepository } from '@/database/repositories/AccountingRepository';
@@ -20,6 +19,7 @@ import { SubscriptionService } from '@/services/saas/subscriptionService';
 import { generateTransactionUuid } from '@/utils/uuid';
 import { AuditService } from '@/services/system/AuditService';
 import { ErrorTrackingService } from '@/services/system/ErrorTrackingService';
+import { ProjectionEventBus } from '@/services/system/ProjectionEventBus';
 
 export interface InvoiceProcessingRequest {
   type: 'SALE' | 'PURCHASE';
@@ -57,7 +57,36 @@ export class SystemOrchestrator {
     (payload as any).transactionUuid = transactionUuid;
 
     // 0. Enforce Idempotency before entering locks
-    await TransactionService.ensureIdempotency(transactionUuid);
+    if (transactionUuid) {
+      const existingKeyRecord = await db.idempotencyKeys.get(transactionUuid);
+      if (existingKeyRecord) {
+        if (existingKeyRecord.status === 'COMPLETED') {
+          const sale = await db.db.sales.where('transactionUuid').equals(transactionUuid).first();
+          const purchase = await db.db.purchases.where('transactionUuid').equals(transactionUuid).first();
+          const existingInvoice = sale || purchase;
+          const refId = existingInvoice?.id || 'EXISTING';
+          return { success: true, refId };
+        }
+        if (existingKeyRecord.status === 'PROCESSING') {
+          throw new Error("⚠️ العملية قيد المعالجة حالياً، يرجى الانتظار... ⏳");
+        }
+      } else {
+        await db.idempotencyKeys.add({
+          id: transactionUuid,
+          status: 'PROCESSING',
+          createdAt: new Date().toISOString()
+        });
+      }
+    }
+
+    try {
+      await TransactionService.ensureIdempotency(transactionUuid);
+    } catch (ie) {
+      if (transactionUuid) {
+        await db.idempotencyKeys.delete(transactionUuid);
+      }
+      throw ie;
+    }
 
     // Trial limit check
     const plan = localStorage.getItem('saas_active_plan') || 'TRIAL';
@@ -65,6 +94,9 @@ export class SystemOrchestrator {
       const usage = await SubscriptionService.getLocalUsageCount();
       if (usage >= 200 && !isEdit) {
         useAppStore.getState().setTrialBlockedModalOpen(true);
+        if (transactionUuid) {
+          await db.idempotencyKeys.delete(transactionUuid);
+        }
         throw new Error("تم الوصول للحد التجريبي 200 عملية. يرجى الاشتراك للمتابعة.");
       }
     }
@@ -77,7 +109,14 @@ export class SystemOrchestrator {
     const resourceId = payload.id || `NEW_${type}_${Date.now()}`;
 
     // 1. Global Guard & Lock
-    await GlobalGuard.checkSystemState(isEdit ? 'تعديل فاتورة' : 'إنشاء فاتورة', effectiveDate);
+    try {
+      await GlobalGuard.checkSystemState(isEdit ? 'تعديل فاتورة' : 'إنشاء فاتورة', effectiveDate);
+    } catch (gge) {
+      if (transactionUuid) {
+        await db.idempotencyKeys.delete(transactionUuid);
+      }
+      throw gge;
+    }
 
     // Get snapshot of state before (for audit edit tracking)
     let beforeState: any = null;
@@ -87,138 +126,154 @@ export class SystemOrchestrator {
         : await InvoiceRepository.getPurchaseById(resourceId);
     }
 
-    return await TransactionService.runSafe(resourceId, async () => {
-      try {
-        // 0. Detect and handle unpost-before-edit if already posted
-        if (isEdit && beforeState) {
-          if (beforeState.InvoiceStatus === 'POSTED' || beforeState.invoiceStatus === 'POSTED') {
-            await this.unpostInvoice(resourceId, type);
+    try {
+      return await TransactionService.runSafe(resourceId, async () => {
+        try {
+          // 0. Detect and handle unpost-before-edit if already posted
+          if (isEdit && beforeState) {
+            if (beforeState.InvoiceStatus === 'POSTED' || beforeState.invoiceStatus === 'POSTED') {
+              await this.unpostInvoice(resourceId, type);
+            }
           }
-        }
 
-        //--------------------------------
-        // 1. VALIDATION
-        //--------------------------------
-        await validationService.validateInvoice(payload, type);
-        
-        if (!isEdit && payload.id) {
-          const table = type === 'SALE' ? 'sales' : 'purchases';
-          await validationService.validateInvoiceIdUniqueness(payload.id, table, db.db);
-        }
-
-        //--------------------------------
-        // 2. FIFO COSTING
-        //--------------------------------
-        let costResult = { totalCost: 0, itemCosts: {} };
-        if (isPosting) {
-          costResult = await fifoEngine.apply({ ...payload, type });
-        }
-
-        //--------------------------------
-        // 3. STOCK MOVEMENT
-        //--------------------------------
-        if (isPosting) {
-          await stockEngine.apply({ ...payload, type });
-        }
-
-        // 6. Save Document (Repository Layer) - Needed before accounting
-        let result;
-        if (type === 'SALE') {
-          result = await InvoiceRepository.saveSale(
-            payload.customerId!,
-            payload.items,
-            payload.total,
-            !!options?.isReturn,
-            payload.id || '',
-            options?.currency || 'USD',
-            options?.paymentStatus || 'Cash',
-            finalStatus,
-            0,
-            'LOW',
-            costResult.totalCost,
-            payload.id,
-            payload.attachment,
-            payload.date,
-            transactionUuid // Parameter 15: transactionUuid
-          );
-        } else {
-          result = await InvoiceRepository.savePurchase(
-            payload.supplierId!,
-            payload.items,
-            payload.total,
-            payload.id || '',
-            options?.isCash || false,
-            options?.currency || 'USD',
-            finalStatus,
-            0,
-            'LOW',
-            payload.id,
-            payload.attachment,
-            !!options?.isReturn,
-            payload.date,
-            transactionUuid // Parameter 14: transactionUuid
-          );
-        }
-
-        const refId = result.id;
-
-        //--------------------------------
-        // 4. ACCOUNTING ENTRIES
-        //--------------------------------
-        if (isPosting) {
-          await accountingEngine.postInvoice({ ...payload, type, id: refId, transactionUuid }, costResult);
-        }
-
-        //--------------------------------
-        // 5. REPORT UPDATE
-        //--------------------------------
-        if (reportEngine && typeof (reportEngine as any).refresh === "function") {
-          try {
-            await (reportEngine as any).refresh();
-          } catch (refreshError) {
-            console.error("[SYNC_REFRESH_FAILURE]", refreshError);
+          //--------------------------------
+          // 1. VALIDATION
+          //--------------------------------
+          await validationService.validateInvoice(payload, type);
+          
+          if (!isEdit && payload.id) {
+            const table = type === 'SALE' ? 'sales' : 'purchases';
+            await validationService.validateInvoiceIdUniqueness(payload.id, table, db.db);
           }
-        } else {
-          console.warn("[SYNC_REFRESH_WARNING] reportEngine or reportEngine.refresh is not defined");
+
+          //--------------------------------
+          // 2. FIFO COSTING
+          //--------------------------------
+          let costResult = { totalCost: 0, itemCosts: {} };
+          if (isPosting) {
+            costResult = await fifoEngine.apply({ ...payload, type });
+          }
+
+          //--------------------------------
+          // 3. STOCK MOVEMENT
+          //--------------------------------
+          if (isPosting) {
+            await stockEngine.apply({ ...payload, type });
+          }
+
+          // 6. Save Document (Repository Layer) - Needed before accounting
+          let result;
+          if (type === 'SALE') {
+            result = await InvoiceRepository.saveSale(
+              payload.customerId!,
+              payload.items,
+              payload.total,
+              !!options?.isReturn,
+              payload.id || '',
+              options?.currency || 'USD',
+              options?.paymentStatus || 'Cash',
+              finalStatus,
+              0,
+              'LOW',
+              costResult.totalCost,
+              payload.id,
+              payload.attachment,
+              payload.date,
+              transactionUuid // Parameter 15: transactionUuid
+            );
+          } else {
+            result = await InvoiceRepository.savePurchase(
+              payload.supplierId!,
+              payload.items,
+              payload.total,
+              payload.id || '',
+              options?.isCash || false,
+              options?.currency || 'USD',
+              finalStatus,
+              0,
+              'LOW',
+              payload.id,
+              payload.attachment,
+              !!options?.isReturn,
+              payload.date,
+              transactionUuid // Parameter 14: transactionUuid
+            );
+          }
+
+          const refId = result.id;
+
+          //--------------------------------
+          // 4. ACCOUNTING ENTRIES
+          //--------------------------------
+          if (isPosting) {
+            await accountingEngine.postInvoice({ ...payload, type, id: refId, transactionUuid }, costResult);
+          }
+
+          //--------------------------------
+          // 5. REPORT UPDATE (Event-Driven Projections)
+          //--------------------------------
+          if (isPosting) {
+            await ProjectionEventBus.publish('INVOICE_POSTED', refId, { type, transactionUuid });
+          }
+          
+          // 9. Centralized Audit Log 2.0
+          await AuditService.log({
+            action: isEdit ? 'EDIT' : 'CREATE',
+            module: type,
+            transactionUuid: transactionUuid,
+            before: beforeState,
+            after: result,
+            recordId: refId
+          });
+
+          // Register completed UUID as successfully processed in-memory
+          TransactionService.registerCompletedUuid(transactionUuid);
+
+          // Update status to COMPLETED
+          if (transactionUuid) {
+            await db.idempotencyKeys.update(transactionUuid, {
+              status: 'COMPLETED',
+              completedAt: new Date().toISOString()
+            });
+          }
+
+          console.log('Invoice processed successfully');
+          return { success: true, refId };
+        } catch (error: any) {
+          console.error('PROCESS FAILED:', error);
+          
+          // Log in centralized system_errors table
+          await ErrorTrackingService.log({
+            moduleName: type,
+            screenName: type === 'SALE' ? 'كاشير المبيعات' : 'توريد مشتريات',
+            errorMessage: error.message || String(error),
+            stackTrace: error.stack,
+            severity: 'ERROR'
+          });
+
+          FaultService.log({
+            type: 'ORCHESTRATOR_FATAL',
+            module: 'SYSTEM_ORCHESTRATOR',
+            message: `Failed to process ${type} invoice: ${error.message || String(error)}`,
+            payload: { request, resourceId },
+            stack: error.stack
+          });
+          throw error;
         }
-        
-        // 9. Centralized Audit Log 2.0
-        await AuditService.log({
-          action: isEdit ? 'EDIT' : 'CREATE',
-          module: type,
-          transactionUuid: transactionUuid,
-          before: beforeState,
-          after: result,
-          recordId: refId
-        });
-
-        // Register completed UUID as successfully processed in-memory
-        TransactionService.registerCompletedUuid(transactionUuid);
-
-        console.log('Invoice processed successfully');
-        return { success: true, refId };
-      } catch (error: any) {
-        console.error('PROCESS FAILED:', error);
-        
-        // Log in centralized system_errors table
-        await ErrorTrackingService.log({
-          moduleName: type,
-          screenName: type === 'SALE' ? 'كاشير المبيعات' : 'توريد مشتريات',
-          errorMessage: error.message || String(error),
-          stackTrace: error.stack,
-          severity: 'ERROR'
-        });
-
-        FaultService.log({
-          type: 'ORCHESTRATOR_FATAL',
-          module: 'SYSTEM_ORCHESTRATOR',
-          message: `Failed to process ${type} invoice: ${error.message || String(error)}`,
-          payload: { request, resourceId },
-          stack: error.stack
-        });
-        throw error;
+      });
+    } catch (outerError) {
+      if (transactionUuid) {
+        try {
+          const currentRecord = await db.idempotencyKeys.get(transactionUuid);
+          if (currentRecord && currentRecord.status === 'PROCESSING') {
+            await db.idempotencyKeys.delete(transactionUuid);
+          }
+        } catch (cleanupErr) {
+          console.error("Failed to outer-cleanup processing idempotency key:", cleanupErr);
+        }
       }
-    });
+      throw outerError;
+    }
   }
 
   /**
@@ -292,15 +347,8 @@ export class SystemOrchestrator {
         }
 
         await db.addAuditLog('SYSTEM', type, invoiceId, `UNPOST: Status changed from POSTED to DRAFT_EDIT by ${user?.User_Email}`);
-        if (reportEngine && typeof (reportEngine as any).refresh === "function") {
-          try {
-            await (reportEngine as any).refresh();
-          } catch (refreshError) {
-            console.error("[SYNC_REFRESH_FAILURE]", refreshError);
-          }
-        } else {
-          console.warn("[SYNC_REFRESH_WARNING] reportEngine or reportEngine.refresh is not defined");
-        }
+        
+        await ProjectionEventBus.publish('INVOICE_UNPOSTED', invoiceId, { type });
 
         return { success: true };
       } catch (error: any) {
@@ -355,15 +403,8 @@ export class SystemOrchestrator {
         }
         
         await db.addAuditLog('DELETE', type, invoiceId, `Invoice marked as VOID (Soft Delete) by ${authService.getCurrentUser().User_Email}`);
-        if (reportEngine && typeof (reportEngine as any).refresh === "function") {
-          try {
-            await (reportEngine as any).refresh();
-          } catch (refreshError) {
-            console.error("[SYNC_REFRESH_FAILURE]", refreshError);
-          }
-        } else {
-          console.warn("[SYNC_REFRESH_WARNING] reportEngine or reportEngine.refresh is not defined");
-        }
+        
+        await ProjectionEventBus.publish('INVOICE_DELETED', invoiceId, { type });
 
         return { success: true };
       } catch (error: any) {
@@ -377,5 +418,34 @@ export class SystemOrchestrator {
         throw error;
       }
     });
+  }
+
+  /**
+   * Recovers any interrupted PROCESSING records under idempotencyKeys.
+   * During startup, if any record remains in PROCESSING, we check if the corresponding invoice
+   * has been saved as POSTED. If so, we move it to COMPLETED. If not, we remove the key so it can be retried.
+   */
+  static async recoverIdempotencyKeys(): Promise<void> {
+    try {
+      const processingKeys = await db.idempotencyKeys.where('status').equals('PROCESSING').toArray();
+      for (const record of processingKeys) {
+        const sale = await db.db.sales.where('transactionUuid').equals(record.id).first();
+        const purchase = await db.db.purchases.where('transactionUuid').equals(record.id).first();
+        const invoice = sale || purchase;
+
+        if (invoice && (invoice.InvoiceStatus === 'POSTED' || invoice.invoiceStatus === 'POSTED')) {
+          await db.idempotencyKeys.update(record.id, {
+            status: 'COMPLETED',
+            completedAt: new Date().toISOString()
+          });
+          console.log(`[Idempotency Recovery] Recovered completed key for invoice: ${record.id}`);
+        } else {
+          await db.idempotencyKeys.delete(record.id);
+          console.log(`[Idempotency Recovery] Restored/Deleted stuck processing key for interrupted invoice posting: ${record.id}`);
+        }
+      }
+    } catch (err) {
+      console.error("[Idempotency Recovery] Error recovering processing keys:", err);
+    }
   }
 }

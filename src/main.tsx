@@ -12,9 +12,11 @@ console.log("[BOOT] Loader script starting module evaluation...");
 
 // Initiate Phase 3 Enterprise offline synchronization worker 
 import { LockService } from '@/modules/locking/lock.service';
+import { SystemOrchestrator } from '@/services/system/SystemOrchestrator';
 
 try {
   LockService.initialize().catch(err => console.error("[LOCK MANAGER] Initialization error:", err));
+  SystemOrchestrator.recoverIdempotencyKeys().catch(err => console.error("[IDEMPOTENCY RECOVERY] Error recovering stuck transactions:", err));
   if (typeof window !== "undefined") {
     SyncWorker.getInstance().start(30000); // 30s intervals
     console.log("[SYNC ENGINE] Background mutation sync engine booted successfully.");

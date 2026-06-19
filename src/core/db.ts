@@ -107,6 +107,13 @@ export class PharmaFlowDB extends Dexie {
   // Phase 5.2.5-C - Smart Auto Save Draft Engine
   draft_invoices!: Table<any>;
 
+  // Phase 5.2.7-C - Invoice Posting Idempotency Engine
+  idempotencyKeys!: Table<any>;
+
+  // Phase 5.2.7-D - Event Driven Report Projections
+  projectionCheckpoints!: Table<any>;
+  projectionEvents!: Table<any>;
+
   // Legacy support for code that uses db.db
   get db(): PharmaFlowDB { return this; }
 
@@ -180,7 +187,7 @@ export class PharmaFlowDB extends Dexie {
 
     // Version 14: Phase 3.2 Offline Sync Engine camelCase table extensions
     this.version(14).stores({
-      syncQueue: '++id, mutationId, [syncStatus+createdAt], [entityType+createdAt], idempotencyKey',
+      syncQueue: '++id,&idempotencyKey,mutationId,[syncStatus+createdAt],[entityType+createdAt]',
       syncEvents: '++id, eventId, sequence, createdAt',
       failedMutations: '++id, mutationId, createdAt'
     });
@@ -219,6 +226,17 @@ export class PharmaFlowDB extends Dexie {
     // Version 19: Phase 5.2.5-C - Smart Auto Save Draft Engine
     this.version(19).stores({
       draft_invoices: '&draftId, invoiceType, updatedAt'
+    });
+
+    // Version 20: Phase 5.2.7-C - Invoice Posting Idempotency Engine
+    this.version(20).stores({
+      idempotencyKeys: '&id, status, createdAt, completedAt'
+    });
+
+    // Version 21: Phase 5.2.7-D - Event Driven Report Projections
+    this.version(21).stores({
+      projectionCheckpoints: '&id, sequence, lastProcessedEventId, updatedAt',
+      projectionEvents: '++id, eventId, eventType, aggregateId, createdAt, status'
     });
 
     // Handle structural integrity and recovery
