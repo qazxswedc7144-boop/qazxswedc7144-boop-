@@ -15,12 +15,12 @@ def delete_duplicates():
                 with open(path, 'rb') as f:
                     f_hash = hashlib.sha256(f.read()).hexdigest()
                 if f_hash in file_hashes:
-                    print(f"حذف ملف مكرر: {path}")
-                    os.remove(path) # حذف فعلي من الشجرة
+                    print(f"Removing duplicate: {path}")
+                    os.remove(path)
                 else:
                     file_hashes.add(f_hash)
             except Exception as e:
-                print(f"خطأ في فحص {path}: {e}")
+                print(f"Error: {e}")
 
 if __name__ == "__main__":
     delete_duplicates()
