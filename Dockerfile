@@ -8,7 +8,7 @@ COPY package*.json tsconfig.json vite.config.ts ./
 COPY prisma ./prisma/
 
 # Install base compilation toolings
-RUN apk add --no-cache python3 make g++ openssl libc6-compat
+RUN apk add --no-cache python3 make g++ openssl libc6-compat ca-certificates
 
 # Install all npm dependencies
 RUN npm ci
@@ -27,7 +27,7 @@ FROM node:20-alpine AS runner
 WORKDIR /app
 
 # Install runtime dependencies for Prisma query engine in Alpine
-RUN apk add --no-cache openssl libc6-compat
+RUN apk add --no-cache openssl libc6-compat ca-certificates
 
 ENV NODE_ENV=production
 ENV PORT=3000

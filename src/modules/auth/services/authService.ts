@@ -1,27 +1,50 @@
 
+import { can as canHelper } from '@/utils/permissions';
+import { Permission } from '@/types';
+
 /**
- * Mock Auth Service for Local-Only Operation
- * Replacing Supabase-dependent authService
+ * Auth Service for Local-Only Operation
+ * Safe permission checking wired with the real RBAC policy
  */
 
 export const authService = {
-  getCurrentUser: () => ({
-    id: 'local-user',
-    User_Email: 'admin@local.host',
-    Role: 'Admin',
-    User_Name: 'Admin'
-  }),
-
-  isSignedIn: () => true,
-
-  assertPermission: (permission: string, operation: string) => {
-    console.log(`Permission ${permission} granted for ${operation} (Local Admin Mode)`);
-    return true;
+  getCurrentUser: () => {
+    try {
+      const raw = localStorage.getItem('pharmaflow_user');
+      if (raw) {
+        const u = JSON.parse(raw);
+        return {
+          id: u.id,
+          User_Email: `${u.username}@local.host`,
+          Role: u.role, // e.g. ADMIN, ACCOUNTANT, CASHIER etc.
+          User_Name: u.username
+        };
+      }
+    } catch {
+      // Ignored
+    }
+    return null;
   },
 
-  can: (_permission: string) => true,
+  isSignedIn: () => {
+    return !!localStorage.getItem('pharmaflow_token');
+  },
+
+  assertPermission: (permission: string, operation: string) => {
+    console.log(`Permission ${permission} evaluated for ${operation}`);
+    return authService.can(permission);
+  },
+
+  can: (permission: string) => {
+    const user = authService.getCurrentUser();
+    if (!user) return false;
+    return canHelper(user.Role, permission as Permission);
+  },
 
   logout: async () => {
-    console.log("Logout called in local mode - no action taken");
+    localStorage.removeItem('pharmaflow_token');
+    localStorage.removeItem('pharmaflow_refresh_token');
+    localStorage.removeItem('pharmaflow_user');
+    window.location.reload();
   }
 };

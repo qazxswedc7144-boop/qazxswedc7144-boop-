@@ -5,8 +5,10 @@ import { Logo, BrandName, Tagline } from '@/components/shared/Logo';
 import { useUI } from '@/contexts/AppContext';
 import Header from '@/layouts/Header';
 import { useAppStore } from '@/hooks/useAppStore';
+import { useAuthStore } from '@/store/authStore';
 import { motion, AnimatePresence } from 'motion/react';
 import { db } from '@/core/db';
+import { DistributedSyncEngine } from '@/modules/sync/sync.engine';
 import { heartbeatService } from '@/services/heartbeatService';
 import { backupService } from '@/services/backupScheduler';
 import { BackupService } from '@/services/backupService';
@@ -162,8 +164,11 @@ const FinancialEngineReport = lazyWithRetry(() => import('@/modules/reports/page
 const PrivacyPolicy = lazyWithRetry(() => import('@/modules/legal/pages/PrivacyPolicy'));
 const TermsOfService = lazyWithRetry(() => import('@/modules/legal/pages/TermsOfService'));
 const SecurityAuditDashboard = lazyWithRetry(() => import('@/modules/settings/components/SecurityAuditDashboard'));
+const BackupManagement = lazyWithRetry(() => import('@/modules/settings/components/BackupManagement'));
 
 import { useAuth } from '@/modules/auth/hooks/useAuth';
+import LoginPage from '@/modules/auth/pages/LoginPage';
+import ProtectedRoute from '@/components/shared/ProtectedRoute';
 import { can } from '@/utils/permissions';
 import { MODULES } from '@/constants/navigation';
 import { LockScreen } from '@/layouts/LockScreen';
@@ -174,7 +179,7 @@ import { PeriodLockEngine } from '@/services/transactions/PeriodLockEngine';
 import { IntegritySweepService } from '@/services/integrity/IntegritySweepService';
 
 function MainLayout() {
-  const { profile, signOut } = useAuth(); 
+  const { profile, user, accessToken, loading, signOut } = useAuth(); 
   const [currentView, setCurrentView] = useState<string>('dashboard');
 
   useEffect(() => {
@@ -227,8 +232,91 @@ function MainLayout() {
     handleNav('saas-portal');
   };
 
+  // Task 4: Optimized and re-engineered ultra-fast main startup boot sequence
   useEffect(() => {
-    setTimeout(() => setIsReady(true), 300);
+    const startBootTime = performance.now();
+    const bootFlow = async () => {
+      try {
+        // Ensure local IndexedDB is initialized
+        if (!db.isOpen()) {
+          await db.open();
+        }
+        
+        // 1. Immediately query the Dexie systemSettings table to resolve the status of authenticationEnabled
+        const item = await db.systemSettings.get('authenticationEnabled');
+        const authEnabled = item !== undefined ? item.value === true : false;
+        
+        // Align localStorage flag so that other components can pull it synchronously
+        localStorage.setItem('pharmaflow_auth_enabled', authEnabled ? 'true' : 'false');
+        
+        if (!authEnabled) {
+          // 2. IF FALSE: Bypass all network checks, initialize local administrator mocks, and resolve <MainApplication />
+          const BYPASS_USER = {
+            id: "local-admin",
+            role: "ADMIN",
+            username: "Administrator",
+            tenantId: "local-tenant-01",
+            isActive: true
+          };
+          localStorage.setItem('pharmaflow_user', JSON.stringify(BYPASS_USER));
+          localStorage.setItem('pharmaflow_token', 'local-admin-token');
+          localStorage.setItem('pharmaflow_refresh_token', 'local-admin-refresh-token');
+          
+          useAuthStore.getState().login(BYPASS_USER, 'local-admin-token');
+          
+          const currentHash = window.location.hash;
+          if (currentHash === '#/login' || !currentHash) {
+            window.location.hash = '#/dashboard';
+          }
+        } else {
+          // 3. IF TRUE: Evaluate the validity of the current JWT session storage / secure HTTP headers
+          const token = localStorage.getItem('pharmaflow_token');
+          const storedUserStr = localStorage.getItem('pharmaflow_user');
+          
+          let isTokenValid = false;
+          if (token && storedUserStr && token !== 'local-admin-token') {
+            try {
+              const parts = token.split('.');
+              if (parts.length === 3) {
+                const payload = JSON.parse(atob(parts[1]));
+                // Evaluate validity and check if current JWT token is before expiration
+                const exp = payload.exp * 1000;
+                if (Date.now() < exp) {
+                  isTokenValid = true;
+                }
+              }
+            } catch (e) {
+              console.warn("[BOOT_SEQUENCE] Failed parsing token, considering expired/invalid:", e);
+            }
+          }
+          
+          if (isTokenValid) {
+            // Valid session: open dashboard
+            const currentHash = window.location.hash;
+            if (currentHash === '#/login' || !currentHash) {
+              window.location.hash = '#/dashboard';
+            }
+          } else {
+            // Invalid or expired: push to LoginScreen
+            localStorage.removeItem('pharmaflow_token');
+            localStorage.removeItem('pharmaflow_refresh_token');
+            localStorage.removeItem('pharmaflow_user');
+            useAuthStore.getState().logout();
+            
+            window.location.hash = '#/login';
+          }
+        }
+      } catch (err) {
+        console.error("⚡ [BOOT_SEQUENCE] Snappy verification pipeline failed, falling back safely:", err);
+      } finally {
+        const bootDuration = performance.now() - startBootTime;
+        console.log(`⚡ [BOOT_SEQUENCE] Snappy startup boot completed in ${bootDuration.toFixed(1)}ms (KPI limit: 300ms).`);
+        // 4. PERFORMANCE KPI: Ensure ready state becomes true instantly
+        setIsReady(true);
+      }
+    };
+    
+    bootFlow();
   }, []);
 
 
@@ -255,10 +343,16 @@ function MainLayout() {
     useEffect(() => {
       const checkLock = async () => {
         try {
-          const settings = await appLockService.getSettings();
-          if (settings?.is_enabled && settings.lock_mode !== 'instant') {
-            const shouldLock = await appLockService.shouldLock();
-            if (shouldLock) setIsLocked(true);
+          // Check autoLockEnabled from Dexie systemSettings
+          const alItem = await db.systemSettings.get('autoLockEnabled');
+          const isAutoLockEnabled = alItem !== undefined ? alItem.value === true : false;
+
+          if (isAutoLockEnabled) {
+            const settings = await appLockService.getSettings();
+            if (settings?.is_enabled && settings.lock_mode !== 'instant') {
+              const shouldLock = await appLockService.shouldLock();
+              if (shouldLock) setIsLocked(true);
+            }
           }
         } catch (e) {
           console.error("[LockCheck] Failed to check status:", e);
@@ -278,8 +372,12 @@ function MainLayout() {
               if (settings.lock_mode === 'instant') {
                 setIsLocked(true);
               } else {
-                const shouldLock = await appLockService.shouldLock();
-                if (shouldLock) setIsLocked(true);
+                const alItem = await db.systemSettings.get('autoLockEnabled');
+                const isAutoLockEnabled = alItem !== undefined ? alItem.value === true : false;
+                if (isAutoLockEnabled) {
+                  const shouldLock = await appLockService.shouldLock();
+                  if (shouldLock) setIsLocked(true);
+                }
               }
             }
           }
@@ -309,6 +407,15 @@ function MainLayout() {
       // Initial check on mount (App Resume)
       const initialCheck = async () => {
         try {
+          // Check lockOnStartup from Dexie systemSettings
+          const losItem = await db.systemSettings.get('lockOnStartup');
+          const isLockOnStartupEnabled = losItem !== undefined ? losItem.value === true : false;
+
+          if (isLockOnStartupEnabled) {
+            setIsLocked(true);
+            return;
+          }
+
           const isLockEnabled = await appLockService.isSimpleLockEnabled();
           
           if (isLockEnabled) {
@@ -319,8 +426,12 @@ function MainLayout() {
 
           const settings = await appLockService.getSettings();
           if (settings?.is_enabled) {
-            const shouldLock = await appLockService.shouldLock();
-            if (shouldLock) setIsLocked(true);
+            const alItem = await db.systemSettings.get('autoLockEnabled');
+            const isAutoLockEnabled = alItem !== undefined ? alItem.value === true : false;
+            if (isAutoLockEnabled) {
+              const shouldLock = await appLockService.shouldLock();
+              if (shouldLock) setIsLocked(true);
+            }
           }
         } catch (e) {
           console.error("[InitialLockCheck] Failed:", e);
@@ -341,6 +452,8 @@ function MainLayout() {
   }, [])
 
   const parseRoute = useCallback(() => {
+    if (loading) return; // Wait for authentication loading to complete
+
     const hash = window.location.hash.replace('#/', '');
     let view = hash || 'dashboard'; // Capture full path including subroutes
     let id = undefined;
@@ -359,17 +472,53 @@ function MainLayout() {
       'reconciliation', 'system-health', 'invoices-archive', 'invoice-history',
       'adjustments-archive', 'supplier-payment', 'customer-receipt', 'vouchers',
       'aging-report', 'partners', 'privacy', 'terms', 'reports', 'advanced-reports',
-      'login',
+      'login', '403', 'backup',
       'reports/remaining-stock', 'reports/item-profits', 'reports/customer-profit', 
       'reports/supplier-profit', 'reports/account-movement', 'reports/purchases-by-item',
       'reports/sales-by-item', 'reports/item-movement-details', 'reports/expiry-items',
       'reports/financial-engine', 'consolidation'
     ];
 
+    // Map views to required permissions
+    const getViewPermission = (v: string): Permission | undefined => {
+      if (v === 'sales') return 'POS_ACCESS';
+      if (v === 'purchases') return 'PURCHASE_ACCESS';
+      if (v === 'accounting' || v === 'reconciliation' || v === 'adjustments-registry' || v === 'consolidation') return 'FINANCIAL_ACCESS';
+      if (v === 'reports' || v === 'financial-dashboard' || v === 'advanced-reports' || v.startsWith('reports/')) return 'VIEW_REPORTS';
+      if (v === 'settings' || v === 'backup' || v === 'system-health' || v === 'audit-history' || v === 'invoice-history') return 'MANAGE_SYSTEM';
+      if (v === 'partners') return 'MANAGE_PARTNERS';
+      return undefined;
+    };
+
+    const isBypassView = ['privacy', 'terms'].includes(view);
+
+    if (!isBypassView && view !== 'login' && view !== '403') {
+      const authed = !!(user && accessToken && user.isActive !== false);
+      if (!authed) {
+        window.location.hash = '#/login';
+        view = 'login';
+      } else {
+        const requiredPermission = getViewPermission(view);
+        if (requiredPermission && !can(profile?.role, requiredPermission)) {
+          window.location.hash = '#/403';
+          view = '403';
+        }
+      }
+    }
+
     if (view === 'settings') {
-      setSettingsOpen(true);
-      window.location.hash = '#/dashboard';
-      view = 'dashboard';
+      const authed = !!(user && accessToken && user.isActive !== false);
+      if (!authed) {
+        window.location.hash = '#/login';
+        view = 'login';
+      } else if (!can(profile?.role, 'MANAGE_SYSTEM')) {
+        window.location.hash = '#/403';
+        view = '403';
+      } else {
+        setSettingsOpen(true);
+        window.location.hash = '#/dashboard';
+        view = 'dashboard';
+      }
     }
 
     if (!validViews.includes(view)) {
@@ -387,11 +536,18 @@ function MainLayout() {
         setViewParams(null);
       }
     });
-  }, [setEditingInvoiceId]);
+  }, [setEditingInvoiceId, user, accessToken, profile, loading]);
+
+  useEffect(() => {
+    if (!loading) {
+      parseRoute();
+    }
+  }, [loading, user, accessToken, parseRoute]);
 
   useEffect(() => {
     let stopCurrencyObserver: (() => void) | null = null;
     let syncTimer: any;
+    let syncEngine: DistributedSyncEngine | null = null;
 
     const init = async () => { 
       // Clear DB to resolve IDBKeyRange error if requested (one-time fix)
@@ -415,6 +571,9 @@ function MainLayout() {
 
       try {
         await db.open();
+        // Dynamic Sync engine activation
+        syncEngine = new DistributedSyncEngine(db);
+        syncEngine.start();
       } catch (e) {
         console.error("Failed to open DB:", e);
       }
@@ -486,6 +645,13 @@ function MainLayout() {
       heartbeatService.stop();
       backupService.stopAutoTimer();
       clearInterval(syncTimer);
+      if (syncEngine) {
+        try {
+          syncEngine.stop();
+        } catch (scErr) {
+          console.warn("Soft-catch syncEngine stop error:", scErr);
+        }
+      }
       if (stopCurrencyObserver) stopCurrencyObserver();
       window.removeEventListener('hashchange', parseRoute);
       RealtimeReplicationService.disconnect();
@@ -550,6 +716,11 @@ function MainLayout() {
          <TermsOfService />
       </Suspense>
     );
+  }
+
+  // Enforce secure authentications and reject unauthorized routing
+  if (!user || !accessToken || user.isActive === false) {
+    return <LoginPage onSuccess={() => handleNav('dashboard')} />;
   }
 
   return (
@@ -773,23 +944,23 @@ function MainLayout() {
             <Suspense fallback={<div className="flex items-center justify-center h-full min-h-[400px]"><div className="w-10 h-10 border-4 border-[#10B981] border-t-transparent rounded-full animate-spin"></div></div>}>
               {(() => {
                 switch (currentView) {
-                  case 'sales': return <SalesModule onNavigate={handleNav} />;
-                  case 'purchases': return <PurchasesView onNavigate={handleNav} />;
+                  case 'sales': return <ProtectedRoute permission="POS_ACCESS"><SalesModule onNavigate={handleNav} /></ProtectedRoute>;
+                  case 'purchases': return <ProtectedRoute permission="PURCHASE_ACCESS"><PurchasesView onNavigate={handleNav} /></ProtectedRoute>;
                   case 'supplier-payment': return <RoleGuard permission="CREATE_VOUCHER"><SupplierPaymentModule onNavigate={handleNav} /></RoleGuard>;
                   case 'customer-receipt': return <RoleGuard permission="CREATE_VOUCHER"><CustomerReceiptModule onNavigate={handleNav} /></RoleGuard>;
                   case 'vouchers': return <RoleGuard permission="CREATE_VOUCHER"><VouchersModule onNavigate={handleNav} initialType={viewParams?.type} /></RoleGuard>;
                   case 'inventory': return <InventoryModule onNavigate={handleNav} />;
                   case 'inventory-audit': return <InventoryAuditModule lang="ar" onNavigate={handleNav} />;
-                  case 'accounting': return <RoleGuard permission="FINANCIAL_ACCESS"><AccountingModule onNavigate={handleNav} /></RoleGuard>;
+                  case 'accounting': return <ProtectedRoute permission="FINANCIAL_ACCESS"><AccountingModule onNavigate={handleNav} /></ProtectedRoute>;
                   case 'audit-history': return <RoleGuard permission="MANAGE_SYSTEM"><AuditHistoryModule onNavigate={handleNav} recordId={viewParams?.id} /></RoleGuard>;
                   case 'reconciliation': return <RoleGuard permission="FINANCIAL_ACCESS"><ReconciliationModule onNavigate={handleNav} /></RoleGuard>;
-                  case 'system-health': return <RoleGuard permission="MANAGE_SYSTEM"><SystemHealthModule onNavigate={handleNav} /></RoleGuard>;
+                  case 'system-health': return <ProtectedRoute permission="MANAGE_SYSTEM"><SystemHealthModule onNavigate={handleNav} /></ProtectedRoute>;
                   case 'invoices-archive': return <InvoicesArchiveModule onNavigate={handleNav} initialFilter={viewParams?.filter} />;
                   case 'invoice-history': return <RoleGuard permission="MANAGE_SYSTEM"><InvoiceHistoryModule onNavigate={handleNav} /></RoleGuard>;
                   case 'adjustments-registry': return <RoleGuard permission="FINANCIAL_ACCESS"><AdjustmentsArchiveModule onNavigate={handleNav} /></RoleGuard>;
                   case 'aging-report': return <RoleGuard permission="VIEW_REPORTS"><AgingReportModule onNavigate={handleNav} /></RoleGuard>;
                   case 'financial-dashboard': return <RoleGuard permission="VIEW_REPORTS"><FinancialDashboard onNavigate={handleNav} /></RoleGuard>;
-                  case 'reports': return <RoleGuard permission="VIEW_REPORTS"><ReportsModule onNavigate={handleNav} /></RoleGuard>;
+                  case 'reports': return <ProtectedRoute permission="VIEW_REPORTS"><ReportsModule onNavigate={handleNav} /></ProtectedRoute>;
                   case 'partners': return <RoleGuard permission="MANAGE_PARTNERS"><PartnersModule onNavigate={handleNav} /></RoleGuard>;
                   case 'saas-portal': return <SaaSModule onNavigate={handleNav} />;
                   case 'advanced-reports': return <RoleGuard permission="VIEW_REPORTS"><AdvancedReportsModule onBack={() => handleNav('dashboard')} /></RoleGuard>;
@@ -811,8 +982,28 @@ function MainLayout() {
                   case 'reports/item-movement-details': return <RoleGuard permission="VIEW_REPORTS"><ItemMovementDetailsReport onNavigate={handleNav} /></RoleGuard>;
                   case 'reports/expiry-items': return <RoleGuard permission="VIEW_REPORTS"><ExpiryItemsReport onNavigate={handleNav} /></RoleGuard>;
                   case 'reports/financial-engine': return <RoleGuard permission="VIEW_REPORTS"><FinancialEngineReport onNavigate={handleNav} /></RoleGuard>;
-
-                  default: return <Dashboard lang="ar" onNavigate={handleNav} />;
+                  
+                  case 'login': return <LoginPage onSuccess={() => handleNav('dashboard')} />;
+                  case 'backup': return <ProtectedRoute permission="MANAGE_SYSTEM"><BackupManagement /></ProtectedRoute>;
+                  case '403': return (
+                    <div className="flex flex-col items-center justify-center min-h-[60vh] p-8 text-center bg-white border border-slate-100 rounded-[32px] shadow-sm max-w-lg mx-auto my-12" dir="rtl">
+                      <div className="w-16 h-16 bg-rose-50 text-rose-500 rounded-2xl flex items-center justify-center mb-6 shadow-xl shadow-rose-200/40">
+                        <X size={32} />
+                      </div>
+                      <h2 className="text-xl font-black text-[#1E4D4D] mb-2">وصول مقيد (403)</h2>
+                      <p className="text-xs font-bold text-slate-400 max-w-sm leading-relaxed mb-6">
+                        عذراً، ليست لديك صلاحيات أمنية كافية للدخول إلى هذا القسم من المنظومة السيادية. تم تسجيل هذه التجربة كجزء من سجل التدقيق الأمني.
+                      </p>
+                      <button 
+                        onClick={() => { window.location.hash = '#/dashboard'; }}
+                        className="bg-[#1E4D4D] hover:bg-teal-900 text-white font-black text-xs py-3.5 px-6 rounded-xl transition-all shadow-md shadow-teal-900/10"
+                      >
+                        العودة للرئيسية
+                      </button>
+                    </div>
+                  );
+ 
+                  default: return <ProtectedRoute><Dashboard lang="ar" onNavigate={handleNav} /></ProtectedRoute>;
                 }
               })()}
             </Suspense>

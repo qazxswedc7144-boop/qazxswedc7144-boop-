@@ -4,7 +4,7 @@ import { AuthenticatedRequest } from "./auth.middleware";
 import { SaasService } from "../modules/saas/saas.service";
 import jwt from "jsonwebtoken";
 
-const JWT_SECRET = process.env.JWT_SECRET || "pharmaflow-backend-super-secret-key-2026-xyz";
+const JWT_SECRET = process.env.JWT_SECRET!;
 
 /**
  * Route-level interceptor that filters all mutations (POST, PUT, DELETE).

@@ -8,7 +8,7 @@ import { Role } from "@prisma/client";
 import { ReplicationSubscriber } from "./replication.subscriber";
 import { ReplicationEvent, ClientConnectionInfo } from "./replication.types";
 
-const JWT_SECRET = process.env.JWT_SECRET || "pharmaflow-backend-super-secret-key-2026-xyz";
+const JWT_SECRET = process.env.JWT_SECRET!;
 const AUTHORIZED_ROLES: string[] = [Role.ADMIN, Role.ACCOUNTANT, Role.PHARMACIST, Role.INVENTORY_MANAGER];
 
 interface CustomWebSocket extends WebSocket {

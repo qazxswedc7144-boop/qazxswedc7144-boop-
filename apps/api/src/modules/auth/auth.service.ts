@@ -4,8 +4,8 @@ import jwt from "jsonwebtoken";
 import { prisma } from "../../../../../server/database/prisma";
 import { Role } from "@prisma/client";
 
-const JWT_SECRET = process.env.JWT_SECRET || "pharmaflow-backend-super-secret-key-2026-xyz";
-const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || "pharmaflow-backend-refresh-secret-2026";
+const JWT_SECRET = process.env.JWT_SECRET!;
+const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET!;
 
 export interface DecodedAccessToken {
   userId: string;

@@ -3,10 +3,10 @@ import { Router, Response } from "express";
 import { z } from "zod";
 import { prisma } from "../database/prisma";
 import { FinancialTransactionService } from "../modules/accounting/services/financialTransaction.service";
-import { authenticateToken, AuthenticatedRequest } from "../middleware/auth.middleware";
+import { authenticateToken, requireRoles, AuthenticatedRequest } from "../middleware/auth.middleware";
 import { LockingService } from "../modules/locking/locking.service";
 import { ReplicationPublisher } from "../modules/replication/replication.publisher";
-import { InvoiceStatus, DocumentStatus } from "@prisma/client";
+import { InvoiceStatus, DocumentStatus, Role } from "@prisma/client";
 import { InvoiceSchema } from "../../src/shared/validation/invoice.schema";
 import { validateRequestBody } from "../middleware/validate";
 import { UUIDSchema } from "../../src/shared/validation/common.schema";
@@ -18,7 +18,7 @@ export const invoiceRouter = Router();
  * POST /api/invoices/create
  * Registers a new invoice. Saved as a DRAFT.
  */
-invoiceRouter.post("/create", authenticateToken, validateRequestBody(InvoiceSchema), async (req: AuthenticatedRequest, res: Response) => {
+invoiceRouter.post("/create", authenticateToken, requireRoles([Role.PLATFORM_OWNER, Role.TENANT_ADMIN, Role.ADMIN, Role.ACCOUNTANT, Role.PHARMACIST, Role.INVENTORY_MANAGER]), validateRequestBody(InvoiceSchema), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const data = req.body; // sanitized and verified by validateRequestBody
     const tenantId = req.user?.tenantId;
@@ -111,7 +111,7 @@ invoiceRouter.post("/create", authenticateToken, validateRequestBody(InvoiceSche
  * POST /api/invoices/post
  * Enterprise endpoint to post and freeze an active draft invoice into General Ledger.
  */
-invoiceRouter.post("/post", authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+invoiceRouter.post("/post", authenticateToken, requireRoles([Role.PLATFORM_OWNER, Role.TENANT_ADMIN, Role.ADMIN, Role.ACCOUNTANT, Role.PHARMACIST, Role.INVENTORY_MANAGER]), async (req: AuthenticatedRequest, res: Response) => {
   try {
     // Validate request UUID with strict validator
     const bodyValidation = z.object({ invoiceId: UUIDSchema }).strict().safeParse(req.body);

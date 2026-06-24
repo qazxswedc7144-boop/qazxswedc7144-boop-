@@ -74,7 +74,7 @@ export class AppFaultBoundary extends Component<Props, State> {
         }).then(() => {
           console.log("💾 [OFFLINE_STORAGE] Crash written successfully to offline Dexie store.");
           this.setState({ syncStatus: 'offline_saved' });
-        }).catch(err => {
+        }).catch((err: any) => {
           console.error("✖ Dexie add error:", err);
           this.setState({ syncStatus: 'failed' });
         });

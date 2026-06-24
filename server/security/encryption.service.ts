@@ -1,7 +1,10 @@
 import crypto from 'crypto';
 
 export function getEncryptionKeyBuffer(): Buffer {
-  const key = process.env.ENCRYPTION_KEY || 'pharmaflow-fallback-secure-master-key-gcm-sha256-2026';
+  const key = process.env.ENCRYPTION_KEY;
+  if (!key) {
+    throw new Error('ENCRYPTION_KEY environment variable is required');
+  }
   // Standard AES-256 requires exactly a 32-byte (256-bit) key.
   // Hashing guarantees it's always exactly 32 bytes and prevents invalid length crashes.
   return crypto.createHash('sha256').update(key).digest();
@@ -86,7 +89,10 @@ export const EncryptionService = {
       const iv = crypto.randomBytes(12);
 
       // Determine stretching secret
-      const stretchingPassphrase = password || process.env.ENCRYPTION_KEY || 'PharmaFlow_SECURE_Default_System_Backup_Key_AES_GCM_GZIP';
+      const stretchingPassphrase = password || process.env.ENCRYPTION_KEY;
+      if (!stretchingPassphrase) {
+        throw new Error('Neither backup password nor ENCRYPTION_KEY environment variable was provided.');
+      }
       
       // Derive 256-bit AES key via secure PBKDF2 stretching
       const derivedKey = crypto.pbkdf2Sync(
@@ -150,22 +156,8 @@ export const EncryptionService = {
       rawCandidates.push(process.env.ENCRYPTION_KEY);
     }
     
-    // Push all standard/fallback key materials used in production or local environments
-    rawCandidates.push('PharmaFlow_SECURE_Default_System_Backup_Key_AES_GCM_GZIP');
-    rawCandidates.push('pharmaflow-fallback-secure-master-key-gcm-sha256-2026');
-    rawCandidates.push('replace_with_32_byte_secure_key');
-    rawCandidates.push('pharmaflow-local-key');
-    rawCandidates.push('default_backup_password');
-    rawCandidates.push('PharmaFlow_SECURE_Default_System_Backup_Key');
-    rawCandidates.push('pharmaflow-fallback-secure-master-key-gcm-sha256');
-    rawCandidates.push('PharmaFlow_SECURE');
-    rawCandidates.push('pharmaflow');
-    rawCandidates.push('system');
-    rawCandidates.push('undefined');
-    rawCandidates.push('null');
-    rawCandidates.push('');
-
-    // Ensure uniqueness, remove falsy values or invalid types
+    // Collect all candidate keys for high-integrity key rotation and environment safety
+    // No hardcoded production/local fallback keys allowed
     const candidates = Array.from(new Set(rawCandidates.filter(k => typeof k === 'string' && k !== '')));
 
     // Build exhaustive list of potential derived and direct key buffers to try

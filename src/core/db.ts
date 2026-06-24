@@ -1,5 +1,25 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import Dexie, { type Table, type Transaction } from 'dexie';
+import { useAuthStore } from '@/store/authStore';
+
+export function getCurrentUserSession() {
+  try {
+    const stored = typeof window !== 'undefined' ? localStorage.getItem('pharmaflow_user') : null;
+    if (stored) {
+      const userObj = JSON.parse(stored);
+      return {
+        tenantId: userObj?.tenantId || 'default-tenant',
+        userId: userObj?.id || 'default-user'
+      };
+    }
+  } catch (e) {
+    console.error('[DB] Error reading user session from localStorage:', e);
+  }
+  return {
+    tenantId: 'default-tenant',
+    userId: 'default-user'
+  };
+}
 import { 
   Product, UnifiedInvoice, InvoiceItem, Account, AccountingEntry, 
   JournalLine, InventoryTransaction, AccountingPeriod, SystemBackup, ValidationRule,
@@ -30,6 +50,7 @@ export class PharmaFlowDB extends Dexie {
   vouchers!: Table<Voucher>;
   auditLogs!: Table<AuditLog>;
   settings!: Table<{ key: string; value: any }>;
+  systemSettings!: Table<{ key: string; value: any }>;
   medicineBatches!: Table<any>;
   exchangeRates!: Table<any>;
   systemBackups!: Table<SystemBackup>;
@@ -117,8 +138,8 @@ export class PharmaFlowDB extends Dexie {
   // Legacy support for code that uses db.db
   get db(): PharmaFlowDB { return this; }
 
-  constructor() {
-    super('PharmaFlowPRO');
+  constructor(dbName: string = 'PharmaFlowPRO') {
+    super(dbName);
 
     // VERSION 12: Complete defensive schema with comprehensive indexes for all query casings (camel/snake/Pascal)
     this.version(12).stores({
@@ -239,11 +260,45 @@ export class PharmaFlowDB extends Dexie {
       projectionEvents: '++id, eventId, eventType, aggregateId, createdAt, status'
     });
 
+    // Version 22: Security and local lifecycle settings persistence
+    this.version(22).stores({
+      systemSettings: '&key'
+    });
+
     // Handle structural integrity and recovery
     this.on('versionchange', () => {
       console.warn("Database structure updated in another tab. Reloading...");
       this.close();
       if (typeof window !== 'undefined') window.location.reload();
+    });
+
+    // Register hooks to ensure tenantId and userId are set on specified tables
+    const targetTables = ['invoices', 'products', 'customers', 'suppliers', 'journalEntries', 'syncQueue', 'sync_queue'];
+    targetTables.forEach(tableName => {
+      try {
+        const table = this.table(tableName);
+        if (table) {
+          table.hook('creating', (primKey: any, obj: any) => {
+            const session = getCurrentUserSession();
+            if (obj && typeof obj === 'object') {
+              obj.tenantId = obj.tenantId || session.tenantId;
+              obj.userId = obj.userId || session.userId;
+            }
+          });
+          table.hook('updating', (mods: any, primKey: any, obj: any) => {
+            const session = getCurrentUserSession();
+            if (mods && typeof mods === 'object') {
+              return {
+                ...mods,
+                tenantId: mods.tenantId || (obj ? obj.tenantId : undefined) || session.tenantId,
+                userId: mods.userId || (obj ? obj.userId : undefined) || session.userId
+              };
+            }
+          });
+        }
+      } catch (err) {
+        console.warn(`[DB] Could not register hooks for table: ${tableName}`, err);
+      }
     });
   }
 
@@ -654,6 +709,21 @@ export class PharmaFlowDB extends Dexie {
 let isDbBlocked = false;
 const memDb: Record<string, Map<string, any>> = {};
 
+function createMockCollection(results: any[]) {
+  const coll: any = {
+    toArray: () => Promise.resolve(results),
+    count: () => Promise.resolve(results.length),
+    first: () => Promise.resolve(results[0] || null),
+    last: () => Promise.resolve(results[results.length - 1] || null),
+    limit: (n: number) => createMockCollection(results.slice(0, n)),
+    offset: (n: number) => createMockCollection(results.slice(n)),
+    reverse: () => createMockCollection([...results].reverse()),
+    filter: (fn: any) => createMockCollection(results.filter(fn)),
+    and: (fn: any) => createMockCollection(results.filter(fn)),
+  };
+  return coll;
+}
+
 function getMockTable(tableName: string) {
   if (!memDb[tableName]) {
     memDb[tableName] = new Map();
@@ -671,16 +741,7 @@ function getMockTable(tableName: string) {
           }
           return false;
         });
-
-        return {
-          first: () => Promise.resolve(results[0] || null),
-          toArray: () => Promise.resolve(results),
-          count: () => Promise.resolve(results.length),
-          anyOf: () => Promise.resolve(results),
-          above: () => Promise.resolve(results),
-          below: () => Promise.resolve(results),
-          between: () => Promise.resolve(results),
-        };
+        return createMockCollection(results);
       },
       above: (val: any) => {
         const results = Array.from(store.values()).filter(item => {
@@ -689,15 +750,7 @@ function getMockTable(tableName: string) {
           }
           return false;
         });
-        return {
-          first: () => Promise.resolve(results[0] || null),
-          toArray: () => Promise.resolve(results),
-          count: () => Promise.resolve(results.length),
-          filter: () => ({
-            toArray: () => Promise.resolve(results),
-            count: () => Promise.resolve(results.length)
-          })
-        };
+        return createMockCollection(results);
       },
       below: (val: any) => {
         const results = Array.from(store.values()).filter(item => {
@@ -706,11 +759,7 @@ function getMockTable(tableName: string) {
           }
           return false;
         });
-        return {
-          first: () => Promise.resolve(results[0] || null),
-          toArray: () => Promise.resolve(results),
-          count: () => Promise.resolve(results.length)
-        };
+        return createMockCollection(results);
       },
       belowOrEqual: (val: any) => {
         const results = Array.from(store.values()).filter(item => {
@@ -719,16 +768,7 @@ function getMockTable(tableName: string) {
           }
           return false;
         });
-        return {
-          first: () => Promise.resolve(results[0] || null),
-          toArray: () => Promise.resolve(results),
-          count: () => Promise.resolve(results.length),
-          and: () => ({
-            first: () => Promise.resolve(results[0] || null),
-            toArray: () => Promise.resolve(results),
-            count: () => Promise.resolve(results.length),
-          })
-        };
+        return createMockCollection(results);
       },
       anyOf: (vals: any[]) => {
         const results = Array.from(store.values()).filter(item => {
@@ -737,10 +777,7 @@ function getMockTable(tableName: string) {
           }
           return false;
         });
-        return {
-          toArray: () => Promise.resolve(results),
-          count: () => Promise.resolve(results.length)
-        };
+        return createMockCollection(results);
       },
       between: (a: any, b: any) => {
         const results = Array.from(store.values()).filter(item => {
@@ -749,10 +786,7 @@ function getMockTable(tableName: string) {
           }
           return false;
         });
-        return {
-          toArray: () => Promise.resolve(results),
-          count: () => Promise.resolve(results.length)
-        };
+        return createMockCollection(results);
       }
     };
   };
@@ -817,61 +851,198 @@ function getMockTable(tableName: string) {
     },
     count: () => Promise.resolve(store.size),
     where: whereMock,
-    orderBy: (_prop: string) => ({
-      reverse: () => ({
-        toArray: () => Promise.resolve(Array.from(store.values())),
-        limit: (n: number) => ({ toArray: () => Promise.resolve(Array.from(store.values()).slice(0, n)) })
-      }),
-      limit: (n: number) => ({ toArray: () => Promise.resolve(Array.from(store.values()).slice(0, n)) })
-    }),
+    orderBy: (prop: string) => {
+      const results = Array.from(store.values()).sort((a, b) => {
+        if (a[prop] < b[prop]) return -1;
+        if (a[prop] > b[prop]) return 1;
+        return 0;
+      });
+      return createMockCollection(results);
+    },
     filter: (fn: any) => {
       const results = Array.from(store.values()).filter(fn);
-      return {
-        toArray: () => Promise.resolve(results),
-        count: () => Promise.resolve(results.length)
-      };
+      return createMockCollection(results);
     }
   };
 
   return mockTable;
 }
 
-export const dbInstance = new PharmaFlowDB();
+export function getDatabaseName(tenantId?: string | null, userId?: string | null): string {
+  const t = tenantId || 'default-tenant';
+  const u = userId || 'default-user';
+  return `PharmaFlowPRO_${t}_${u}`;
+}
+
+// Check initial user session to boot the correct database
+const initialSession = getCurrentUserSession();
+const storedUser = typeof window !== 'undefined' ? localStorage.getItem('pharmaflow_user') : null;
+const initialDbName = storedUser ? getDatabaseName(initialSession.tenantId, initialSession.userId) : 'PharmaFlowPRO_Guest';
+
+export let dbInstance = new PharmaFlowDB(initialDbName);
+
+export async function openUserDatabase(tenantId: string, userId: string): Promise<PharmaFlowDB> {
+  const newDbName = getDatabaseName(tenantId, userId);
+  if (dbInstance && dbInstance.name === newDbName) {
+    if (!dbInstance.isOpen()) {
+      await dbInstance.open();
+    }
+    return dbInstance;
+  }
+
+  if (dbInstance) {
+    console.log(`[DB] Closing previous database: ${dbInstance.name}`);
+    dbInstance.close();
+  }
+
+  console.log(`[DB] Opening user-scoped database: ${newDbName}`);
+  dbInstance = new PharmaFlowDB(newDbName);
+  isDbBlocked = false;
+  try {
+    await dbInstance.open();
+    console.log(`[DB] User-scoped database ${newDbName} opened successfully.`);
+  } catch (error) {
+    console.error(`[DB] Failed to open user-scoped database ${newDbName}:`, error);
+    isDbBlocked = true;
+  }
+  return dbInstance;
+}
+
+export async function closeUserDatabase(): Promise<void> {
+  if (dbInstance) {
+    console.log(`[DB] Closing user database: ${dbInstance.name}`);
+    dbInstance.close();
+  }
+  dbInstance = new PharmaFlowDB('PharmaFlowPRO_Guest');
+  isDbBlocked = false;
+  try {
+    await dbInstance.open();
+  } catch (e) {
+    console.error('[DB] Failed to open Guest database on close:', e);
+    isDbBlocked = true;
+  }
+}
+
+// Subscribe to Auth state to automatically switch user databases!
+if (typeof window !== 'undefined') {
+  try {
+    useAuthStore.subscribe((state, prevState) => {
+      const prevUser = prevState?.user;
+      const currUser = state?.user;
+
+      if (currUser && (!prevUser || prevUser.id !== currUser.id)) {
+        const tenantId = currUser.tenantId || 'default-tenant';
+        const userId = currUser.id || 'default-user';
+        console.log(`[DB] Auth subscription detected login: tenant=${tenantId}, user=${userId}. Switching database...`);
+        openUserDatabase(tenantId, userId).catch(err => {
+          console.error('[DB] Error auto-switching DB on subscriber login:', err);
+        });
+      } else if (!currUser && prevUser) {
+        console.log('[DB] Auth subscription detected logout. Closing user database...');
+        closeUserDatabase().catch(err => {
+          console.error('[DB] Error auto-closing DB on subscriber logout:', err);
+        });
+      }
+    });
+  } catch (err) {
+    console.error('[DB] Failed to subscribe to useAuthStore:', err);
+  }
+}
 
 /**
  * Export a Proxy to support legacy code while transitioning to the new schema.
  */
-export const dbProxy = new Proxy(dbInstance, {
-  get(target, prop) {
+function wrapQueryChain(obj: any, tableName: string): any {
+  if (!obj || typeof obj !== 'object') return obj;
+  return new Proxy(obj, {
+    get(targetObj, targetProp) {
+      if (isDbBlocked) {
+        const mockTable = getMockTable(tableName);
+        const fallbackObj = (mockTable as any).where ? (mockTable as any).where() : createMockCollection([]);
+        return typeof fallbackObj[targetProp] === 'function'
+          ? fallbackObj[targetProp].bind(fallbackObj)
+          : fallbackObj[targetProp];
+      }
+      const val = targetObj[targetProp];
+      if (typeof val === 'function') {
+        return (...args: any[]) => {
+          try {
+            const res = val.apply(targetObj, args);
+            if (res && (res.then || typeof res === 'object')) {
+              if (res.then) {
+                return res.catch((err: any) => {
+                  console.warn(`[DB RESILIENT] Query operation promised rejection in table "${tableName}":`, err);
+                  isDbBlocked = true;
+                  const mockTable = getMockTable(tableName);
+                  return Promise.resolve([]);
+                });
+              }
+              return wrapQueryChain(res, tableName);
+            }
+            return res;
+          } catch (err) {
+            console.warn(`[DB RESILIENT] Query method "${String(targetProp)}" execution failed on table "${tableName}":`, err);
+            isDbBlocked = true;
+            const mockTable = getMockTable(tableName);
+            const fallbackObj = (mockTable as any).where ? (mockTable as any).where() : createMockCollection([]);
+            return typeof fallbackObj[targetProp] === 'function'
+              ? fallbackObj[targetProp](...args)
+              : undefined;
+          }
+        };
+      }
+      return val;
+    }
+  });
+}
+
+function wrapTable(realTable: any, tableName: string): any {
+  if (!realTable) return getMockTable(tableName);
+  return new Proxy(realTable, {
+    get(tObj, tProp) {
+      if (isDbBlocked) {
+        return (getMockTable(tableName) as any)[tProp];
+      }
+      const realVal = tObj[tProp];
+      if (typeof realVal === 'function') {
+        const boundFn = realVal.bind(tObj);
+        return (...args: any[]) => {
+          try {
+            const res = boundFn(...args);
+            if (res && (res.then || typeof res === 'object')) {
+              if (res.then) {
+                return res.catch((err: any) => {
+                  console.warn(`[DB RESILIENT] Promised operation failure on table "${tableName}":`, err);
+                  isDbBlocked = true;
+                  const mockTable = getMockTable(tableName);
+                  const fallbackFn = (mockTable as any)[tProp];
+                  return typeof fallbackFn === 'function' ? fallbackFn(...args) : Promise.resolve(null);
+                });
+              }
+              return wrapQueryChain(res, tableName);
+            }
+            return res;
+          } catch (err) {
+            console.warn(`[DB RESILIENT] Table operation "${String(tProp)}" failed on table "${tableName}":`, err);
+            isDbBlocked = true;
+            const mockTable = getMockTable(tableName);
+            const fallbackFn = (mockTable as any)[tProp];
+            return typeof fallbackFn === 'function' ? fallbackFn(...args) : undefined;
+          }
+        };
+      }
+      return realVal;
+    }
+  });
+}
+
+export const dbProxy = new Proxy({} as any, {
+  get(dummy, prop) {
+    const target = dbInstance;
     if (prop === 'db') return dbProxy;
     if (prop === 'init' && typeof target.init === 'function') return target.init.bind(target);
 
-    // If the database is blocked/failed to open, use the robust in-memory Map tables
-    if (isDbBlocked) {
-      if (typeof prop === 'string') {
-        const mappings: Record<string, string> = {
-          'sale': 'invoices',
-          'sales': 'invoices',
-          'purchase': 'invoices',
-          'purchases': 'invoices',
-          'transaction': 'invoices',
-          'transactions': 'invoices',
-          'auditlog': 'auditLogs',
-          'audit_log': 'auditLogs',
-          'auditlogs': 'auditLogs',
-          'medicinebatch': 'medicineBatches',
-          'medicinebatches': 'medicineBatches',
-          'voucherinvoicelink': 'vouchers',
-          'voucher_invoice_links': 'vouchers',
-          'draftinvoices': 'draft_invoices',
-          'draft_invoices': 'draft_in_voices'
-        };
-        const propStr = prop.toLowerCase().replace(/_/g, '');
-        const mappedName = mappings[propStr] || prop;
-        return getMockTable(mappedName);
-      }
-    }
-
+    // Overridden methods must resolve first even if the DB is blocked or closed
     if (prop === 'open') {
       return async () => {
         if (isDbBlocked) {
@@ -913,7 +1084,16 @@ export const dbProxy = new Proxy(dbInstance, {
           const item = await settingsTable.get(key);
           return item ? item.value : defaultValue;
         }
-        return target.getSetting(key, defaultValue);
+        try {
+          if (typeof target.getSetting === 'function') {
+            return await target.getSetting(key, defaultValue);
+          }
+        } catch (err) {
+          console.warn("[DB RESILIENT] Failed to run target.getSetting, falling back to mock:", err);
+        }
+        const settingsTable = getMockTable('settings');
+        const item = await settingsTable.get(key);
+        return item ? item.value : defaultValue;
       };
     }
 
@@ -924,15 +1104,59 @@ export const dbProxy = new Proxy(dbInstance, {
           await settingsTable.put({ key, value });
           return;
         }
-        return target.saveSetting(key, value);
+        try {
+          if (typeof target.saveSetting === 'function') {
+            return await target.saveSetting(key, value);
+          }
+        } catch (err) {
+          console.warn("[DB RESILIENT] Failed to run target.saveSetting, falling back to mock:", err);
+        }
+        const settingsTable = getMockTable('settings');
+        await settingsTable.put({ key, value });
       };
     }
 
-    // 1. Check direct property in target (tables and defined methods)
+    // Direct functions / methods on target should execute cleanly (like generateId)
     if (prop in target) {
       const val = (target as any)[prop];
-      if (typeof val === 'function') return val.bind(target);
-      return val;
+      if (typeof val === 'function') {
+        return val.bind(target);
+      }
+    }
+
+    // If the database is blocked/failed to open, return robust mock tables with in-memory persistence
+    if (isDbBlocked) {
+      if (typeof prop === 'string') {
+        const mappings: Record<string, string> = {
+          'sale': 'invoices',
+          'sales': 'invoices',
+          'purchase': 'invoices',
+          'purchases': 'invoices',
+          'transaction': 'invoices',
+          'transactions': 'invoices',
+          'auditlog': 'auditLogs',
+          'audit_log': 'auditLogs',
+          'auditlogs': 'auditLogs',
+          'medicinebatch': 'medicineBatches',
+          'medicinebatches': 'medicineBatches',
+          'voucherinvoicelink': 'vouchers',
+          'voucher_invoice_links': 'vouchers',
+          'draftinvoices': 'draft_in_voices',
+          'draft_in_voices': 'draft_invoices'
+        };
+        const propStr = prop.toLowerCase().replace(/_/g, '');
+        const mappedName = mappings[propStr] || prop;
+        return getMockTable(mappedName);
+      }
+    }
+
+    // 1. Direct table reference if it exists on target
+    if (prop in target) {
+      const pVal = (target as any)[prop];
+      if (pVal && typeof pVal === 'object' && typeof pVal.where === 'function') {
+        return wrapTable(pVal, String(prop));
+      }
+      return pVal;
     }
 
     // 2. Normalization for common variations
@@ -944,7 +1168,9 @@ export const dbProxy = new Proxy(dbInstance, {
       return tableName === propStr || tableName === propStr + 's' || tableName + 's' === propStr;
     });
 
-    if (foundTable) return foundTable;
+    if (foundTable) {
+      return wrapTable(foundTable, foundTable.name);
+    }
 
     // 3. Plural vs Singular Mappings
     const mappings: Record<string, string> = {
@@ -965,7 +1191,7 @@ export const dbProxy = new Proxy(dbInstance, {
 
     const mappedName = mappings[propStr];
     if (mappedName && (target as any)[mappedName]) {
-      return (target as any)[mappedName];
+      return wrapTable((target as any)[mappedName], mappedName);
     }
 
     // 4. Safe mock for missing properties to prevent UI crashes
@@ -983,45 +1209,15 @@ export const dbProxy = new Proxy(dbInstance, {
       clear: () => Promise.resolve(),
       count: () => Promise.resolve(0),
       where: () => ({
-        equals: () => ({ 
-          first: () => Promise.resolve(null), 
-          toArray: () => Promise.resolve([]), 
-          count: () => Promise.resolve(0) 
-        }),
-        above: () => ({ 
-          first: () => Promise.resolve(null), 
-          toArray: () => Promise.resolve([]), 
-          count: () => Promise.resolve(0),
-          filter: () => ({ toArray: () => Promise.resolve([]), count: () => Promise.resolve(0) })
-        }),
-        below: () => ({ 
-          first: () => Promise.resolve(null), 
-          toArray: () => Promise.resolve([]), 
-          count: () => Promise.resolve(0) 
-        }),
-        anyOf: () => ({ 
-          toArray: () => Promise.resolve([]), 
-          count: () => Promise.resolve(0) 
-        }),
-        between: () => ({ 
-          toArray: () => Promise.resolve([]), 
-          count: () => Promise.resolve(0) 
-        })
+        equals: () => createMockCollection([]),
+        above: () => createMockCollection([]),
+        below: () => createMockCollection([]),
+        anyOf: () => createMockCollection([]),
+        between: () => createMockCollection([])
       }),
-      orderBy: () => ({
-        reverse: () => ({
-          toArray: () => Promise.resolve([]),
-          limit: () => ({ toArray: () => Promise.resolve([]) })
-        }),
-        limit: () => ({ toArray: () => Promise.resolve([]) })
-      }),
-      filter: () => ({ toArray: () => Promise.resolve([]), count: () => Promise.resolve(0) })
+      orderBy: () => createMockCollection([]),
+      filter: () => createMockCollection([])
     };
-
-    // If it looks like a method call that isn't a table operation
-    if (prop === 'getSetting' || prop === 'saveSetting') {
-      return (target as any)[prop]?.bind(target) || (() => Promise.resolve(null));
-    }
 
     return mockTable;
   }

@@ -3,7 +3,8 @@ import { Router, Response } from "express";
 import { prisma } from "../database/prisma";
 import { runInTransaction } from "../core/database/transactionGuard";
 import { FifoService } from "../modules/inventory/services/fifo.service";
-import { authenticateToken, AuthenticatedRequest } from "../middleware/auth.middleware";
+import { authenticateToken, requireRoles, AuthenticatedRequest } from "../middleware/auth.middleware";
+import { Role } from "@prisma/client";
 import { LockingService } from "../modules/locking/locking.service";
 import { ReplicationPublisher } from "../modules/replication/replication.publisher";
 import { StockMoveSchema } from "../../src/shared/validation/inventory.schema";
@@ -15,7 +16,7 @@ export const inventoryRouter = Router();
  * POST /api/inventory/move
  * Post custom inward stock additions or adjustments securely.
  */
-inventoryRouter.post("/move", authenticateToken, validateRequestBody(StockMoveSchema), async (req: AuthenticatedRequest, res: Response) => {
+inventoryRouter.post("/move", authenticateToken, requireRoles([Role.PLATFORM_OWNER, Role.TENANT_ADMIN, Role.ADMIN, Role.INVENTORY_MANAGER]), validateRequestBody(StockMoveSchema), async (req: AuthenticatedRequest, res: Response) => {
   const data = req.body; // sanitized and verified by validateRequestBody
   const key = `inventory:${data.productId}`;
   const branchId = data.branchId || "BRH-MAIN-001";

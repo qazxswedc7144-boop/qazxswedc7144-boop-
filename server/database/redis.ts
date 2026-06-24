@@ -2,7 +2,10 @@
 
 import Redis, { RedisOptions } from "ioredis";
 
-const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379";
+let REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379";
+if (typeof REDIS_URL === "string") {
+  REDIS_URL = REDIS_URL.trim().replace(/^['"]|['"]$/g, '');
+}
 
 class RedisConnectionManager {
   private static instance: Redis | null = null;

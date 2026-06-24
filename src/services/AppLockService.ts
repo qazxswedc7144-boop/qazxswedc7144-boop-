@@ -1,5 +1,6 @@
 export class AppLockService {
   private isLocked = false;
+  private lastActivityTime = Date.now();
   private settings = {
     is_enabled: false,
     lock_mode: '5m',
@@ -16,13 +17,37 @@ export class AppLockService {
 
   unlock() {
     this.isLocked = false;
+    this.lastActivityTime = Date.now();
     console.log('[AppLock] System Unlocked');
   }
 
   getStatus() { return this.isLocked; }
   getSettings() { return this.settings; }
-  updateActivity() { console.log('[AppLock] Activity updated'); }
-  shouldLock() { return false; }
+  
+  updateActivity() { 
+    this.lastActivityTime = Date.now();
+    console.log('[AppLock] Activity updated: ', this.lastActivityTime); 
+  }
+  
+  getLastActivityTime() {
+    return this.lastActivityTime;
+  }
+
+  shouldLock() { 
+    const mode = this.settings.lock_mode || '5m';
+    if (mode === 'instant') return false;
+    
+    let minutes = 5;
+    if (mode === '1m') minutes = 1;
+    else if (mode === '5m') minutes = 5;
+    else if (mode === '15m') minutes = 15;
+    else if (mode === '30m') minutes = 30;
+    else if (mode === '1h') minutes = 60;
+    
+    const elapsed = Date.now() - this.lastActivityTime;
+    return elapsed > minutes * 60 * 1000; 
+  }
+
   isSimpleLockEnabled() { return this.settings.isSimpleLockEnabled; }
   verifySimplePin(pin: string) { return pin === this.settings.simplePin; }
   verifyPassword(_pass: string) { return true; }

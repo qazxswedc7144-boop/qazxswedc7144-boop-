@@ -2,6 +2,7 @@ import { createRoot } from 'react-dom/client';
 import App from '@/app/App';
 import '@/styles/index.css';
 import { AppProvider } from '@/contexts/AppContext';
+import { AuthProvider } from '@/modules/auth/hooks/useAuth';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import { ReportProvider } from '@/contexts/ReportContext';
 import { NotificationProvider } from '@/context/NotificationContext';
@@ -67,13 +68,15 @@ const root = createRoot(rootElement);
 root.render(
     <AppFaultBoundary>
       <AppProvider>
-        <ThemeProvider>
-          <ReportProvider>
-            <NotificationProvider>
-              <App />
-            </NotificationProvider>
-          </ReportProvider>
-        </ThemeProvider>
+        <AuthProvider>
+          <ThemeProvider>
+            <ReportProvider>
+              <NotificationProvider>
+                <App />
+              </NotificationProvider>
+            </ReportProvider>
+          </ThemeProvider>
+        </AuthProvider>
       </AppProvider>
     </AppFaultBoundary>
 );

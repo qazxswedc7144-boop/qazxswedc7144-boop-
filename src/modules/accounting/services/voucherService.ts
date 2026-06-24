@@ -4,6 +4,7 @@ import { AccountingEngine } from './AccountingEngine';
 import { Receipt, Payment } from '@/types';
 import { useAppStore } from '@/hooks/useAppStore';
 import { SubscriptionService } from '@/services/saas/subscriptionService';
+import { useAuthStore } from '@/store/authStore';
 
 export const voucherService = {
   createReceipt: async (data: { customer_id: string; amount: number; notes?: string; date?: string; paymentMethod?: 'CASH' | 'TRANSFER' }) => {
@@ -34,6 +35,8 @@ export const voucherService = {
       lastModified: new Date().toISOString()
     };
     
+    const currentUserId = useAuthStore.getState().user?.id || 'unknown';
+
     // Save to Dexie Vouchers table
     await db.db.vouchers.put({
        id,
@@ -43,7 +46,7 @@ export const voucherService = {
        partnerId: data.customer_id,
        notes: data.notes,
        date,
-       userId: 'local-user',
+       userId: currentUserId,
        created_at: new Date().toISOString(),
        lastModified: new Date().toISOString(),
        syncStatus: 'NEW'
@@ -102,7 +105,7 @@ export const voucherService = {
        partnerId: data.supplier_id,
        notes: data.notes,
        date,
-       userId: 'local-user',
+       userId: useAuthStore.getState().user?.id || 'unknown',
        created_at: new Date().toISOString(),
        lastModified: new Date().toISOString(),
        syncStatus: 'NEW'

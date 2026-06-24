@@ -1,13 +1,16 @@
 // server/database/prisma.ts
 import { PrismaClient } from "@prisma/client";
 
-const databaseUrl = process.env.DATABASE_URL || "postgresql://pharmaadmin:SecretSecurePassword2026!@localhost:5432/pharmaflow_erp?schema=public";
-
-if (!process.env.DATABASE_URL) {
-  process.env.DATABASE_URL = databaseUrl;
+let databaseUrl = process.env.DATABASE_URL || "postgresql://dummy:dummy@localhost:5432/dummy";
+if (typeof databaseUrl === "string") {
+  databaseUrl = databaseUrl.trim().replace(/^['"]|['"]$/g, '');
 }
 
-// Process the DATABASE_URL to inject PgBouncer / Neon specific resilient parameters
+if (!process.env.DATABASE_URL) {
+  console.warn("⚠️ Warning: DATABASE_URL environment variable is missing. Setting up fallback to prevent container boot failures.");
+}
+
+// Process the DATABASE_URL to inject PgBouncer / Neon specific resilient parameters and TCP keepalives
 function getResilientDatabaseUrl(rawUrl: string): string {
   try {
     // If it's a localhost URL, keep it simple
@@ -17,42 +20,58 @@ function getResilientDatabaseUrl(rawUrl: string): string {
 
     const urlObj = new URL(rawUrl);
     
-    // Automatically configure PgBouncer / Neon pooled connection enhancements
-    const isPooler = urlObj.hostname.includes("-pooler") || urlObj.hostname.includes("pooler");
-    const isNeon = urlObj.hostname.includes("neon.tech");
+    // Inject robust TCP Keepalives to prevent idle socket terminations by network gateways/firewalls
+    urlObj.searchParams.set("keepalives", "1");
+    if (!urlObj.searchParams.has("keepalives_idle")) {
+      urlObj.searchParams.set("keepalives_idle", "30");
+    }
+    if (!urlObj.searchParams.has("keepalives_interval")) {
+      urlObj.searchParams.set("keepalives_interval", "10");
+    }
+    if (!urlObj.searchParams.has("keepalives_count")) {
+      urlObj.searchParams.set("keepalives_count", "3");
+    }
+    if (!urlObj.searchParams.has("connect_timeout")) {
+      urlObj.searchParams.set("connect_timeout", "30");
+    }
 
-    if (isPooler || isNeon) {
+    // Automatically configure PgBouncer / Neon pooled connection enhancements
+    const isPooler = urlObj.hostname.includes("-pooler") || urlObj.hostname.includes("pooler") || urlObj.port === "6543" || urlObj.searchParams.get("pgbouncer") === "true";
+    
+    if (isPooler) {
       // For transaction pooling in PgBouncer/Neon, pgbouncer=true is MANDATORY
       urlObj.searchParams.set("pgbouncer", "true");
       
-      // Prevent connection timeouts during scaling sleep periods (scale-to-zero)
-      if (!urlObj.searchParams.has("connect_timeout")) {
-        urlObj.searchParams.set("connect_timeout", "30");
-      }
       if (!urlObj.searchParams.has("pool_timeout")) {
         urlObj.searchParams.set("pool_timeout", "30");
       }
-      
-      // Control maximum connections per container in Cloud Run serverless environments
-      if (!urlObj.searchParams.has("connection_limit")) {
-        urlObj.searchParams.set("connection_limit", "10");
-      }
+    }
+
+    // Control maximum connections per container in serverless Cloud Run environments (default to 3 to prevent pool exhaustion)
+    if (!urlObj.searchParams.has("connection_limit")) {
+      urlObj.searchParams.set("connection_limit", "3");
     }
 
     return urlObj.toString();
   } catch (error) {
     console.warn("⚠️ Failed to parse database URL for resilient attributes decoration:", error);
     // If parse fails (e.g. because of unusual characters), do a safe manual suffix injection
-    if (rawUrl.includes("-pooler") || rawUrl.includes("neon.tech")) {
-      const separator = rawUrl.includes("?") ? "&" : "?";
-      let decorated = rawUrl;
-      if (!rawUrl.includes("pgbouncer=")) decorated += `${separator}pgbouncer=true`;
-      if (!rawUrl.includes("connect_timeout=")) decorated += `&connect_timeout=30`;
+    const separator = rawUrl.includes("?") ? "&" : "?";
+    let decorated = rawUrl;
+    if (!rawUrl.includes("keepalives=")) decorated += `${separator}keepalives=1`;
+    if (!rawUrl.includes("keepalives_idle=")) decorated += `&keepalives_idle=30`;
+    if (!rawUrl.includes("keepalives_interval=")) decorated += `&keepalives_interval=10`;
+    if (!rawUrl.includes("keepalives_count=")) decorated += `&keepalives_count=3`;
+    if (!rawUrl.includes("connect_timeout=")) decorated += `&connect_timeout=30`;
+
+    const isPooler = rawUrl.includes("-pooler") || rawUrl.includes("pooler") || rawUrl.includes(":6543");
+    if (isPooler) {
+      if (!rawUrl.includes("pgbouncer=")) decorated += `&pgbouncer=true`;
       if (!rawUrl.includes("pool_timeout=")) decorated += `&pool_timeout=30`;
-      if (!rawUrl.includes("connection_limit=")) decorated += `&connection_limit=10`;
-      return decorated;
     }
-    return rawUrl;
+    if (!rawUrl.includes("connection_limit=")) decorated += `&connection_limit=3`;
+    
+    return decorated;
   }
 }
 
@@ -97,11 +116,13 @@ export const prisma = basePrisma.$extends({
               errorMessage.includes("Can't reach");
 
             if (isConnectionClosed && retries > 0) {
-              console.warn(`[Prisma Retry] Connection/socket closed on ${model}.${operation}. Attempting reconnect and retry...`);
+              console.warn(`[Prisma Retry] Connection/socket closed on ${model}.${operation}. Performing a hard reset of pool and retrying...`);
               try {
+                await basePrisma.$disconnect();
+                await new Promise((resolve) => setTimeout(resolve, 200));
                 await basePrisma.$connect();
               } catch (connectErr) {
-                console.error("[Prisma Retry] Reconnection helper failed:", connectErr);
+                console.error("[Prisma Retry] Hard reset failed:", connectErr);
               }
               // Wait briefly before retry to allow database recovery/wakeup
               await new Promise((resolve) => setTimeout(resolve, 500));
@@ -133,11 +154,13 @@ export const prisma = basePrisma.$extends({
             errorMessage.includes("Can't reach");
 
           if (isConnectionClosed && retries > 0) {
-            console.warn(`[Prisma Retry] Connection/socket closed on $queryRaw. Attempting reconnect and retry...`);
+            console.warn(`[Prisma Retry] Connection/socket closed on $queryRaw. Performing a hard reset of pool and retrying...`);
             try {
+              await basePrisma.$disconnect();
+              await new Promise((resolve) => setTimeout(resolve, 200));
               await basePrisma.$connect();
             } catch (connectErr) {
-              console.error("[Prisma Retry] Reconnection helper failed:", connectErr);
+              console.error("[Prisma Retry] Hard reset failed:", connectErr);
             }
             await new Promise((resolve) => setTimeout(resolve, 500));
           } else {
@@ -167,11 +190,13 @@ export const prisma = basePrisma.$extends({
             errorMessage.includes("Can't reach");
 
           if (isConnectionClosed && retries > 0) {
-            console.warn(`[Prisma Retry] Connection/socket closed on $executeRaw. Attempting reconnect and retry...`);
+            console.warn(`[Prisma Retry] Connection/socket closed on $executeRaw. Performing a hard reset of pool and retrying...`);
             try {
+              await basePrisma.$disconnect();
+              await new Promise((resolve) => setTimeout(resolve, 200));
               await basePrisma.$connect();
             } catch (connectErr) {
-              console.error("[Prisma Retry] Reconnection helper failed:", connectErr);
+              console.error("[Prisma Retry] Hard reset failed:", connectErr);
             }
             await new Promise((resolve) => setTimeout(resolve, 500));
           } else {

@@ -2,8 +2,8 @@
 import { Router, Response } from "express";
 import { prisma } from "../database/prisma";
 import { runInTransaction } from "../core/database/transactionGuard";
-import { authenticateToken, AuthenticatedRequest } from "../middleware/auth.middleware";
-import { Prisma } from "@prisma/client";
+import { authenticateToken, requireRoles, AuthenticatedRequest } from "../middleware/auth.middleware";
+import { Prisma, Role } from "@prisma/client";
 import { LockingService } from "../modules/locking/locking.service";
 import { AccountingEntrySchema } from "../../src/shared/validation/accounting.schema";
 import { validateRequestBody } from "../middleware/validate";
@@ -15,7 +15,7 @@ export const accountingRouter = Router();
  * Manually posts a multi-line general journal entry directly to the Ledger.
  * Uses Row-Level Locking, version checks, and Double-entry balancing enforcement.
  */
-accountingRouter.post("/journal", authenticateToken, validateRequestBody(AccountingEntrySchema), async (req: AuthenticatedRequest, res: Response) => {
+accountingRouter.post("/journal", authenticateToken, requireRoles([Role.PLATFORM_OWNER, Role.TENANT_ADMIN, Role.ADMIN, Role.ACCOUNTANT]), validateRequestBody(AccountingEntrySchema), async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.user?.userId || "SYSTEM";
   const branchId = "BRH-MAIN-001";
   const key = `purchase:journal:${userId}`;

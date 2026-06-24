@@ -1,7 +1,17 @@
-// 6. Enforces ENCRYPTION_KEY validation inline immediately upon boot
+// Enforce strict environment validation immediately upon boot, and set safe defaults if missing
 if (!process.env.ENCRYPTION_KEY) {
-  console.warn("⚠️ Warning: ENCRYPTION_KEY is not defined in the environment. Falling back to default system key.");
+  console.warn("⚠️ Warning: ENCRYPTION_KEY is not defined in the environment. Falling back to a temporary system key to prevent boot failure.");
   process.env.ENCRYPTION_KEY = 'pharmaflow-fallback-secure-master-key-gcm-sha256-2026';
+}
+
+if (!process.env.JWT_SECRET) {
+  console.warn("⚠️ Warning: JWT_SECRET is missing from the environment. Falling back to a temporary secret to prevent boot failure.");
+  process.env.JWT_SECRET = 'pharmaflow-local-development-jwt-secure-secret-2026';
+}
+
+if (!process.env.JWT_REFRESH_SECRET) {
+  console.warn("⚠️ Warning: JWT_REFRESH_SECRET is missing from the environment. Falling back to a temporary refresh secret to prevent boot failure.");
+  process.env.JWT_REFRESH_SECRET = 'pharmaflow-local-development-jwt-refresh-secure-secret-2026';
 }
 
 // Global resilience listeners to protect the containerized server process from premature exit under background load or DB hiccups
@@ -39,6 +49,7 @@ import { requestContextPlugin } from "./apps/api/src/plugins/request-context";
 import { authV1Router } from "./apps/api/src/modules/auth/auth.routes";
 import { syncV1Router } from "./apps/api/src/modules/sync/sync.routes";
 import { subscriptionGuard } from "./server/middleware/subscription.middleware";
+import { authenticateToken } from "./server/middleware/auth.middleware";
 
 
 function killStaleProcesses(port: number) {
@@ -48,6 +59,7 @@ function killStaleProcesses(port: number) {
 
 
 async function startServer() {
+  // Enforce binding strictly to port 3000 in local sandboxed environment or respect dynamic PORT on Cloud Run
   const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
   
   // Clean up any stale processes that might be holding onto the port or 24678 in development
@@ -119,6 +131,15 @@ async function startServer() {
 
   // Mount subscription checks guard globally for all mutating APIs
   app.use("/api", subscriptionGuard);
+
+  // Enforce JWT authentication on specified route hierarchies
+  app.use("/api/invoices", authenticateToken);
+  app.use("/api/accounting", authenticateToken);
+  app.use("/api/inventory", authenticateToken);
+  app.use("/api/reports", authenticateToken);
+  app.use("/api/backups", authenticateToken);
+  app.use("/api/users", authenticateToken);
+  app.use("/api/system", authenticateToken);
 
   // Mount Unified Enterprise ERP Core Modules
   app.use("/api/auth", authRouter);
@@ -371,15 +392,36 @@ async function startServer() {
 }
 
 function runBackgroundDbSync() {
-  const urlString = process.env.DATABASE_URL || "postgresql://pharmaadmin:SecretSecurePassword2026!@localhost:5432/pharmaflow_erp?schema=public";
+  let urlString = process.env.DATABASE_URL || "postgresql://pharmaadmin:SecretSecurePassword2026!@localhost:5432/pharmaflow_erp?schema=public";
+  if (typeof urlString === "string") {
+    urlString = urlString.trim().replace(/^['"]|['"]$/g, '');
+  }
   
   const isCloudSqlSocket = urlString.includes("/cloudsql/") || urlString.includes("socket=") || urlString.includes("host=/");
   
   const executeDbPush = () => {
     console.log("🚀 Connection confirmed/assumed. Running schema sync...");
+    
+    // Clean DATABASE_URL for prisma db push to ensure we do not use transaction pooling parameters which Prisma Migrate/db push do not support.
+    let cleanDbUrlForPush = urlString;
+    try {
+      if (urlString.includes("postgresql://") || urlString.includes("postgres://")) {
+        const urlObj = new URL(urlString.replace("postgresql://", "http://").replace("postgres://", "http://"));
+        urlObj.searchParams.delete("pgbouncer");
+        urlObj.searchParams.delete("connection_limit");
+        
+        const PROTOCOL = urlString.startsWith("postgresql://") ? "postgresql://" : "postgres://";
+        cleanDbUrlForPush = urlObj.toString().replace("http://", PROTOCOL);
+      }
+    } catch (e: any) {
+      console.warn("⚠️ Failed to sanitize DATABASE_URL for Schema Push:", e.message || e);
+    }
+
+    const pushEnv = { ...process.env, DATABASE_URL: cleanDbUrlForPush };
+
     exec(
-      "npx --no-install prisma db push --accept-data-loss",
-      { timeout: 45000, env: process.env },
+      "npx --prefer-offline --no-install prisma db push --accept-data-loss --skip-generate",
+      { timeout: 45000, env: pushEnv },
       (errVal, stdout, stderr) => {
         if (errVal) {
           const detail = (errVal.message || "").replace(/error/gi, "err_");

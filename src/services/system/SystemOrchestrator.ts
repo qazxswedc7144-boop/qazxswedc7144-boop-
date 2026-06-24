@@ -402,7 +402,7 @@ export class SystemOrchestrator {
           await db.db.purchases.update(invoiceId, { invoiceStatus: 'VOID', isDeleted: true, lastModified: new Date().toISOString() });
         }
         
-        await db.addAuditLog('DELETE', type, invoiceId, `Invoice marked as VOID (Soft Delete) by ${authService.getCurrentUser().User_Email}`);
+        await db.addAuditLog('DELETE', type, invoiceId, `Invoice marked as VOID (Soft Delete) by ${authService.getCurrentUser()?.User_Email || 'unknown'}`);
         
         await ProjectionEventBus.publish('INVOICE_DELETED', invoiceId, { type });
 

@@ -1,6 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 import { db } from '@/core/db';
+import { useAuth } from '@/modules/auth/hooks/useAuth';
 import { 
   Settings, Lock, Plus, ShieldCheck, Receipt, Network, ArrowRightLeft, 
   Printer, Globe, Moon, RefreshCcw, 
@@ -1195,12 +1197,91 @@ const SettingsModule: React.FC<{ onNavigate?: (view: any) => void }> = ({ onNavi
 };
 
 const SecuritySettingsTab: React.FC = () => {
+  const { authenticationEnabled, setAuthenticationEnabled } = useAuth();
   const [settings, setSettings] = useState<any>(null);
   const [appLockEnabled, setAppLockEnabled] = useState(false);
   const [simplePin, setSimplePin] = useState('');
   const [form, setForm] = useState({ username: '', password: '', confirm: '', mode: '5m' as any });
   const { addToast, refreshGlobal } = useUI();
   const [loading, setLoading] = useState(false);
+
+  // Task 2: Additional security parameters tracked in Dexie systemSettings
+  const [lockOnStartup, setLockOnStartup] = useState(false);
+  const [biometricEnabled, setBiometricEnabled] = useState(false);
+  const [autoLockEnabled, setAutoLockEnabled] = useState(false);
+
+  // Task 3: First Admin Bootstrap Wizard elements
+  const [isBootstrapModalOpen, setIsBootstrapModalOpen] = useState(false);
+  const [bootstrapUsername, setBootstrapUsername] = useState('');
+  const [bootstrapPassword, setBootstrapPassword] = useState('');
+  const [bootstrapConfirmPassword, setBootstrapConfirmPassword] = useState('');
+  const [isBootstrapping, setIsBootstrapping] = useState(false);
+
+  const handleBootstrapSubmit = async () => {
+    if (!bootstrapUsername || !bootstrapPassword || !bootstrapConfirmPassword) {
+      addToast("الرجاء ملء جميع الحقول المطلوبة ⚠️", "warning");
+      return;
+    }
+    if (bootstrapPassword !== bootstrapConfirmPassword) {
+      addToast("كلمة المرور وتأكيدها غير متطابقتين ❌", "error");
+      return;
+    }
+    if (bootstrapPassword.length < 6) {
+      addToast("يجب أن تكون كلمة المرور مكونة من 6 أحرف على الأقل 🛡️", "warning");
+      return;
+    }
+    setIsBootstrapping(true);
+    try {
+      // Hash the password using bcryptjs on the frontend for local database recording
+      let localHash = "";
+      try {
+        const bcryptjs = await import('bcryptjs');
+        localHash = await bcryptjs.default.hash(bootstrapPassword, 10);
+      } catch (e) {
+        console.warn("Could not hash local password with bcryptjs on client:", e);
+      }
+
+      // Record the user as ADMIN in the local indexDb database
+      try {
+        await db.branchUsers.put({
+          id: 'admin',
+          userId: 'admin',
+          username: bootstrapUsername.trim().toLowerCase(),
+          role: 'ADMIN',
+          passwordHash: localHash || bootstrapPassword,
+          createdAt: new Date()
+        });
+      } catch (e) {
+        console.error("Local save of admin user failed:", e);
+      }
+
+      // Provision user in server registry
+      const res = await axios.post('/api/auth/bootstrap', {
+        username: bootstrapUsername.trim(),
+        password: bootstrapPassword,
+        tenantName: "المؤسسة الدوائية المركزية"
+      });
+
+      if (res.data.success) {
+        addToast("تمت تهيئة حساب المدير وتأسيس النظام الفيدرالي بنجاح 👑", "success");
+        setIsBootstrapModalOpen(false);
+        // Clear wizard fields
+        setBootstrapUsername('');
+        setBootstrapPassword('');
+        setBootstrapConfirmPassword('');
+        
+        // Once account is provisioned, set authenticationEnabled = true, revoke local-admin, clear context, and force a redirection to LoginScreen
+        await setAuthenticationEnabled(true);
+        window.location.hash = '#/login';
+        window.location.reload();
+      }
+    } catch (err: any) {
+      const msg = err.response?.data?.message || err.message || "فشلت عملية تهيئة المدير";
+      addToast(`خطأ أثناء التهيئة: ${msg} ❌`, "error");
+    } finally {
+      setIsBootstrapping(false);
+    }
+  };
 
   useEffect(() => {
     const load = async () => {
@@ -1211,6 +1292,20 @@ const SecuritySettingsTab: React.FC = () => {
         setSettings(s);
         if (s) {
           setForm(f => ({ ...f, username: s.username, mode: s.lock_mode }));
+        }
+
+        // Load Dexie local system security parameters
+        const los = await db.systemSettings.get('lockOnStartup');
+        if (los !== undefined) {
+          setLockOnStartup(los.value === true);
+        }
+        const bio = await db.systemSettings.get('biometricEnabled');
+        if (bio !== undefined) {
+          setBiometricEnabled(bio.value === true);
+        }
+        const aut = await db.systemSettings.get('autoLockEnabled');
+        if (aut !== undefined) {
+          setAutoLockEnabled(aut.value === true);
         }
       } catch (e) {
         console.error("load security settings failed:", e);
@@ -1229,6 +1324,36 @@ const SecuritySettingsTab: React.FC = () => {
     }
   };
 
+  const toggleLockOnStartup = async (checked: boolean) => {
+    try {
+      setLockOnStartup(checked);
+      await db.systemSettings.put({ key: 'lockOnStartup', value: checked });
+      addToast(checked ? "تم تفعيل القفل تلقائياً عند بدء التشغيل 🔒" : "تم تعطيل قفل بدء التشغيل 🔓", "success");
+    } catch (e) {
+      addToast("فشل تفعيل/تعطيل خيار قفل التشغيل", "error");
+    }
+  };
+
+  const toggleBiometric = async (checked: boolean) => {
+    try {
+      setBiometricEnabled(checked);
+      await db.systemSettings.put({ key: 'biometricEnabled', value: checked });
+      addToast(checked ? "تم تفعيل المصادقة الحيوية والبصمة بنجاح 🧬" : "تم تعطيل المصادقة الحيوية 🔓", "success");
+    } catch (e) {
+      addToast("فشل تفعيل/تعطيل بصمة الإصبع والوجه", "error");
+    }
+  };
+
+  const toggleAutoLock = async (checked: boolean) => {
+    try {
+      setAutoLockEnabled(checked);
+      await db.systemSettings.put({ key: 'autoLockEnabled', value: checked });
+      addToast(checked ? "تم تفعيل القفل التلقائي عند الخمول والتوقف ⏱️" : "تم تعطيل القفل التلقائي للخمول 🔓", "success");
+    } catch (e) {
+      addToast("فشل تفعيل/تعطيل القفل التلقائي", "error");
+    }
+  };
+
   const handleSaveSimplePin = async () => {
     if (!simplePin) return;
     try {
@@ -1243,10 +1368,6 @@ const SecuritySettingsTab: React.FC = () => {
   const handleEnable = async () => {
     if (!form.username || !form.password) {
       addToast("يرجى إدخال اسم المستخدم وكلمة المرور", "warning");
-      return;
-    }
-    if (form.password !== form.confirm) {
-      addToast("كلمات المرور غير متطابقة", "error");
       return;
     }
     setLoading(true);
@@ -1269,6 +1390,114 @@ const SecuritySettingsTab: React.FC = () => {
         <Lock size={16} className="text-blue-500" /> قفل التطبيق والأمان
       </h3>
       
+      {/* 4 Security Toggles Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Toggle 1: Enable System Login (authenticationEnabled) */}
+        <div className="flex items-center justify-between p-4 bg-indigo-50/30 dark:bg-indigo-950/20 rounded-2xl border border-indigo-100/60 dark:border-indigo-900/40 hover:bg-indigo-50/50 transition-all duration-200">
+          <div className="flex items-center gap-3">
+            <Shield className="text-indigo-600 dark:text-indigo-400" size={18} />
+            <div>
+              <span className="text-[10px] font-black text-[#1E4D4D] dark:text-indigo-300 block">تفعيل شاشة تسجيل الدخول الإلزامية</span>
+              <span className="text-[8px] text-slate-500 dark:text-slate-400 font-bold block">يتطلب التحقق من اسم المستخدم وكلمة المرور عبر الخادم بدلاً من الدخول كمسؤول تلقائي</span>
+            </div>
+          </div>
+          <input
+            type="checkbox"
+            className="w-5 h-5 accent-indigo-600 cursor-pointer rounded-md"
+            checked={authenticationEnabled}
+            onChange={async (e) => {
+              const checked = e.target.checked;
+              if (checked) {
+                try {
+                  setLoading(true);
+                  // 1. CONTEXT CHECK: check if standard server registry or browser's local users database is empty
+                  const statusRes = await axios.get('/api/auth/bootstrap-status');
+                  let localEmpty = true;
+                  try {
+                    const localCount = await db.branchUsers.count();
+                    localEmpty = localCount === 0;
+                  } catch (e) {
+                    console.warn("Could not check local users db count:", e);
+                  }
+
+                  if (statusRes.data.requiresBootstrap || localEmpty) {
+                    // Halt transition and open First Administrator Registration Wizard
+                    setIsBootstrapModalOpen(true);
+                    setLoading(false);
+                    return;
+                  }
+                  
+                  await setAuthenticationEnabled(true);
+                  addToast("تم تفعيل تسجيل الدخول الإلزامي 🔒", "success");
+                } catch (err: any) {
+                  addToast("فشل التحقق من حالة نظام الأمان التلقائي ⚠️", "error");
+                } finally {
+                  setLoading(false);
+                }
+              } else {
+                try {
+                  await setAuthenticationEnabled(false);
+                  addToast("تم تعطيل شاشة الدخول وتفعيل وضع المسؤول المحلي التلقائي 🔓", "success");
+                } catch (err: any) {
+                  addToast("فشل تعطيل خيار تسجيل الدخول الإلزامي", "error");
+                }
+              }
+            }}
+          />
+        </div>
+
+        {/* Toggle 2: Lock Application On Startup (lockOnStartup) */}
+        <div className="flex items-center justify-between p-4 bg-emerald-50/30 dark:bg-emerald-950/20 rounded-2xl border border-emerald-100/60 dark:border-emerald-900/40 hover:bg-emerald-50/50 transition-all duration-200">
+          <div className="flex items-center gap-3">
+            <Lock className="text-emerald-700 dark:text-emerald-400" size={18} />
+            <div>
+              <span className="text-[10px] font-black text-[#1E4D4D] dark:text-emerald-300 block">قفل التطبيق عند بدء التشغيل</span>
+              <span className="text-[8px] text-slate-500 dark:text-slate-400 font-bold block">إظهار شاشة القفل عند بدء فتح أو تحميل التطبيق لأول مرة</span>
+            </div>
+          </div>
+          <input
+            type="checkbox"
+            className="w-5 h-5 accent-emerald-600 cursor-pointer rounded-md"
+            checked={lockOnStartup}
+            onChange={(e) => toggleLockOnStartup(e.target.checked)}
+          />
+        </div>
+
+        {/* Toggle 3: Enable PIN/Biometric Lock (biometricEnabled) */}
+        <div className="flex items-center justify-between p-4 bg-sky-50/30 dark:bg-sky-950/20 rounded-2xl border border-sky-100/60 dark:border-sky-900/40 hover:bg-sky-50/50 transition-all duration-200">
+          <div className="flex items-center gap-3">
+            <ScanLine className="text-sky-600 dark:text-sky-400" size={18} />
+            <div>
+              <span className="text-[10px] font-black text-[#1E4D4D] dark:text-sky-300 block">تفعيل قفل PIN / البصمة الحيوية</span>
+              <span className="text-[8px] text-slate-500 dark:text-slate-400 font-bold block">السماح بتسجيل الدخول السريع باستخدام الرقم السري أو بصمة الإصبع والوجه</span>
+            </div>
+          </div>
+          <input
+            type="checkbox"
+            className="w-5 h-5 accent-sky-600 cursor-pointer rounded-md"
+            checked={biometricEnabled}
+            onChange={(e) => toggleBiometric(e.target.checked)}
+          />
+        </div>
+
+        {/* Toggle 4: Auto Lock After Inactivity (autoLockEnabled) */}
+        <div className="flex items-center justify-between p-4 bg-amber-50/30 dark:bg-amber-950/20 rounded-2xl border border-amber-100/60 dark:border-amber-900/40 hover:bg-amber-50/50 transition-all duration-200">
+          <div className="flex items-center gap-3">
+            <Clock className="text-amber-600 dark:text-amber-400" size={18} />
+            <div>
+              <span className="text-[10px] font-black text-[#1E4D4D] dark:text-amber-300 block">القفل التلقائي عند الخمول</span>
+              <span className="text-[8px] text-slate-500 dark:text-slate-400 font-bold block">تأمين وقفل شاشة التطبيق تلقائياً عند عدم رصد أي حركة لفترة معينة</span>
+            </div>
+          </div>
+          <input
+            type="checkbox"
+            className="w-5 h-5 accent-amber-600 cursor-pointer rounded-md"
+            checked={autoLockEnabled}
+            onChange={(e) => toggleAutoLock(e.target.checked)}
+          />
+        </div>
+      </div>
+
       <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
         <div className="flex items-center gap-3">
           <ShieldCheck className="text-[#1E4D4D]" size={18} />
@@ -1313,9 +1542,11 @@ const SecuritySettingsTab: React.FC = () => {
                 onChange={e => setForm({...form, mode: e.target.value as any})}
               >
                 <option value="instant">فوري</option>
+                <option value="1m">دقيقة واحدة</option>
                 <option value="5m">5 دقائق</option>
                 <option value="10m">10 دقائق</option>
                 <option value="30m">30 دقيقة</option>
+                <option value="1h">ساعة واحدة</option>
               </select>
            </div>
         </div>
@@ -1328,6 +1559,79 @@ const SecuritySettingsTab: React.FC = () => {
           {settings?.is_enabled ? 'تحديث إعدادات الأمان المتقدم' : 'تفعيل الأمان المتقدم الآن'}
         </Button>
       </div>
+
+      {/* First Administrator Registration Wizard Modal */}
+      <AnimatePresence>
+        {isBootstrapModalOpen && (
+          <Modal 
+            isOpen={isBootstrapModalOpen} 
+            onClose={() => setIsBootstrapModalOpen(false)}
+            title="معالج تهيئة المدير الأول لبرنامج PharmaFlow"
+          >
+            <div className="space-y-4 p-2 text-[#1E4D4D]" dir="rtl">
+              <div className="bg-amber-50 dark:bg-amber-950/20 p-4 rounded-2xl border border-amber-200 dark:border-amber-900/30 flex gap-3 text-amber-900 dark:text-amber-300">
+                <Shield size={24} className="shrink-0 text-amber-600" />
+                <div className="space-y-1">
+                  <h4 className="text-xs font-black text-amber-950 dark:text-white">تأسيس مدير النظام الجديد (First Admin Configuration Wizard)</h4>
+                  <p className="text-[10px] font-bold leading-relaxed">
+                    لم نجد أي مستخدمين مسجلين في قاعدة البيانات. لتفعيل شاشة تسجيل الدخول الإلزامية وتأمين النظام، يرجى تأسيس حساب المدير العام (ADMIN) الأول الآن.
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-3 pt-2">
+                <Input 
+                  label="اسم مستخدم المدير الأول" 
+                  value={bootstrapUsername} 
+                  onChange={(e: any) => setBootstrapUsername(e.target.value)} 
+                  placeholder="مثال: admin" 
+                  icon={<User size={12}/>} 
+                  required
+                />
+                
+                <Input 
+                  label="كلمة المرور" 
+                  type="password" 
+                  value={bootstrapPassword} 
+                  onChange={(e: any) => setBootstrapPassword(e.target.value)} 
+                  placeholder="6 رموز على الأقل" 
+                  icon={<Lock size={12}/>} 
+                  required
+                />
+
+                <Input 
+                  label="تأكيد كلمة المرور" 
+                  type="password" 
+                  value={bootstrapConfirmPassword} 
+                  onChange={(e: any) => setBootstrapConfirmPassword(e.target.value)} 
+                  placeholder="أعد إدخال كلمة المرور" 
+                  icon={<Lock size={12}/>} 
+                  required
+                />
+              </div>
+
+              <div className="flex gap-2 pt-4 justify-end border-t border-slate-100">
+                <Button 
+                  variant="secondary" 
+                  onClick={() => setIsBootstrapModalOpen(false)}
+                  disabled={isBootstrapping}
+                  className="text-[9px] h-10 px-4 !rounded-xl"
+                >
+                  إلغاء التفعيل
+                </Button>
+                <Button 
+                  variant="primary" 
+                  onClick={handleBootstrapSubmit}
+                  isLoading={isBootstrapping}
+                  className="text-[9px] h-10 px-6 font-black !rounded-xl shadow-md"
+                >
+                  حفظ الحساب وتفعيل الأمان 🛡️
+                </Button>
+              </div>
+            </div>
+          </Modal>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

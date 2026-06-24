@@ -359,7 +359,10 @@ router.post('/license/generate', async (req: Request, res: Response) => {
     }
 
     const crypto = await import('crypto');
-    const secret = process.env.ENCRYPTION_KEY || 'pharmaflow-fallback-secure-master-key-gcm-sha256-2026';
+    const secret = process.env.ENCRYPTION_KEY;
+    if (!secret) {
+      throw new Error("ENCRYPTION_KEY environment variable is not defined.");
+    }
     const message = `${deviceFingerprint}:${tenantId}:${expiryDate}`;
     const signature = crypto.createHmac('sha256', secret).update(message).digest('hex');
 
@@ -388,7 +391,10 @@ router.post('/license/verify', async (req: Request, res: Response) => {
     }
 
     const crypto = await import('crypto');
-    const secret = process.env.ENCRYPTION_KEY || 'pharmaflow-fallback-secure-master-key-gcm-sha256-2026';
+    const secret = process.env.ENCRYPTION_KEY;
+    if (!secret) {
+      throw new Error("ENCRYPTION_KEY environment variable is not defined.");
+    }
     const message = `${deviceFingerprint}:${tenantId}:${expiryDate}`;
     const expectedSignature = crypto.createHmac('sha256', secret).update(message).digest('hex');
 

@@ -5,7 +5,10 @@ import { prisma } from "../../database/prisma";
 import { localReplicationBus } from "./replication.publisher";
 import { ReplicationEvent } from "./replication.types";
 
-const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379";
+let REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379";
+if (typeof REDIS_URL === "string") {
+  REDIS_URL = REDIS_URL.trim().replace(/^['"]|['"]$/g, '');
+}
 
 type MessageHandler = (channel: string, event: ReplicationEvent) => void;
 

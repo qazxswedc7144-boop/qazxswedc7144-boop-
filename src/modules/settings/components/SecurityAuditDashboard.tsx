@@ -192,9 +192,7 @@ interface LogEntry {
 export default function SecurityAuditDashboard({ onNavigate }: { onNavigate?: (v: string) => void }) {
   const { profile } = useAuth();
   const [activeTab, setActiveTab] = useState<'matrix' | 'pentest' | 'api' | 'firestore' | 'logs' | 'risks'>('matrix');
-  const [activeSimulationRole, setActiveSimulationRole] = useState<string>(() => {
-    return localStorage.getItem('pharmaflow_simulated_role_pretty') || 'Super Admin';
-  });
+  const [activeSimulationRole, setActiveSimulationRole] = useState<string>('Super Admin');
 
   // State for interactive route penetration testing
   const [routePenTestRole, setRoutePenTestRole] = useState<string>('Cashier');
@@ -230,20 +228,18 @@ export default function SecurityAuditDashboard({ onNavigate }: { onNavigate?: (v
     const roleObj = AUDIT_ROLES.find(r => r.id === rolePretty);
     if (!roleObj) return;
 
-    localStorage.setItem('pharmaflow_simulated_role_pretty', rolePretty);
-    localStorage.setItem('pharmaflow_simulated_role', roleObj.internalRole);
     setActiveSimulationRole(rolePretty);
 
     // Write audit log entry
     const newLog: LogEntry = {
       id: Math.random().toString(),
       timestamp: new Date().toISOString(),
-      actor: 'local@example.com',
+      actor: profile?.email || 'admin@local.host',
       role: rolePretty,
       action: 'Assume Role Simulation',
       module: 'RBAC Policy Engine',
       status: 'SUCCESS',
-      details: `Session role context hot-swapped to [${rolePretty}]. UI updated.`
+      details: `Session role context hot-swapped to [${rolePretty}] in UI state. UI updated.`
     };
     setAuditLogs(prev => [newLog, ...prev]);
 
@@ -286,7 +282,7 @@ export default function SecurityAuditDashboard({ onNavigate }: { onNavigate?: (v
           id: Math.random().toString(),
           timestamp: new Date().toISOString(),
           actor: 'Local Security Auditor',
-          role: profile.role,
+          role: profile?.role || 'Guest',
           action: 'Pentest Execution',
           module: 'Route Protection',
           status: 'SUCCESS',

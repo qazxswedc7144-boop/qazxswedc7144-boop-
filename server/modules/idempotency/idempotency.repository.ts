@@ -8,10 +8,20 @@ const inMemoryFallbackStore = new Map<string, IdempotencyKey>();
 function isDbConnectionError(err: any): boolean {
   const msg = String(err?.message || err || "");
   return (
-    msg.includes("P1001") || 
+    msg.includes("P1001") ||
+    msg.includes("P1002") ||
+    msg.includes("P1008") ||
+    msg.includes("P1017") ||
     msg.includes("Can't reach database") || 
     msg.includes("ECONNREFUSED") ||
-    msg.includes("database server")
+    msg.includes("database server") ||
+    msg.includes("Closed") ||
+    msg.includes("closed") ||
+    msg.includes("connection") ||
+    msg.includes("socket") ||
+    msg.includes("terminated") ||
+    msg.includes("reach database") ||
+    msg.includes("Can't reach")
   );
 }
 

@@ -12,7 +12,7 @@ export interface AuthenticatedRequest extends Request {
   };
 }
 
-const JWT_SECRET = process.env.JWT_SECRET || "pharmaflow-backend-super-secret-key-2026-xyz";
+const JWT_SECRET = process.env.JWT_SECRET!;
 
 /**
  * Validates the JWT Bearer Token in authorization headers

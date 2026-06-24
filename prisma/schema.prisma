@@ -106,6 +106,7 @@ model User {
   role         Role           @default(CASHIER)
   isActive     Boolean        @default(true)
   version      Int            @default(0)
+  lastLoginAt  DateTime?
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
   auditLogs    AuditLog[]
