@@ -1,0 +1,9 @@
+{
+  "name": "Duplicate files report",
+  "generated_at": "2026-06-24T13:42:00Z",
+  "summary": {
+    "scanned_files": 0,
+    "duplicate_groups": 0
+  },
+  "duplicates": []
+}
