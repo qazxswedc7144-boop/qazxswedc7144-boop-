@@ -87,9 +87,7 @@ const basePrisma = new PrismaClient({
       url: finalDbUrl,
     },
   },
-  log: process.env.NODE_ENV === "production" 
-    ? ["error", "warn"] 
-    : ["query", "info", "warn", "error"],
+  log: ["warn"],
 });
 
 // Resilient query retry wrapper for connection issues (stale pool, scale-to-zero, etc.)
@@ -121,8 +119,8 @@ export const prisma = basePrisma.$extends({
                 await basePrisma.$disconnect();
                 await new Promise((resolve) => setTimeout(resolve, 200));
                 await basePrisma.$connect();
-              } catch (connectErr) {
-                console.error("[Prisma Retry] Hard reset failed:", connectErr);
+              } catch (connectErr: any) {
+                console.warn("[Prisma Retry] Hard reset notice:", connectErr?.message || connectErr);
               }
               // Wait briefly before retry to allow database recovery/wakeup
               await new Promise((resolve) => setTimeout(resolve, 500));
@@ -159,8 +157,8 @@ export const prisma = basePrisma.$extends({
               await basePrisma.$disconnect();
               await new Promise((resolve) => setTimeout(resolve, 200));
               await basePrisma.$connect();
-            } catch (connectErr) {
-              console.error("[Prisma Retry] Hard reset failed:", connectErr);
+            } catch (connectErr: any) {
+              console.warn("[Prisma Retry] Hard reset notice:", connectErr?.message || connectErr);
             }
             await new Promise((resolve) => setTimeout(resolve, 500));
           } else {
@@ -195,8 +193,8 @@ export const prisma = basePrisma.$extends({
               await basePrisma.$disconnect();
               await new Promise((resolve) => setTimeout(resolve, 200));
               await basePrisma.$connect();
-            } catch (connectErr) {
-              console.error("[Prisma Retry] Hard reset failed:", connectErr);
+            } catch (connectErr: any) {
+              console.warn("[Prisma Retry] Hard reset notice:", connectErr?.message || connectErr);
             }
             await new Promise((resolve) => setTimeout(resolve, 500));
           } else {
