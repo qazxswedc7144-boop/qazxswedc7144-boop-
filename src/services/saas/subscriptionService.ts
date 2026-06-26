@@ -25,9 +25,9 @@ export class SubscriptionService {
     try {
       // Operations counted: sales, purchases, transfers, returns
       const invoices = await db.invoices.toArray();
-      const salesCount = invoices.filter(i => i.type === 'SALE' && !i.isReturn).length;
-      const purchasesCount = invoices.filter(i => i.type === 'PURCHASE').length;
-      const returnsCount = invoices.filter(i => i.isReturn).length;
+      const salesCount = invoices.filter((i: any) => i.type === 'SALE' && !i.isReturn).length;
+      const purchasesCount = invoices.filter((i: any) => i.type === 'PURCHASE').length;
+      const returnsCount = invoices.filter((i: any) => i.isReturn).length;
       const transfersCount = await db.branchTransfers.count();
 
       // Get any offset stored for demo testing

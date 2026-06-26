@@ -1,6 +1,6 @@
 // server/routes/accounting.routes.ts
 import { Router, Response } from "express";
-import { prisma } from "../database/prisma";
+import { prisma, OfflineDatabaseError } from "../database/prisma";
 import { runInTransaction } from "../core/database/transactionGuard";
 import { authenticateToken, requireRoles, AuthenticatedRequest } from "../middleware/auth.middleware";
 import { Prisma, Role } from "@prisma/client";
@@ -113,6 +113,7 @@ accountingRouter.post("/journal", authenticateToken, requireRoles([Role.PLATFORM
       journalId: result.id
     });
   } catch (err: any) {
+    if (err instanceof OfflineDatabaseError) return res.status(503).json({ success: false, offline: true, message: "Database unavailable." });
     return res.status(400).json({
       error: "JOURNAL_FAILED",
       message: err.message || err

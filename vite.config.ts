@@ -29,16 +29,6 @@ export default defineConfig(({ mode }) => {
         outDir: 'dist',
         emptyOutDir: true,
         sourcemap: false,
-        rollupOptions: {
-          output: {
-            manualChunks: {
-              'vendor': ['react', 'react-dom', 'react-router-dom'],
-              'financial-core': ['dexie', 'zustand'],
-              'analysis-engine': ['recharts', 'chart.js'],
-              'ui-lib': ['motion', 'lucide-react']
-            }
-          }
-        },
         chunkSizeWarningLimit: 1000
       }
     };

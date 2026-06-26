@@ -24,7 +24,11 @@ export class ReplicationGateway {
    * Initializes the WebSocket Server attached to the shared Http/Express server.
    */
   static init(server: HttpServer): void {
-    if (this.wss) return;
+    console.log("[REPLICATION_GATEWAY] Initializing...");
+    if (this.wss) {
+      console.log("[REPLICATION_GATEWAY] Already initialized.");
+      return;
+    }
 
     this.wss = new WebSocketServer({ noServer: true });
 
@@ -76,8 +80,8 @@ export class ReplicationGateway {
 
               this.wss?.emit("connection", ws, session);
             });
-          } catch (jwtErr) {
-            console.warn("[REPLICATION_GATEWAY] Connection upgrade rejected: Invalid JWT Token.");
+          } catch (jwtErr: any) {
+            console.warn("[REPLICATION_GATEWAY] Connection upgrade rejected: Invalid JWT Token.", jwtErr.message);
             socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
             socket.destroy();
           }

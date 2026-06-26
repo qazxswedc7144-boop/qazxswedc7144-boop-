@@ -910,7 +910,6 @@ function MainLayout() {
       </aside>
 
       <div className="flex-1 flex flex-col min-w-0 relative h-full">
-        <SubscriptionGlobalUsageRibbon onUpgrade={handleUpgradeTrial} />
         {systemStatus === 'RECOVERY_MODE' && <SafeModePanel />}
         
         {riskScore >= 30 && systemStatus !== 'RECOVERY_MODE' && (

@@ -22,7 +22,11 @@ export class ReplicationSubscriber {
    * Initialize the subscription listener, connecting to Redis Pub/Sub.
    */
   static async start(): Promise<void> {
-    if (this.isSubscribed) return;
+    console.log("[REPLICATION_SUBSCRIBER] Starting...");
+    if (this.isSubscribed) {
+      console.log("[REPLICATION_SUBSCRIBER] Already subscribed.");
+      return;
+    }
 
     // 1. Hook up to our local in-memory event bus to support seamless local-mode fallback
     localReplicationBus.on("branch:*", (event: ReplicationEvent) => {
@@ -72,7 +76,9 @@ export class ReplicationSubscriber {
         try {
           if (this.subClient) {
             // Subscribe to global and all branch-specific channels using pattern matching
-            await this.subClient.psubscribe("branch:*", "group:all");
+            this.subClient.psubscribe("branch:*", "group:all").catch(subErr => {
+              console.error("[REPLICATION_SUBSCRIBER] Redis subscribe failed:", subErr.message);
+            });
             console.log("🚀 [REPLICATION_SUBSCRIBER] Registered subscriptions for branch:* and group:all");
           }
         } catch (subErr: any) {

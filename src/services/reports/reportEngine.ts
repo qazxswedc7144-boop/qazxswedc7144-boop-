@@ -508,11 +508,11 @@ export class ReportEngine {
       return true;
     });
 
-    const outputVat = rangeSales.reduce((sum, s) => sum + Number((s as any).tax ?? 0), 0);
-    const inputVat = rangePurchases.reduce((sum, p) => sum + Number((p as any).tax ?? 0), 0);
+    const outputVat = rangeSales.reduce((sum: number, s: any) => sum + Number((s as any).tax ?? 0), 0);
+    const inputVat = rangePurchases.reduce((sum: number, p: any) => sum + Number((p as any).tax ?? 0), 0);
 
-    const totalSalesTaxable = rangeSales.reduce((sum, s) => sum + Number(s.subtotal || 0), 0);
-    const totalPurchasesTaxable = rangePurchases.reduce((sum, p) => sum + Number(p.subtotal || 0), 0);
+    const totalSalesTaxable = rangeSales.reduce((sum: number, s: any) => sum + Number(s.subtotal || 0), 0);
+    const totalPurchasesTaxable = rangePurchases.reduce((sum: number, p: any) => sum + Number(p.subtotal || 0), 0);
 
     const netTaxPayable = outputVat - inputVat;
 
@@ -549,9 +549,9 @@ export class ReportEngine {
       const purchases = await db.invoices.where('type').equals('PURCHASE').toArray();
       const products = await db.getProducts();
 
-      const totalSales = sales.reduce((sum, s) => sum + Number(s.finalTotal || 0), 0);
-      const totalCost = sales.reduce((sum, s) => sum + Number((s as any).totalCost || 0), 0);
-      const totalPurchases = purchases.reduce((sum, p) => sum + Number(p.totalAmount || p.finalTotal || 0), 0);
+      const totalSales = sales.reduce((sum: number, s: any) => sum + Number(s.finalTotal || 0), 0);
+      const totalCost = sales.reduce((sum: number, s: any) => sum + Number((s as any).totalCost || 0), 0);
+      const totalPurchases = purchases.reduce((sum: number, p: any) => sum + Number(p.totalAmount || p.finalTotal || 0), 0);
 
       return {
         totalSales,

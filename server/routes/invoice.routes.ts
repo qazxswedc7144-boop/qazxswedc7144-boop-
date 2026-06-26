@@ -1,7 +1,7 @@
 // server/routes/invoice.routes.ts
 import { Router, Response } from "express";
 import { z } from "zod";
-import { prisma } from "../database/prisma";
+import { prisma, OfflineDatabaseError } from "../database/prisma";
 import { FinancialTransactionService } from "../modules/accounting/services/financialTransaction.service";
 import { authenticateToken, requireRoles, AuthenticatedRequest } from "../middleware/auth.middleware";
 import { LockingService } from "../modules/locking/locking.service";
@@ -185,6 +185,7 @@ invoiceRouter.post("/post", authenticateToken, requireRoles([Role.PLATFORM_OWNER
       await LockingService.releaseLock(key, lock.id, branchId, userId);
     }
   } catch (err: any) {
+    if (err instanceof OfflineDatabaseError) return res.status(503).json({ success: false, offline: true, message: "Database unavailable." });
     return res.status(400).json({
       error: "POST_FAILED",
       message: err.message || err
@@ -220,6 +221,7 @@ invoiceRouter.get("/", authenticateToken, async (req: AuthenticatedRequest, res:
       invoices
     });
   } catch (err: any) {
+    if (err instanceof OfflineDatabaseError) return res.status(503).json({ success: false, offline: true, message: "Database unavailable." });
     return res.status(500).json({ error: "INTERNAL_ERROR", message: err.message });
   }
 });
@@ -250,6 +252,7 @@ invoiceRouter.get("/:id", authenticateToken, async (req: AuthenticatedRequest, r
       invoice
     });
   } catch (err: any) {
+    if (err instanceof OfflineDatabaseError) return res.status(503).json({ success: false, offline: true, message: "Database unavailable." });
     return res.status(500).json({ error: "INTERNAL_ERROR", message: err.message });
   }
 });

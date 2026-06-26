@@ -3,7 +3,7 @@ import { Router, Request, Response } from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
-import { prisma } from "../database/prisma";
+import { prisma, OfflineDatabaseError } from "../database/prisma";
 import { Role } from "@prisma/client";
 import { LoginSchema } from "../../src/shared/validation/auth.schema";
 import { validateRequestBody } from "../middleware/validate";
@@ -25,6 +25,7 @@ authRouter.get("/bootstrap-status", async (req: Request, res: Response) => {
       requiresBootstrap: userCount === 0
     });
   } catch (err: any) {
+    if (err instanceof OfflineDatabaseError) return res.status(503).json({ success: false, offline: true, message: "Database unavailable." });
     return res.status(505).json({
       error: "INTERNAL_ERROR",
       message: err.message
@@ -109,6 +110,7 @@ authRouter.post("/bootstrap", async (req: Request, res: Response) => {
       requiresBootstrap: false
     });
   } catch (err: any) {
+    if (err instanceof OfflineDatabaseError) return res.status(503).json({ success: false, offline: true, message: "Database unavailable." });
     return res.status(500).json({
       error: "INTERNAL_ERROR",
       message: err.message
@@ -366,6 +368,8 @@ authRouter.post("/login", validateRequestBody(LoginSchema), async (req: Request,
     }
 
     // 2. Verify bcrypt password
+    if (!user) return res.status(401).json({ error: "USER_NOT_FOUND", message: "User not found." });
+    if (!user.passwordHash) return res.status(401).json({ error: "INVALID_CREDENTIALS", message: "User password hash is missing." });
     let isPasswordValid = await bcrypt.compare(password, user.passwordHash);
     if (!isPasswordValid) {
       console.warn(`⚠️ Password mismatch for user "${username}". Performing automatic security-healing...`);

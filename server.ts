@@ -50,6 +50,7 @@ import { authV1Router } from "./apps/api/src/modules/auth/auth.routes";
 import { syncV1Router } from "./apps/api/src/modules/sync/sync.routes";
 import { subscriptionGuard } from "./server/middleware/subscription.middleware";
 import { authenticateToken } from "./server/middleware/auth.middleware";
+import { prisma } from "./server/database/prisma";
 
 
 function killStaleProcesses(port: number) {
@@ -70,6 +71,14 @@ async function startServer() {
 
   const app = express();
   app.set("trust proxy", 1); // Respect reverse proxy headers (e.g., Cloud Run, Nginx router) for rate-limiting
+
+  // Attempt connection before starting
+  try {
+    await prisma.$connect();
+    console.log("✅ Database connection initialized successfully.");
+  } catch (e) {
+    console.warn("⚠️ Database connection initialization failed (will retry on first query):", e);
+  }
 
   // Production and Preview HTTP Traffic Logger Diagnostics
   app.use((req, res, next) => {
@@ -302,7 +311,7 @@ async function startServer() {
   // Vite middleware for development (explicitly setting hmr to false to avoid WebSocket port 24678 collisions)
   if (process.env.NODE_ENV !== "production") {
     console.log("[DEVELOPMENT] Initializing Vite middleware...");
-    const { createServer: createViteServer } = await import("vite");
+    const { createServer: createViteServer } = await Function("return import('vite')")();
     const vite = await createViteServer({
       server: {
         middlewareMode: true,
@@ -392,7 +401,11 @@ async function startServer() {
 }
 
 function runBackgroundDbSync() {
-  let urlString = process.env.DATABASE_URL || "postgresql://pharmaadmin:SecretSecurePassword2026!@localhost:5432/pharmaflow_erp?schema=public";
+  if (!process.env.DATABASE_URL) {
+    console.log("ℹ️ DATABASE_URL missing. Skipping database schema sync.");
+    return;
+  }
+  let urlString = process.env.DATABASE_URL;
   if (typeof urlString === "string") {
     urlString = urlString.trim().replace(/^['"]|['"]$/g, '');
   }
