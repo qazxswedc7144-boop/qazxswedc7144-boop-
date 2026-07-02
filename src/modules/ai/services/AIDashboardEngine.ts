@@ -41,7 +41,7 @@ export class AIDashboardEngine {
     let recommendations = '';
     const now = Date.now();
     const cachedAIStr = localStorage.getItem(this.AI_CACHE_KEY);
-    let cachedAI = null;
+    let cachedAI: any = null;
     
     if (cachedAIStr) {
       try {

@@ -11,6 +11,28 @@ export const SupplierRepository = {
     return await db.suppliers.toArray();
   },
 
+  searchSuppliers: async (term: string): Promise<any[]> => {
+    return await db.suppliers
+      .filter((c: any) => 
+        (c.Supplier_Name.toLowerCase().includes(term.toLowerCase()) || 
+         c.Supplier_ID.toLowerCase().includes(term.toLowerCase())) &&
+        c.Is_Active !== false
+      )
+      .limit(10)
+      .toArray();
+  },
+
+  searchCustomers: async (term: string): Promise<any[]> => {
+    return await db.customers
+      .filter((c: any) => 
+        (c.Supplier_Name.toLowerCase().includes(term.toLowerCase()) || 
+         c.Supplier_ID.toLowerCase().includes(term.toLowerCase())) &&
+        c.Is_Active !== false
+      )
+      .limit(10)
+      .toArray();
+  },
+
   getCustomers: async (): Promise<any[]> => {
     return await db.customers.toArray();
   },

@@ -200,13 +200,13 @@ const prismaClient = basePrisma ? basePrisma.$extends({
     },
   },
 }) : new Proxy({} as any, {
-  get: (target, prop) => {
+  get: (_target, prop) => {
     if (prop === '$connect' || prop === '$disconnect') return async () => {};
     if (prop === '$transaction' || prop === '$queryRaw' || prop === '$executeRaw') return throwNoDb;
     
     // Return a proxy that handles model accessors like auditLog, user, etc.
     return new Proxy({}, {
-      get: (modelTarget, modelProp) => {
+      get: (_modelTarget, modelProp) => {
         const operation = String(modelProp);
         
         // Read operations

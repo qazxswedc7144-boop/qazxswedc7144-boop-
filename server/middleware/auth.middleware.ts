@@ -12,7 +12,7 @@ export interface AuthenticatedRequest extends Request {
   };
 }
 
-const JWT_SECRET = process.env.JWT_SECRET!;
+const getJwtSecret = () => process.env.JWT_SECRET || 'pharmaflow-local-development-jwt-secure-secret-2026';
 
 /**
  * Validates the JWT Bearer Token in authorization headers
@@ -29,7 +29,7 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
   }
 
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as any;
+    const decoded = jwt.verify(token, getJwtSecret()) as any;
     (req as AuthenticatedRequest).user = {
       userId: decoded.userId,
       username: decoded.username,

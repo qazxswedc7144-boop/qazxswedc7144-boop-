@@ -110,6 +110,8 @@ export class PharmaFlowDB extends Dexie {
   syncQueue!: Table<any>;
   syncEvents!: Table<any>;
   failedMutations!: Table<any>;
+  outbox!: Table<any>;
+  syncLogs!: Table<any>;
 
   // Phase 3.4 Event Sourcing Tables
   eventStore!: Table<any>;
@@ -265,6 +267,12 @@ export class PharmaFlowDB extends Dexie {
       systemSettings: '&key'
     });
 
+    // Version 23: Production-Grade Sync Engine
+    this.version(23).stores({
+      outbox: '++id, &mutationId, &idempotencyKey, status, type, createdAt, [status+createdAt]',
+      syncLogs: '++id, action, mutationId, timestamp'
+    });
+
     // Handle structural integrity and recovery
     this.on('versionchange', () => {
       console.warn("Database structure updated in another tab. Reloading...");
@@ -278,14 +286,14 @@ export class PharmaFlowDB extends Dexie {
       try {
         const table = this.table(tableName);
         if (table) {
-          table.hook('creating', (primKey: any, obj: any) => {
+          table.hook('creating', (_primKey: any, obj: any) => {
             const session = getCurrentUserSession();
             if (obj && typeof obj === 'object') {
               obj.tenantId = obj.tenantId || session.tenantId;
               obj.userId = obj.userId || session.userId;
             }
           });
-          table.hook('updating', (mods: any, primKey: any, obj: any) => {
+          table.hook('updating', (mods: any, _primKey: any, obj: any) => {
             const session = getCurrentUserSession();
             if (mods && typeof mods === 'object') {
               return {
@@ -973,7 +981,6 @@ function wrapQueryChain(obj: any, tableName: string): any {
                 return res.catch((err: any) => {
                   console.warn(`[DB RESILIENT] Query operation promised rejection in table "${tableName}":`, err);
                   isDbBlocked = true;
-                  const mockTable = getMockTable(tableName);
                   return Promise.resolve([]);
                 });
               }
@@ -1037,7 +1044,7 @@ function wrapTable(realTable: any, tableName: string): any {
 }
 
 export const dbProxy = new Proxy({} as any, {
-  get(dummy, prop) {
+  get(_dummy, prop) {
     const target = dbInstance;
     if (prop === 'db') return dbProxy;
     if (prop === 'init' && typeof target.init === 'function') return target.init.bind(target);

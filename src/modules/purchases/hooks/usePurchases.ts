@@ -6,6 +6,7 @@ import { useUI, useInventory, useAccounting } from '@/contexts/AppContext';
 import { useAppStore } from '@/hooks/useAppStore';
 import { authService } from '@/modules/auth/services/authService';
 import { InvoiceRepository } from '@/database/repositories/invoice.repository';
+import { SupplierRepository } from '@/database/repositories/SupplierRepository';
 import { auditLogService } from '@/services/audit/auditLog';
 import { InvoiceWorkflowEngine } from '@/modules/sales/services/InvoiceWorkflowEngine';
 import { predictionService } from '@/modules/ai/services/predictionService';
@@ -51,14 +52,7 @@ export function usePurchases(onNavigate?: (view: any, params?: any) => void) {
 
         setIsSearchingSuppliers(true);
         try {
-          const results = await db.db.suppliers
-            .filter(s => 
-              (s.Supplier_Name.toLowerCase().includes(term.toLowerCase()) || 
-              s.Supplier_ID.toLowerCase().includes(term.toLowerCase())) &&
-              s.Is_Active !== false
-            )
-            .limit(10)
-            .toArray();
+          const results = await SupplierRepository.searchSuppliers(term);
 
           setFilteredSuppliers(results);
         } catch (err) {

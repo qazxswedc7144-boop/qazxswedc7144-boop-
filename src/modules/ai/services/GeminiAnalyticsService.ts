@@ -29,7 +29,7 @@ export class GeminiAnalyticsService {
       
       // 1. Check Cache
       const cachedRaw = localStorage.getItem(this.CACHE_PREFIX + cacheKey);
-      let cachedData = null;
+      let cachedData: any = null;
       if (cachedRaw) {
         cachedData = JSON.parse(cachedRaw);
         // If valid, return directly

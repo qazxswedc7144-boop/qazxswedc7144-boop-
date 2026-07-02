@@ -15,6 +15,9 @@ if (!process.env.JWT_REFRESH_SECRET) {
 }
 
 // Global resilience listeners to protect the containerized server process from premature exit under background load or DB hiccups
+if (process.env.K_SERVICE || process.env.CLOUD_RUN_JOB) {
+  process.env.NODE_ENV = "production";
+}
 process.on("unhandledRejection", (reason: any) => {
   const detail = (reason?.message || String(reason || "")).replace(/error/gi, "err_");
   console.warn("⚠️ Unhandled Promise Rejection captured in process:", detail);
@@ -27,8 +30,7 @@ process.on("uncaughtException", (errVal: any) => {
 
 import express from "express";
 import path from "path";
-import { exec, execSync } from "child_process";
-import net from "net";
+import { execSync } from "child_process";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import securityRouter from "./server/routes/security.routes";
@@ -60,8 +62,8 @@ function killStaleProcesses(port: number) {
 
 
 async function startServer() {
-  // Enforce binding strictly to port 3000 in local sandboxed environment or respect dynamic PORT on Cloud Run
-  const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+  console.log("=== STARTING SERVER ===");
+  const PORT = 3000;
   
   // Clean up any stale processes that might be holding onto the port or 24678 in development
   if (process.env.NODE_ENV !== "production") {
@@ -72,13 +74,10 @@ async function startServer() {
   const app = express();
   app.set("trust proxy", 1); // Respect reverse proxy headers (e.g., Cloud Run, Nginx router) for rate-limiting
 
-  // Attempt connection before starting
-  try {
-    await prisma.$connect();
-    console.log("✅ Database connection initialized successfully.");
-  } catch (e) {
-    console.warn("⚠️ Database connection initialization failed (will retry on first query):", e);
-  }
+  // Attempt connection before starting in the background
+  prisma.$connect()
+    .then(() => console.log("✅ Database connection initialized successfully."))
+    .catch((e) => console.warn("⚠️ Database connection initialization failed (will retry on first query):", e));
 
   // Production and Preview HTTP Traffic Logger Diagnostics
   app.use((req, res, next) => {
@@ -374,7 +373,6 @@ async function startServer() {
   const server = app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
     registerIdempotencyCleanupCron();
-    runBackgroundDbSync();
     
     // Initialize Real-Time Replication Engine
     ReplicationGateway.init(server);
@@ -398,111 +396,6 @@ async function startServer() {
       process.exit(1);
     }
   });
-}
-
-function runBackgroundDbSync() {
-  if (!process.env.DATABASE_URL) {
-    console.log("ℹ️ DATABASE_URL missing. Skipping database schema sync.");
-    return;
-  }
-  let urlString = process.env.DATABASE_URL;
-  if (typeof urlString === "string") {
-    urlString = urlString.trim().replace(/^['"]|['"]$/g, '');
-  }
-  
-  const isCloudSqlSocket = urlString.includes("/cloudsql/") || urlString.includes("socket=") || urlString.includes("host=/");
-  
-  const executeDbPush = () => {
-    console.log("🚀 Connection confirmed/assumed. Running schema sync...");
-    
-    // Clean DATABASE_URL for prisma db push to ensure we do not use transaction pooling parameters which Prisma Migrate/db push do not support.
-    let cleanDbUrlForPush = urlString;
-    try {
-      if (urlString.includes("postgresql://") || urlString.includes("postgres://")) {
-        const urlObj = new URL(urlString.replace("postgresql://", "http://").replace("postgres://", "http://"));
-        urlObj.searchParams.delete("pgbouncer");
-        urlObj.searchParams.delete("connection_limit");
-        
-        const PROTOCOL = urlString.startsWith("postgresql://") ? "postgresql://" : "postgres://";
-        cleanDbUrlForPush = urlObj.toString().replace("http://", PROTOCOL);
-      }
-    } catch (e: any) {
-      console.warn("⚠️ Failed to sanitize DATABASE_URL for Schema Push:", e.message || e);
-    }
-
-    const pushEnv = { ...process.env, DATABASE_URL: cleanDbUrlForPush };
-
-    exec(
-      "npx --prefer-offline --no-install prisma db push --accept-data-loss --skip-generate",
-      { timeout: 45000, env: pushEnv },
-      (errVal, stdout, stderr) => {
-        if (errVal) {
-          const detail = (errVal.message || "").replace(/error/gi, "err_");
-          console.warn("⚠️ Prisma database push failed:", detail);
-          if (stderr) {
-            const sanitizedStderr = stderr.replace(/error/gi, "err_");
-            console.warn(sanitizedStderr);
-          }
-          return;
-        }
-        console.log("🚀 Prisma database schema successfully synchronized!\n", stdout);
-      }
-    );
-  };
-
-  if (isCloudSqlSocket) {
-    console.log("ℹ️ Cloud SQL socket connection detected. Bypassing TCP connectivity pre-check.");
-    executeDbPush();
-    return;
-  }
-
-  // Parse host and port from postgresql URL
-  let host = "localhost";
-  let port = 5432;
-  
-  try {
-    const cleanedUrl = urlString.includes("postgresql://") 
-      ? urlString.replace("postgresql://", "http://") 
-      : urlString.replace("postgres://", "http://");
-    const parsed = new URL(cleanedUrl);
-    host = parsed.hostname || "localhost";
-    port = parsed.port ? parseInt(parsed.port, 10) : 5432;
-    if (isNaN(port)) {
-      port = 5432;
-    }
-  } catch (e: any) {
-    console.warn("⚠️ Failed to parse DATABASE_URL for connectivity check:", e.message || e);
-    host = "localhost";
-    port = 5432;
-  }
-
-  console.log(`Checking connection to database at ${host}:${port}...`);
-  
-  try {
-    const socket = new net.Socket();
-    socket.setTimeout(3000);
-    
-    socket.on("connect", () => {
-      console.log(`✅ Database port at ${host}:${port} is reachable.`);
-      socket.destroy();
-      executeDbPush();
-    });
-    
-    socket.on("error", (errVal) => {
-      const detail = (errVal.message || "").replace(/error/gi, "err_");
-      console.warn(`⚠️ Database port at ${host}:${port} is unreachable. Skipping schema sync. Connection failure:`, detail);
-      socket.destroy();
-    });
-    
-    socket.on("timeout", () => {
-      console.warn(`⚠️ Connection timeout to database at ${host}:${port}. Skipping schema sync.`);
-      socket.destroy();
-    });
-    
-    socket.connect(port, host);
-  } catch (socketErr: any) {
-    console.warn(`⚠️ Low-level socket initialization failure to ${host}:${port}:`, socketErr.message || socketErr);
-  }
 }
 
 startServer().catch((errVal) => {

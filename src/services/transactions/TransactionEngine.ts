@@ -25,7 +25,7 @@ export const processTransaction = async (type: string, data: any) => {
   await db.db.invoices.add(invoice)
 
   // 2. INVENTORY ENGINE
-  const productsToUpdate = [];
+  const productsToUpdate: any[] = [];
   for (const item of data.items) {
 
     if (!item.name) continue

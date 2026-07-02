@@ -11,14 +11,14 @@ import { authenticateToken, requireRoles, AuthenticatedRequest } from "../middle
 
 export const authRouter = Router();
 
-const JWT_SECRET = process.env.JWT_SECRET!;
-const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET!;
+const getJwtSecret = () => process.env.JWT_SECRET || 'pharmaflow-local-development-jwt-secure-secret-2026';
+const getJwtRefreshSecret = () => process.env.JWT_REFRESH_SECRET || 'pharmaflow-local-development-jwt-refresh-secure-secret-2026';
 
 /**
  * GET /api/auth/bootstrap-status
  * Checks if the system has no users and requires bootstrapping
  */
-authRouter.get("/bootstrap-status", async (req: Request, res: Response) => {
+authRouter.get("/bootstrap-status", async (_req: Request, res: Response) => {
   try {
     const userCount = await prisma.user.count();
     return res.status(200).json({
@@ -477,13 +477,13 @@ authRouter.post("/login", validateRequestBody(LoginSchema), async (req: Request,
     // 4. Generate: accessToken and refreshToken
     const accessToken = jwt.sign(
       { userId: user.id, username: user.username, role: user.role, tenantId },
-      JWT_SECRET,
+      getJwtSecret(),
       { expiresIn: "4h" }
     );
 
     const refreshToken = jwt.sign(
       { userId: user.id, tenantId },
-      JWT_REFRESH_SECRET,
+      getJwtRefreshSecret(),
       { expiresIn: "7d" }
     );
 
@@ -561,7 +561,7 @@ authRouter.post("/refresh", async (req: Request, res: Response) => {
 
     let decoded: any;
     try {
-      decoded = jwt.verify(refreshToken, JWT_REFRESH_SECRET);
+      decoded = jwt.verify(refreshToken, getJwtRefreshSecret());
     } catch (err) {
       return res.status(401).json({ error: "INVALID_REFRESH_TOKEN", message: "Invalid or expired refresh token." });
     }
@@ -595,14 +595,14 @@ authRouter.post("/refresh", async (req: Request, res: Response) => {
     // Generate fresh access token
     const accessToken = jwt.sign(
       { userId: user.id, username: user.username, role: user.role, tenantId },
-      JWT_SECRET,
+      getJwtSecret(),
       { expiresIn: "4h" }
     );
 
     // Rotate refresh token
     const newRefreshToken = jwt.sign(
       { userId: user.id, tenantId },
-      JWT_REFRESH_SECRET,
+      getJwtRefreshSecret(),
       { expiresIn: "7d" }
     );
     const newRefreshTokenHash = crypto.createHash("sha256").update(newRefreshToken).digest("hex");

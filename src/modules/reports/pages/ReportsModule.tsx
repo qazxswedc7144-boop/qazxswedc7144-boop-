@@ -5,7 +5,7 @@ import { SafeMarkdown } from '@/components/shared/SafeMarkdown';
 import { 
   BarChart3, PieChart, TrendingUp, Users, Truck, Package, 
   Calendar, History, ArrowRight, Search, 
-  Layers, Clock, LayoutGrid, Sparkles, ArrowUpRight, BrainCircuit,
+  Layers, Clock, LayoutGrid, Sparkles, BrainCircuit,
   Download
 } from 'lucide-react';
 
@@ -22,25 +22,21 @@ interface ReportCardProps {
 const ReportCard: React.FC<ReportCardProps> = ({ title, icon, onClick, description, color }) => {
   return (
     <motion.button
-      whileHover={{ y: -4, scale: 1.01 }}
-      whileTap={{ scale: 0.98 }}
+      whileHover={{ y: -2, scale: 1.01 }}
+      whileTap={{ scale: 0.99 }}
       onClick={onClick}
-      className="flex flex-col gap-4 p-6 bg-white rounded-[28px] border border-slate-100 hover:border-[#1E4D4D]/20 hover:shadow-xl transition-all group text-right relative overflow-hidden h-full"
+      className="flex flex-col items-center justify-center gap-3 p-6 bg-white rounded-2xl shadow-sm hover:shadow-md transition-all group text-center relative overflow-hidden w-full border border-slate-100"
     >
-      <div className={`w-14 h-14 ${color} rounded-2xl flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform shadow-sm`}>
+      <div className={`w-16 h-16 ${color} rounded-2xl flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform shadow-sm`}>
         {icon}
       </div>
-      <div className="flex-1">
-        <h3 className="text-base font-black text-[#1E4D4D] mb-1.5 group-hover:text-emerald-600 transition-colors">
+      <div>
+        <h3 className="text-lg font-bold text-slate-800 mb-2 font-cairo group-hover:text-[#1E4D4D] transition-colors">
           {title}
         </h3>
-        <p className="text-[10px] font-bold text-slate-400 leading-relaxed line-clamp-2">
+        <p className="text-sm font-medium text-slate-500 leading-relaxed font-cairo max-w-2xl mx-auto">
           {description}
         </p>
-      </div>
-      <div className="flex items-center justify-between mt-2 pt-4 border-t border-slate-50">
-        <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest group-hover:text-[#1E4D4D] transition-colors">عرض التقرير</span>
-        <ArrowUpRight size={14} className="text-slate-300 group-hover:text-[#1E4D4D] transition-all" />
       </div>
     </motion.button>
   );
@@ -312,7 +308,7 @@ const ReportsModule: React.FC<ReportsModuleProps> = ({ onNavigate }) => {
 
       {/* Reports Grid */}
       <div className="flex-1 overflow-y-auto p-10 custom-scrollbar">
-        <div className="max-w-7xl mx-auto">
+        <div className="max-w-4xl mx-auto">
           <AnimatePresence mode="popLayout">
             {filteredReports.length === 0 ? (
               <motion.div 
@@ -327,7 +323,7 @@ const ReportsModule: React.FC<ReportsModuleProps> = ({ onNavigate }) => {
             ) : (
               <motion.div 
                 layout
-                className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"
+                className="grid grid-cols-1 gap-4"
               >
                 {filteredReports.map((report) => (
                   <motion.div

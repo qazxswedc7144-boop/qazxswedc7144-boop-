@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { db } from '@/core/db';
 import defaultLogoImg from '@/assets/logo-vector.svg'; 
-import { HeartPulse, Settings } from 'lucide-react';
-import { useUI } from '@/contexts/AppContext';
+import { HeartPulse, Menu } from 'lucide-react';
 import RoleGuard from '@/components/shared/RoleGuard';
 import NotificationCenter from '@/components/shared/NotificationCenter';
+import { SidebarMenu } from './SidebarMenu';
 
 const DynamicLogo = () => {
   const [logoSrc, setLogoSrc] = useState<string | null>(null);
@@ -61,19 +61,21 @@ const DynamicLogo = () => {
 };
 
 const Header = ({ pageTitle, showBackButton, onBackClick }: { pageTitle?: string, showBackButton?: boolean, onBackClick?: () => void }) => {
-  const { setSettingsOpen } = useUI();
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   return (
     <header className="w-full bg-white border-b border-gray-100 px-4 pt-3.5 pb-3 flex items-center justify-between sticky top-0 z-50 shadow-sm min-h-[64px]" dir="rtl">
       
+      <SidebarMenu isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
+
       {/* الجهة اليمنى (بداية الصف في RTL): أيقونة الإعدادات وزر العودة متبوعاً بالعنوان */}
       <div className="flex items-center gap-3 z-10">
         <RoleGuard permission="MANAGE_SYSTEM">
           <button 
-            onClick={() => setSettingsOpen(true)}
+            onClick={() => setIsSidebarOpen(true)}
             className="w-10 h-10 flex items-center justify-center bg-slate-50 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-xl transition-all active:scale-95"
-            title="الإعدادات"
+            title="القائمة"
           >
-            <Settings size={20} />
+            <Menu size={20} />
           </button>
         </RoleGuard>
 

@@ -91,8 +91,8 @@ export class IntegritySweepService {
     const entries = await db.getJournalEntries();
     let healthy = true;
     for (const entry of entries) {
-      const debits = (entry.lines || []).reduce((sum, line) => sum + (line.debit || 0), 0);
-      const credits = (entry.lines || []).reduce((sum, line) => sum + (line.credit || 0), 0);
+      const debits = (entry.lines || []).reduce((sum: number, line: any) => sum + (line.debit || 0), 0);
+      const credits = (entry.lines || []).reduce((sum: number, line: any) => sum + (line.credit || 0), 0);
       if (Math.abs(debits - credits) > 0.01) {
         if (autoFix && entry.id) {
           console.warn(`AUTO_FIX: Deleting imbalanced journal entry [${entry.id}]`);
@@ -111,7 +111,7 @@ export class IntegritySweepService {
     for (const p of products) {
       if (!p.id) continue;
       const transactions = await db.db.inventoryTransactions.where('productId').equals(p.id).toArray();
-      const calculatedStock = transactions.reduce((sum, t) => sum + (t.QuantityChange || 0), 0);
+      const calculatedStock = transactions.reduce((sum: number, t: any) => sum + (t.QuantityChange || 0), 0);
       const currentStock = Number(p.stock || p.StockQuantity || 0);
       
       if (Math.abs(calculatedStock - currentStock) > 0.01) {
@@ -196,20 +196,20 @@ export class IntegritySweepService {
   private static async validateVouchers(autoFix = false): Promise<boolean> {
     const settlements = await db.db.settlements.toArray();
     const cashFlow = await db.getCashFlow();
-    const vouchers = cashFlow.filter(c => c.notes?.includes('سند #'));
+    const vouchers = cashFlow.filter((c: any) => c.notes?.includes('سند #'));
     let healthy = true;
 
     for (const v of vouchers) {
       const vIdMatch = v.notes?.match(/سند #([A-Z0-9-]+)/);
       if (vIdMatch) {
         const vId = vIdMatch[1];
-        const vSettlements = settlements.filter(s => s.voucherId === vId);
-        const settledTotal = vSettlements.reduce((sum, s) => sum + s.amount, 0);
+        const vSettlements = settlements.filter((s: any) => s.voucherId === vId);
+        const settledTotal = vSettlements.reduce((sum: number, s: any) => sum + s.amount, 0);
         if (settledTotal > v.amount + 0.01) {
           if (autoFix) {
             console.warn(`AUTO_FIX: Correcting over-allocated voucher #${vId}`);
             // Simple fix: delete settlements for this voucher to allow re-allocation
-            await db.db.settlements.bulkDelete(vSettlements.map(s => s.id));
+            await db.db.settlements.bulkDelete(vSettlements.map((s: any) => s.id));
           } else {
             healthy = false;
           }
@@ -227,7 +227,7 @@ export class IntegritySweepService {
     ] as const;
     let healthy = true;
 
-    const actualTableNames = typeof db.getExistingTableNames === 'function' ? db.getExistingTableNames() : db.tables.map(t => t.name);
+    const actualTableNames = typeof db.getExistingTableNames === 'function' ? db.getExistingTableNames() : db.tables.map((t: any) => t.name);
 
     for (const tableName of tables) {
       if (!actualTableNames.includes(tableName)) {
@@ -279,7 +279,7 @@ export class IntegritySweepService {
     // Check if we already have a recent critical alert for the same issues to prevent flooding
     const recentAlerts = await db.db.systemAlerts
       .where('timestamp').above(new Date(Date.now() - 5 * 60 * 1000).toISOString())
-      .filter(a => a.severity === 'CRITICAL')
+      .filter((a: any) => a.severity === 'CRITICAL')
       .toArray();
     
     if (recentAlerts.length > 0) {

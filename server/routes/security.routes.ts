@@ -472,7 +472,7 @@ router.get('/backup/list', async (req: Request, res: Response) => {
     
     try {
       const files = await fs.readdir(folderPath);
-      const listBackups = [];
+      const listBackups: any[] = [];
 
       for (const file of files) {
         if (file.endsWith('.bak') || file.endsWith('.json')) {

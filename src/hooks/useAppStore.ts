@@ -15,8 +15,6 @@ import {
 } from '@/types';
 import { CurrencyService } from '@/services/localization/CurrencyService';
 import { NotificationService } from '@/context/NotificationContext';
-import { MutationQueue } from '../../packages/sync-engine/src/queue/mutationQueue';
-import { SyncWorker } from '../../packages/sync-engine/src/workers/sync.worker';
 import { DraftService } from '@/services/system/DraftService';
 // Removed unused db import
 
@@ -163,9 +161,11 @@ export const useAppStore = create<AppState>()(
                 const partnerId = invoice.type === 'SALE' ? invoice.payload.customerId : invoice.payload.supplierId;
                 const partnerType = invoice.type === 'SALE' ? 'CUSTOMER' : 'SUPPLIER';
 
-                await MutationQueue.getInstance().enqueue({
-                  type: 'CREATE_INVOICE',
-                  payload: {
+                const { RealtimeReplicationService } = await import('@/modules/replication/services/RealtimeReplicationService');
+
+                await RealtimeReplicationService.enqueueSyncEvent(
+                  invoice.type === 'SALE' ? 'SaleCreated' : 'PurchaseCreated',
+                  {
                     id: result.refId || invoice.payload.id || `TX_${invoice.type}_${Date.now()}`,
                     invoiceNumber: invoice.payload.invoiceId || invoice.payload.id || `INV_${invoice.type}_${Date.now()}`,
                     date: invoice.payload.date || new Date().toISOString(),
@@ -178,19 +178,15 @@ export const useAppStore = create<AppState>()(
                     total: invoice.payload.total,
                     notes: invoice.payload.notes || ''
                   },
-                  priority: 'HIGH',
-                  idempotencyKey: (invoice.payload as any).transactionUuid || `IDEM_${invoice.type}_${result.refId || Date.now()}`
-                });
+                  invoice.type
+                );
 
                 // Clear temporary auto-save drafts upon successful queueing/posting
                 const draftId = invoice.type === 'SALE' ? 'sales_draft_current' : 'purchases_draft_current';
                 await DraftService.clearInvoiceDraft(draftId).catch(err => console.log("Draft clean error:", err));
 
                 // Trigger immediate sync if Online
-                if (navigator.onLine) {
-                  SyncWorker.getInstance().triggerSync();
-                } else {
-                  // Notify user about pending sync
+                if (!navigator.onLine) {
                   get().addToast("تم تشغيل الوضع غير المتصل. حُفظ المستند محلياً وسيُرحل تلقائياً فور عودة الإنترنت.", "warning");
                 }
               } catch (enqueueErr: any) {
@@ -211,6 +207,18 @@ export const useAppStore = create<AppState>()(
         try {
           await InventoryService.updateStock(productId, delta);
           await get().refreshData();
+          
+          try {
+             const { RealtimeReplicationService } = await import('@/modules/replication/services/RealtimeReplicationService');
+             await RealtimeReplicationService.enqueueSyncEvent(
+                'InventoryUpdated',
+                { productId, qty: delta, branchId: "BRH-MAIN-001" },
+                'Product'
+             );
+          } catch (e) {
+             console.error("Sync enqueue failed", e);
+          }
+
           get().addToast("تم تحديث الرصيد المخزني 📦", "success");
         } catch (error: any) {
           get().addToast(`فشل تحديث المخزون: ${error.message}`, "error");
@@ -221,6 +229,18 @@ export const useAppStore = create<AppState>()(
         try {
           await SupplierRepository.save(partner, type);
           await get().refreshData();
+          
+          try {
+             const { RealtimeReplicationService } = await import('@/modules/replication/services/RealtimeReplicationService');
+             await RealtimeReplicationService.enqueueSyncEvent(
+                type === 'S' ? 'SupplierCreated' : 'CustomerCreated',
+                { ...partner },
+                type === 'S' ? 'Supplier' : 'Customer'
+             );
+          } catch (e) {
+             console.error("Sync enqueue failed", e);
+          }
+
           get().addToast(`تم تسجيل ${type === 'S' ? 'المورد' : 'العميل'} بنجاح`, "success");
         } catch (error: any) {
           get().addToast(`فشل تسجيل الشريك: ${error.message}`, "error");

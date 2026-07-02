@@ -146,7 +146,7 @@ export class ProductionCleanupService {
       
       // 1. Trial Balance
       const accounts = await db.db.accounts.toArray();
-      const totalBalance = accounts.reduce((sum, acc) => sum + (acc.balance || 0), 0);
+      const totalBalance = accounts.reduce((sum: number, acc: any) => sum + (acc.balance || 0), 0);
       
       if (Math.abs(totalBalance) > 0.01) {
         throw new Error(`IMBALANCE DETECTED: Trial Balance is ${totalBalance.toFixed(2)}.`);
@@ -158,16 +158,16 @@ export class ProductionCleanupService {
       const remainingPurchases = await db.db.purchases.toArray();
       const remainingVouchers = await db.db.cashFlow.toArray();
 
-      const orphans = remainingEntries.filter(e => {
-        if (e.sourceType === 'SALE' && !remainingSales.some(s => s.id === e.sourceId)) return true;
-        if (e.sourceType === 'PURCHASE' && !remainingPurchases.some(p => p.id === e.sourceId)) return true;
-        if (e.sourceType === 'VOUCHER' && !remainingVouchers.some(v => v.transaction_id === e.sourceId)) return true;
+      const orphans = remainingEntries.filter((e: any) => {
+        if (e.sourceType === 'SALE' && !remainingSales.some((s: any) => s.id === e.sourceId)) return true;
+        if (e.sourceType === 'PURCHASE' && !remainingPurchases.some((p: any) => p.id === e.sourceId)) return true;
+        if (e.sourceType === 'VOUCHER' && !remainingVouchers.some((v: any) => v.transaction_id === e.sourceId)) return true;
         return false;
       });
 
       if (orphans.length > 0) {
         console.warn(`Detected ${orphans.length} orphan journal entries. Cleaning up...`);
-        await db.db.journalEntries.bulkDelete(orphans.map(o => o.id));
+        await db.db.journalEntries.bulkDelete(orphans.map((o: any) => o.id));
       }
 
         // 3. Stock vs Ledger Check
@@ -175,7 +175,7 @@ export class ProductionCleanupService {
         for (const p of remainingProducts) {
           if (!p.id) continue;
           const movements = await db.db.inventoryTransactions.where('productId').equals(p.id).toArray();
-          const calculatedStock = movements.reduce((sum, m) => sum + (m.QuantityChange || 0), 0);
+          const calculatedStock = movements.reduce((sum: number, m: any) => sum + (m.QuantityChange || 0), 0);
           if (Math.abs(calculatedStock - (p.stock || p.StockQuantity || 0)) > 0.001) {
             console.warn(`Stock mismatch for ${p.name || p.Name}: Ledger=${p.stock || p.StockQuantity}, Calculated=${calculatedStock}. Fixing...`);
             await db.db.products.update(p.id, { 

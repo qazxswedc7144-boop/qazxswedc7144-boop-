@@ -4,7 +4,7 @@ import { AuthenticatedRequest } from "./auth.middleware";
 import { SaasService } from "../modules/saas/saas.service";
 import jwt from "jsonwebtoken";
 
-const JWT_SECRET = process.env.JWT_SECRET!;
+const getJwtSecret = () => process.env.JWT_SECRET || 'pharmaflow-local-development-jwt-secure-secret-2026';
 
 /**
  * Route-level interceptor that filters all mutations (POST, PUT, DELETE).
@@ -36,7 +36,7 @@ export async function subscriptionGuard(req: AuthenticatedRequest, res: Response
     const token = authHeader && authHeader.split(" ")[1];
     if (token) {
       try {
-        const decoded = jwt.verify(token, JWT_SECRET) as any;
+        const decoded = jwt.verify(token, getJwtSecret()) as any;
         tenantId = decoded?.tenantId || null;
       } catch (e) {
         // Safe to ignore, auth middleware will catch

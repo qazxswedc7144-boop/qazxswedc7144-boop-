@@ -75,7 +75,7 @@ export class CurrencyService {
         onUpdate(data.code, data.label);
         
         // تحديث جميع العناصر التي تحمل كلاس العملة في الواجهة (DOM Manipulation as requested)
-        document.querySelectorAll(".currency-label").forEach(el => {
+        document.querySelectorAll(".currency-label").forEach((el: Element) => {
           (el as HTMLElement).innerText = data.code;
         });
       }
@@ -94,7 +94,7 @@ export class CurrencyService {
 
     // البحث عن سعر الصرف في قاعدة البيانات
     const rates = await db.getExchangeRates(date);
-    const rateEntry = rates.find(r => r.fromCurrency === fromCurrency && r.toCurrency === baseCurrency);
+    const rateEntry = rates.find((r: any) => r.fromCurrency === fromCurrency && r.toCurrency === baseCurrency);
     
     if (rateEntry) {
       return { baseAmount: amount * rateEntry.rate, rate: rateEntry.rate };

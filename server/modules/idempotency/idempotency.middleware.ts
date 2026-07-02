@@ -11,7 +11,7 @@ export interface AuthenticatedRequest extends Request {
   };
 }
 
-const JWT_SECRET = process.env.JWT_SECRET!;
+const getJwtSecret = () => process.env.JWT_SECRET || 'pharmaflow-local-development-jwt-secure-secret-2026';
 
 /**
  * Enterprise Idempotency Middleware.
@@ -45,7 +45,7 @@ export async function idempotencyMiddleware(req: Request, res: Response, next: N
       const authHeader = req.headers["authorization"];
       const token = authHeader && authHeader.startsWith("Bearer ") ? authHeader.split(" ")[1] : null;
       if (token) {
-        const decoded = jwt.verify(token, JWT_SECRET) as any;
+        const decoded = jwt.verify(token, getJwtSecret()) as any;
         userId = decoded?.userId || null;
       }
     } catch {

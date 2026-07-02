@@ -8,8 +8,8 @@ import { Role } from "@prisma/client";
 import { ReplicationSubscriber } from "./replication.subscriber";
 import { ReplicationEvent, ClientConnectionInfo } from "./replication.types";
 
-const JWT_SECRET = process.env.JWT_SECRET!;
-const AUTHORIZED_ROLES: string[] = [Role.ADMIN, Role.ACCOUNTANT, Role.PHARMACIST, Role.INVENTORY_MANAGER];
+const getJwtSecret = () => process.env.JWT_SECRET || 'pharmaflow-local-development-jwt-secure-secret-2026';
+const AUTHORIZED_ROLES: string[] = [Role.ADMIN, Role.ACCOUNTANT, Role.PHARMACIST, Role.INVENTORY_MANAGER, Role.TENANT_ADMIN, Role.PLATFORM_OWNER];
 
 interface CustomWebSocket extends WebSocket {
   isAlive?: boolean;
@@ -57,7 +57,9 @@ export class ReplicationGateway {
           }
 
           try {
-            const decoded = jwt.verify(token, JWT_SECRET) as any;
+            console.log("[REPLICATION_GATEWAY] Verifying token:", token);
+            const decoded = jwt.verify(token, getJwtSecret()) as any;
+            console.log("[REPLICATION_GATEWAY] Decoded token:", decoded);
             
             // Validate RBAC roles are authorized to access replication streams
             if (!AUTHORIZED_ROLES.includes(decoded.role)) {

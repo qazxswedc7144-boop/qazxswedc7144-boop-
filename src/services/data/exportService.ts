@@ -212,7 +212,7 @@ export const ExportService = {
 
             <div class="mt-12 pt-6 border-t border-slate-100 text-center">
                <p class="text-[10px] font-bold text-slate-400 italic">${invoiceConfig.footerNote}</p>
-               <div class="mt-4 opacity-30 text-[8px] font-black uppercase">Printed by: ${user.User_Name} | Template: ${activeTemplate.TemplateName}</div>
+               <div class="mt-4 opacity-30 text-[8px] font-black uppercase">Printed by: ${user?.User_Name || 'Unknown'} | Template: ${activeTemplate.TemplateName}</div>
             </div>
           </div>
           

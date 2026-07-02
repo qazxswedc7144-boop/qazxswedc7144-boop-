@@ -1,18 +1,13 @@
 import React from 'react';
-import { Section } from '../components/Section'; // Assuming path
-import { ShieldCheck, KeyRound, Info, Settings, User, Phone } from 'lucide-react';
-import { ReviewerSaaSTester } from './ReviewerSaaSTester';
+import { Section } from '@/components/shared/Section';
+import { ShieldCheck, KeyRound, Info } from 'lucide-react';
+import { ReviewerSaaSTester } from '@/components/saas/SubscriptionWidgets';
 // Assume stats and other necessary props are passed or imported
 
 export const SettingsSections: React.FC<{
   openSection: string | null;
   toggleSection: (section: string) => void;
-  stats: any;
-  setShowPrivacyModal: (val: boolean) => void;
-  handleDeveloperClick: () => void;
-  showDevInfo: boolean;
-  setShowDevInfo: (val: boolean) => void;
-}> = ({ openSection, toggleSection, stats, setShowPrivacyModal, handleDeveloperClick, showDevInfo, setShowDevInfo }) => {
+}> = ({ openSection, toggleSection }) => {
     return (
         <div className="space-y-4">
              {/* ... existing code ... */}

@@ -261,20 +261,26 @@ export class DashboardAggregationService {
     });
 
     const topSellingItems = Object.entries(productSalesMap)
-      .map(([id, qty]) => ({
-        id,
-        qty,
-        name: productMap.get(id)?.Name || productMap.get(id)?.name || 'Unknown'
-      }))
+      .map(([id, qty]) => {
+        const p = productMap.get(id) as any;
+        return {
+          id,
+          qty,
+          name: p ? (p.Name || p.name || 'Unknown') : 'Unknown'
+        };
+      })
       .sort((a, b) => b.qty - a.qty)
       .slice(0, 5);
 
     const mostProfitableItems = Object.entries(productProfitMap)
-      .map(([id, profit]) => ({
-        id,
-        profit,
-        name: productMap.get(id)?.Name || productMap.get(id)?.name || 'Unknown'
-      }))
+      .map(([id, profit]) => {
+        const p = productMap.get(id) as any;
+        return {
+          id,
+          profit,
+          name: p ? (p.Name || p.name || 'Unknown') : 'Unknown'
+        };
+      })
       .sort((a, b) => b.profit - a.profit)
       .slice(0, 5);
 

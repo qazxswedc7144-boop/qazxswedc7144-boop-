@@ -92,8 +92,8 @@ export class SystemTestingEngine {
     const details: any[] = [];
 
     for (const entry of entries) {
-      const totalDebit = entry.lines.reduce((sum, l) => sum + l.debit, 0);
-      const totalCredit = entry.lines.reduce((sum, l) => sum + l.credit, 0);
+      const totalDebit = entry.lines.reduce((sum: number, l: any) => sum + l.debit, 0);
+      const totalCredit = entry.lines.reduce((sum: number, l: any) => sum + l.credit, 0);
       
       if (Math.abs(totalDebit - totalCredit) > 0.01) {
         unbalancedCount++;
@@ -190,8 +190,8 @@ export class SystemTestingEngine {
         purchases.flatMap(pur => pur.items).filter(it => it.product_id === p.id)
       );
 
-      const totalPurchased = purchaseItems.reduce((sum, it) => sum + it.qty, 0);
-      const totalSold = salesItems.reduce((sum, it) => sum + it.qty, 0);
+      const totalPurchased = purchaseItems.reduce((sum: number, it: any) => sum + it.qty, 0);
+      const totalSold = salesItems.reduce((sum: number, it: any) => sum + it.qty, 0);
       const computedStock = totalPurchased - totalSold;
 
       if (Math.abs(computedStock - (p.StockQuantity || 0)) > 0.01) {
@@ -217,8 +217,8 @@ export class SystemTestingEngine {
       const entries = await db.db.journalEntries.toArray();
       const lines = entries.flatMap(e => e.lines).filter(l => l.accountId === acc.id);
       
-      const totalDebit = lines.reduce((sum, l) => sum + l.debit, 0);
-      const totalCredit = lines.reduce((sum, l) => sum + l.credit, 0);
+      const totalDebit = lines.reduce((sum: number, l: any) => sum + l.debit, 0);
+      const totalCredit = lines.reduce((sum: number, l: any) => sum + l.credit, 0);
       const computedBalance = acc.balance_type === 'DEBIT' ? (totalDebit - totalCredit) : (totalCredit - totalDebit);
 
       if (Math.abs(computedBalance - (acc.balance || 0)) > 0.01) {
@@ -237,8 +237,8 @@ export class SystemTestingEngine {
 
   static async validateReports(): Promise<TestResult> {
     const accounts = await db.db.accounts.toArray();
-    const totalDebit = accounts.filter(a => a.balance_type === 'DEBIT').reduce((sum, a) => sum + (a.balance || 0), 0);
-    const totalCredit = accounts.filter(a => a.balance_type === 'CREDIT').reduce((sum, a) => sum + (a.balance || 0), 0);
+    const totalDebit = accounts.filter(a => a.balance_type === 'DEBIT').reduce((sum: number, a: any) => sum + (a.balance || 0), 0);
+    const totalCredit = accounts.filter(a => a.balance_type === 'CREDIT').reduce((sum: number, a: any) => sum + (a.balance || 0), 0);
 
     const trialBalanceOk = Math.abs(totalDebit - totalCredit) < 0.01;
 
@@ -407,7 +407,7 @@ export class SystemTestingEngine {
     let success = 0;
     let errors = 0;
 
-    const promises = [];
+    const promises: Promise<any>[] = [];
     for (let i = 0; i < count; i++) {
       promises.push(
         transactionOrchestrator.processInvoiceTransaction({

@@ -26,7 +26,6 @@ import {
 
 import {
   SubscriptionOnboardingModal,
-  SubscriptionGlobalUsageRibbon,
   SubscriptionWarningInterceptor,
   SubscriptionBlockadeBackdrop,
   TrialBlockedModal
@@ -278,11 +277,14 @@ function MainLayout() {
             try {
               const parts = token.split('.');
               if (parts.length === 3) {
-                const payload = JSON.parse(atob(parts[1]));
-                // Evaluate validity and check if current JWT token is before expiration
-                const exp = payload.exp * 1000;
-                if (Date.now() < exp) {
-                  isTokenValid = true;
+                const tokenPart = parts[1];
+                if (tokenPart) {
+                  const payload = JSON.parse(atob(tokenPart));
+                  // Evaluate validity and check if current JWT token is before expiration
+                  const exp = payload.exp * 1000;
+                  if (Date.now() < exp) {
+                    isTokenValid = true;
+                  }
                 }
               }
             } catch (e) {
@@ -455,8 +457,8 @@ function MainLayout() {
     if (loading) return; // Wait for authentication loading to complete
 
     const hash = window.location.hash.replace('#/', '');
-    let view = hash || 'dashboard'; // Capture full path including subroutes
-    let id = undefined;
+    let view = hash || 'dashboard'; 
+    let id: string | undefined = undefined;
 
     // Check if the current hash contains an ID (e.g., invoices/123)
     if (hash.includes('/') && !hash.startsWith('reports/')) {

@@ -22,7 +22,7 @@ export const dataValidator = {
       console.warn(`[AI_Audit] Running Intensive Validation for ${entityType}`);
       // Deep check for duplicates in last 5 minutes
       const recentSales = await db.getSales();
-      const duplicate = recentSales.find(s => 
+      const duplicate = recentSales.find((s: any) => 
         s.customerId === data.customerId && 
         s.finalTotal === data.total && 
         new Date().getTime() - new Date(s.date).getTime() < 300000
@@ -69,14 +69,14 @@ export const dataValidator = {
       }
 
       for (const item of items) {
-        const originalItem = original.items.find(i => i.product_id === item.product_id);
+        const originalItem = original.items.find((i: any) => i.product_id === item.product_id);
         if (!originalItem) throw new ValidationError(`الصنف [${item.name}] غير موجود في الفاتورة الأصلية.`);
         if (item.qty > originalItem.qty) {
           throw new ValidationError(`تجاوز الكمية: لا يمكن إرجاع ${item.qty} وحدة من [${item.name}]، الكمية الأصلية كانت ${originalItem.qty}.`);
         }
       }
     } else {
-      const original = await PurchaseRepository.getAll().then(all => all.find(p => p.invoiceId === originalId || p.purchase_id === originalId));
+      const original = await PurchaseRepository.getAll().then(all => all.find((p: any) => p.invoiceId === originalId || p.purchase_id === originalId));
       if (!original) throw new ValidationError("مستند المشتريات الأصلي غير موجود.");
 
       const originalMethod = original.status === 'PAID' ? 'Cash' : 'Credit';
@@ -85,7 +85,7 @@ export const dataValidator = {
       }
 
       for (const item of items) {
-        const originalItem = original.items.find(i => i.product_id === item.product_id);
+        const originalItem = original.items.find((i: any) => i.product_id === item.product_id);
         if (!originalItem) throw new ValidationError(`الصنف [${item.name}] غير موجود في فاتورة المشتريات الأصلية.`);
         if (item.qty > originalItem.qty) {
           throw new ValidationError(`تجاوز الكمية: لا يمكن إرجاع ${item.qty} من [${item.name}] للمورد، الكمية الأصلية ${originalItem.qty}.`);
@@ -120,7 +120,7 @@ export const dataValidator = {
           throw new ValidationError(`تجاوز حد الفاتورة: لا يمكن تخصيص ${amount.toLocaleString()} لفاتورة مبيعات متبقي منها ${remaining.toLocaleString()}.`);
         }
       } else {
-        const purchase = await db.getPurchases().then(all => all.find(p => p.id === id || p.purchase_id === id));
+        const purchase = await db.getPurchases().then(all => all.find((p: any) => p.id === id || p.purchase_id === id));
         if (!purchase) throw new ValidationError(`فاتورة المشتريات #${id} غير موجودة.`);
         
         const remaining = (purchase.totalAmount || 0) - (purchase.paidAmount || 0);
@@ -198,7 +198,7 @@ export const dataValidator = {
 
       if (item.product_id && (item.product_id.startsWith('NEW_ITM') || item.product_id.startsWith('ITM-NEW'))) continue;
       
-      const product = products.find(p => p.id === item.product_id);
+      const product = products.find((p: any) => p.id === item.product_id);
       if (!product) throw new InventoryError(`الصنف [${item.name}] غير موجود في المستودع.`);
       
       // في حالة البيع العادي فقط نفحص العجز المخزني
@@ -229,7 +229,7 @@ export const dataValidator = {
     await dataValidator.runDynamicRules('PURCHASE', { supplierId, total, invoiceId });
     
     if (invoiceId) {
-      const existing = await PurchaseRepository.getAll().then(all => all.find(p => p.invoiceId === invoiceId || p.purchase_id === invoiceId || p.id === invoiceId));
+      const existing = await PurchaseRepository.getAll().then(all => all.find((p: any) => p.invoiceId === invoiceId || p.purchase_id === invoiceId || p.id === invoiceId));
       const hasDeps = await InvoiceRepository.checkHasDependencies(invoiceId, 'PURCHASE');
       if (existing && (existing.payment_status && existing.payment_status !== 'Unpaid' || hasDeps)) {
         throw new ValidationError(`خطأ حماية: الفاتورة #${invoiceId} مقفلة مالياً لوجود سدادات أو ارتباطات مالية مسجلة للمورد.`);
@@ -249,7 +249,7 @@ export const dataValidator = {
       
       // في حالة مرتجع المشتريات، يجب التأكد من توفر الكمية المراد إعادتها للمورد
       if (isReturn) {
-        const product = (await db.getProducts()).find(p => p.id === item.product_id);
+        const product = (await db.getProducts()).find((p: any) => p.id === item.product_id);
         const availableStock = Number(product?.stock || product?.StockQuantity || 0);
         if (product && availableStock < item.qty) {
           throw new ValidationError(`عجز مخزني للمرتجع: لا يمكنك إعادة ${item.qty} من [${item.name}]، الرصيد الحالي بالمخزن هو ${availableStock} فقط.`);
@@ -266,8 +266,8 @@ export const dataValidator = {
     if (!entry.date || !entry.lines || entry.lines.length < 2) {
       throw new AccountingError("قيد ناقص البيانات.");
     }
-    const totalDebit = entry.lines.reduce((s, l) => s + (l.debit || 0), 0);
-    const totalCredit = entry.lines.reduce((s, l) => s + (l.credit || 0), 0);
+    const totalDebit = entry.lines.reduce((s: number, l: any) => s + (l.debit || 0), 0);
+    const totalCredit = entry.lines.reduce((s: number, l: any) => s + (l.credit || 0), 0);
     if (Math.abs(totalDebit - totalCredit) > 0.001) {
       throw new AccountingError(`قيد غير متزن.`);
     }

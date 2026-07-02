@@ -26,12 +26,12 @@ export class ReportEngine {
     const sales = await db.invoices
       .where('type')
       .equals('SALE')
-      .filter(s => s.date >= start && s.date <= end)
+      .filter((s: any) => s.date >= start && s.date <= end)
       .toArray();
     
     return {
       count: sales.length,
-      total: sales.reduce((acc, s) => acc + (s.finalTotal || 0), 0)
+      total: sales.reduce((acc: number, s: any) => acc + (s.finalTotal || 0), 0)
     };
   }
 
@@ -159,7 +159,7 @@ export class ReportEngine {
     let totalCostValue = 0;
     let totalSalesValue = 0;
 
-    const items = products.map(p => {
+    const items = products.map((p: any) => {
       const qty = Number(p.stock ?? (p as any).StockQuantity ?? 0);
       const cost = Number(p.CostPrice ?? p.LastPurchasePrice ?? 0);
       const sellPrice = Number(p.price ?? 0);
@@ -245,10 +245,10 @@ export class ReportEngine {
     for (const e of rangeEntries) {
       if (!e.lines) continue;
       // Check if entry has cash flow effect
-      const cashLines = e.lines.filter(l => cashBankAccounts.includes(l.accountId));
+      const cashLines = e.lines.filter((l: any) => cashBankAccounts.includes(l.accountId));
       if (cashLines.length === 0) continue;
 
-      const netDelta = cashLines.reduce((sum, cl) => sum + (Number(cl.debit || 0) - Number(cl.credit || 0)), 0);
+      const netDelta = cashLines.reduce((sum: number, cl: any) => sum + (Number(cl.debit || 0) - Number(cl.credit || 0)), 0);
       if (netDelta === 0) continue;
 
       const category = e.sourceType || 'GENERAL';
@@ -321,19 +321,19 @@ export class ReportEngine {
     
     // receipts are stored in vouchers or cash movements
     const receipts = await db.db.receipts.toArray();
-    const vouchers = await db.vouchers.filter(v => (v as any).type === 'RECEIPT').toArray();
+    const vouchers = await db.vouchers.filter((v: any) => (v as any).type === 'RECEIPT').toArray();
 
-    const customerDetails = customers.map(cust => {
+    const customerDetails = customers.map((cust: any) => {
       const custId = cust.id || cust.Customer_ID || cust.Partner_ID;
       const custName = cust.name || cust.Supplier_Name || cust.Customer_Name || 'عميل مجهول';
 
       // Total sales
-      const custInvoices = invoices.filter(inv => inv.customerId === custId);
-      const totalSales = custInvoices.reduce((sum, inv) => sum + Number(inv.finalTotal || 0), 0);
+      const custInvoices = invoices.filter((inv: any) => inv.customerId === custId);
+      const totalSales = custInvoices.reduce((sum: number, inv: any) => sum + Number(inv.finalTotal || 0), 0);
 
       // Total receipts
-      const directReceipts = receipts.filter(r => r.customerId === custId || r.customer_id === custId).reduce((sum, r) => sum + Number(r.amount || r.Paid_Amount || 0), 0);
-      const voucherReceipts = vouchers.filter(v => (v as any).customer_id === custId || (v as any).customerId === custId).reduce((sum, v) => sum + Number(v.amount || 0), 0);
+      const directReceipts = receipts.filter((r: any) => r.customerId === custId || r.customer_id === custId).reduce((sum: number, r: any) => sum + Number(r.amount || r.Paid_Amount || 0), 0);
+      const voucherReceipts = vouchers.filter((v: any) => (v as any).customer_id === custId || (v as any).customerId === custId).reduce((sum: number, v: any) => sum + Number(v.amount || 0), 0);
       const totalPaid = directReceipts + voucherReceipts;
 
       const outstandingBalance = totalSales - totalPaid;
@@ -369,17 +369,17 @@ export class ReportEngine {
     
     // payments tables
     const payments = await db.db.payments.toArray();
-    const vouchers = await db.vouchers.filter(v => (v as any).type === 'PAYMENT').toArray();
+    const vouchers = await db.vouchers.filter((v: any) => (v as any).type === 'PAYMENT').toArray();
 
-    const result = suppliers.map(sup => {
+    const result = suppliers.map((sup: any) => {
       const supId = sup.id || sup.Supplier_ID || sup.Partner_ID;
       const supName = sup.name || sup.Supplier_Name || 'مورد مجهول';
 
       const supPurchases = purchases.filter(p => p.supplierId === supId || p.supplier_id === supId);
-      const totalPurchases = supPurchases.reduce((sum, p) => sum + Number(p.totalAmount || p.finalTotal || 0), 0);
+      const totalPurchases = supPurchases.reduce((sum: number, p: any) => sum + Number(p.totalAmount || p.finalTotal || 0), 0);
 
-      const directPayments = payments.filter(p => p.supplierId === supId || p.supplier_id === supId).reduce((sum, p) => sum + Number(p.amount || p.Paid_Amount || 0), 0);
-      const voucherPayments = vouchers.filter(v => (v as any).supplier_id === supId || (v as any).supplierId === supId).reduce((sum, v) => sum + Number(v.amount || 0), 0);
+      const directPayments = payments.filter(p => p.supplierId === supId || p.supplier_id === supId).reduce((sum: number, p: any) => sum + Number(p.amount || p.Paid_Amount || 0), 0);
+      const voucherPayments = vouchers.filter(v => (v as any).supplier_id === supId || (v as any).supplierId === supId).reduce((sum: number, v: any) => sum + Number(v.amount || 0), 0);
       const totalPaid = directPayments + voucherPayments;
 
       const outstandingBalance = totalPurchases - totalPaid;

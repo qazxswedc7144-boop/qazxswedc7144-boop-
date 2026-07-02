@@ -14,11 +14,11 @@ export const ReferentialIntegrityGuard = {
   async checkProductReferences(productId: string): Promise<boolean> {
     if (!productId) return false;
     // 1. فحص المبيعات
-    const hasSales = await db.db.sales.filter(s => s.items.some((it: any) => it.product_id === productId)).count() > 0;
+    const hasSales = await db.db.sales.filter((s: any) => s.items.some((it: any) => it.product_id === productId)).count() > 0;
     if (hasSales) return true;
 
     // 2. فحص المشتريات
-    const hasPurchases = await db.db.purchases.filter(p => p.items.some((it: any) => it.product_id === productId)).count() > 0;
+    const hasPurchases = await db.db.purchases.filter((p: any) => p.items.some((it: any) => it.product_id === productId)).count() > 0;
     if (hasPurchases) return true;
 
     // 3. فحص سجلات الاستخدام (Usage Logs)
@@ -48,7 +48,7 @@ export const ReferentialIntegrityGuard = {
     if (hasFinancials) return true;
 
     // 3. فحص السندات (عبر سجلات الكاش فلو)
-    const hasVouchers = await db.db.cashFlow.filter(cf => cf.notes?.includes(partnerId) || false).count() > 0;
+    const hasVouchers = await db.db.cashFlow.filter((cf: any) => cf.notes?.includes(partnerId) || false).count() > 0;
     if (hasVouchers) return true;
 
     return false;
@@ -60,7 +60,7 @@ export const ReferentialIntegrityGuard = {
   async checkAccountReferences(accountId: string): Promise<boolean> {
     if (!accountId) return false;
     // 1. فحص قيود اليومية
-    const hasEntries = await db.db.journalEntries.filter(e => e.lines.some(l => l.accountId === accountId)).count() > 0;
+    const hasEntries = await db.db.journalEntries.filter((e: any) => e.lines.some((l: any) => l.accountId === accountId)).count() > 0;
     if (hasEntries) return true;
 
     // 2. فحص الحسابات الأبناء (Hierarchy)
